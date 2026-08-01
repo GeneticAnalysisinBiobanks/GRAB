@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <limits>
 #include <numeric>
 #include <string>
@@ -87,8 +88,58 @@ std::vector<IndexedIBD> loadIndexedIBD(
         throw std::runtime_error(filename + ": first line must be a header starting with ID1 or #ID1");
     }
     if (!headerFound) throw std::runtime_error(filename + ": empty IBD file (no header)");
+    // (pa, pb, pc) must be a probability vector.  Every consumer depends on
+    // it, and neither failure mode is diagnosable downstream:
+    //
+    //   * buildChowLiuTree mixes three conditional joint tables that each
+    //     have marginal p0 with these three weights, so a family table sums
+    //     to the product of (pa + pb + pc) over its spanning-tree edges
+    //     rather than to 1, and the family CGF carries a constant
+    //     K(0) = sum of log(pa + pb + pc) instead of 0.  A constant in K
+    //     leaves zeta, K' and K'' exactly unchanged and moves only
+    //     w = sgn(zeta)*sqrt(2*(zeta*s - K(zeta))), inflating every
+    //     SPA-branch p-value by a factor approaching exp(K(0)) and turning
+    //     the marker into NA with SPA_STATUS = GUARD_TEMP once
+    //     K(0) exceeds the large-deviation rate.  GUARD_TEMP cannot arise
+    //     from a genuine CGF at all — zeta*s - K(zeta) is the Legendre
+    //     transform and is non-negative by construction — so its appearance
+    //     is a proof that the input was inadmissible, arriving far too late
+    //     and attached to the wrong subsystem.
+    //   * the two-subject block factorizes the pair through the roots of
+    //     x^2 - 2*(pa + pb/2)*x + pa, which leave [0, 1] as soon as
+    //     pa + pb/2 > 1.  The four-point mixture then acquires negative
+    //     point masses, K'' can go non-positive, and the marker is lost to
+    //     GUARD_CURV instead.
+    //
+    // Both are exactly detectable here, at the one place the numbers enter
+    // the program.
+    //
+    // The precision policy has two tiers, because the file need not have been
+    // written by `--cal-pairwise-ibd`: the paper states that other tools may
+    // supply the IBD-sharing probabilities, and a table printed at four or six
+    // decimal places carries a rounding residual of up to 1.5e-4 in the sum
+    // through no fault of its own.
+    //
+    //   |sum - 1| <= kExact  accepted unchanged.  runPairwiseIBD writes
+    //                        %.17g and its worst residual over the bundled
+    //                        fixture's 39 799 pairs is 2.22e-16, one ulp.
+    //   <= kRound            accepted, RENORMALIZED so that the weights sum to
+    //                        one exactly, and counted for one warning.  This
+    //                        is the printed-precision case; renormalizing is
+    //                        the right response because the deficit is in the
+    //                        printing, not in the estimate.
+    //   otherwise            rejected.  The smallest deviation the predecessor
+    //                        produced was 0.0805, 160x above kRound, so the
+    //                        two populations do not overlap.
+    constexpr double kExact = 1e-9;
+    constexpr double kRound = 5e-4;
+    constexpr double kDiscTol = 1e-12;
+    size_t nRenormalized = 0, nProjected = 0;
+    double maxDev = 0.0, maxShortfall = 0.0;
+    size_t dataLine = 0;
     while (reader.getline(line)) {
         if (text::skipLine(line)) continue;
+        ++dataLine;
         text::TokenScanner tok(line);
         std::string id1 = tok.next();
         std::string id2 = tok.next();
@@ -96,15 +147,157 @@ std::vector<IndexedIBD> loadIndexedIBD(
         auto it2 = idMap.find(id2);
         if (it1 == idMap.end() || it2 == idMap.end()) continue;
         char *endPtr;
+        bool parsed = true;
         tok.skipWS();
         double pa = std::strtod(tok.pos(), &endPtr);
+        parsed = parsed && (endPtr != tok.pos());
         tok.p = endPtr;
         tok.skipWS();
         double pb = std::strtod(tok.pos(), &endPtr);
+        parsed = parsed && (endPtr != tok.pos());
         tok.p = endPtr;
         tok.skipWS();
         double pc = std::strtod(tok.pos(), &endPtr);
+        parsed = parsed && (endPtr != tok.pos());
+
+        if (!parsed) {
+            // strtod returns 0 without consuming anything on a non-numeric or
+            // absent field, so a truncated or comma-delimited row used to be
+            // accepted as the IBD vector (0, 0, 0).  Name the real problem;
+            // the checks below would otherwise report it as "does not sum
+            // to 1" and send the user to regenerate a file that is merely
+            // mis-delimited.
+            throw std::runtime_error(
+                filename + ": pair " + id1 + "/" + id2 + " (data line " +
+                std::to_string(dataLine) + ") does not have three numeric "
+                "fields after ID1 and ID2.  Expected whitespace-delimited "
+                "'ID1  ID2  pa  pb  pc'."
+            );
+        }
+
+        const double sum = pa + pb + pc;
+        const double dev = std::abs(sum - 1.0);
+
+        const char *why = nullptr;
+        if (!std::isfinite(pa) || !std::isfinite(pb) || !std::isfinite(pc))
+            why = "is not finite";
+        else if (pa < -kRound || pb < -kRound || pc < -kRound)
+            why = "has a negative component";
+        else if (dev > kRound)
+            why = "does not sum to 1";
+        if (why) {
+            char detail[192];
+            std::snprintf(detail, sizeof(detail),
+                          "pa=%.17g pb=%.17g pc=%.17g", pa, pb, pc);
+            throw std::runtime_error(
+                filename + ": pair " + id1 + "/" + id2 + " (data line " +
+                std::to_string(dataLine) + ") has " + detail + ", which " +
+                why + ".  (pa, pb, pc) are the probabilities that the two "
+                "subjects share 2, 1 and 0 alleles identical by descent, so "
+                "they must be non-negative and sum to 1.  Regenerate the "
+                "file with --cal-pairwise-ibd."
+            );
+        }
+
+        // Repair in this order, so that what is stored is non-negative AND
+        // sums to one exactly: clamping after renormalizing would reintroduce
+        // a deficit of up to kRound.
+        //
+        // First the floor.  A component within kRound below zero is printed
+        // round-off around an estimate that sat on the boundary — pa = 0 for
+        // a parent-offspring pair, pc = 0 for a monozygotic one — and a
+        // negative weight would make the two-subject block's point masses and
+        // the Chow-Liu mixture signed measures.
+        pa = std::max(pa, 0.0);
+        pb = std::max(pb, 0.0);
+        pc = std::max(pc, 0.0);
+
+        // Then the sum.  The weights are what buildChowLiuTree multiplies the
+        // three conditional tables by, so a deficit here is a deficit in K(0).
+        const double clamped = pa + pb + pc;
+        const double clampedDev = std::abs(clamped - 1.0);
+        if (clampedDev > kExact) {
+            if (!(clamped > 0.0)) {
+                throw std::runtime_error(
+                    filename + ": pair " + id1 + "/" + id2 + " (data line " +
+                    std::to_string(dataLine) + ") has no positive component."
+                );
+            }
+            const double inv = 1.0 / clamped;
+            pa *= inv;
+            pb *= inv;
+            pc *= inv;
+            ++nRenormalized;
+            // The larger of the two, so the number reported is the deviation
+            // actually repaired: flooring a component can itself move the sum
+            // away from one on a row whose written values summed exactly.
+            maxDev = std::max(maxDev, std::max(dev, clampedDev));
+        }
+
+        // Condition (ii) of the admissible set (see ibd.hpp): the pair must be
+        // decomposable into two independent per-allele sharing indicators,
+        // i.e. x^2 - 2*Rho*x + pa with Rho = pa + pb/2 must have real roots.
+        // With pa+pb+pc = 1 that is exactly pb^2 >= 4*pa*pc, and it is NOT
+        // implied by non-negativity and unit sum: (0.5, 0, 0.5) satisfies both
+        // and violates it.
+        //
+        // buildSPAGRMNullModel already projects such a triple, through
+        // std::max(Rho*Rho - pa, 0.0) — the two roots collapse to Rho and the
+        // pair is modelled as Binomial(2, Rho), preserving the kinship, which
+        // is the quantity the GRM independently measures, and moving pc to
+        // (1-Rho)^2.  The projection is principled; what was missing is that
+        // it happened silently, in a different translation unit, with no count
+        // and no diagnostic.  It is performed and reported here instead.
+        //
+        // It is NOT an error.  The boundary pb^2 = 4*pa*pc is where the
+        // textbook relationships sit — full sibs give 0.5^2 = 4*0.25*0.25
+        // exactly — and the quantity is first order in the estimation noise:
+        // perturbing (0.25, 0.5, 0.25) by e in pa and d in pc moves
+        // pb^2 - 4*pa*pc by -2(e+d).  With a per-component SD of 0.01, half of
+        // all full-sib pairs land below the curve with a median shortfall of
+        // 0.019.  Rejecting on this condition would abort the run on almost
+        // any third-party IBD table containing siblings, which is precisely
+        // the input the two-tier precision policy above exists to support.
+        //
+        // The threshold separates a violation from round-off ON the boundary.
+        // ibd::deriveIBD's upper clamp puts the discriminant at exactly zero,
+        // and 15 880 of the bundled fixture's 39 799 rows land there, where
+        // the %.17g round trip leaves 4*pa*pc - pb^2 at up to 5.8e-16.  Those
+        // are not violations and the downstream std::max(disc, 0.0) already
+        // handles them; counting them would report 40 % of a correct file as
+        // repaired.  A genuine violation is of order 1e-2, ten orders above.
+        {
+            const double rho = pa + 0.5 * pb;
+            const double shortfall = 4.0 * (pa * pc) - pb * pb;   // = -4*disc
+            if (shortfall > kDiscTol) {
+                pa = rho * rho;
+                pb = 2.0 * rho * (1.0 - rho);
+                pc = (1.0 - rho) * (1.0 - rho);
+                ++nProjected;
+                maxShortfall = std::max(maxShortfall, shortfall);
+            }
+        }
+
         out.push_back({it1->second, it2->second, pa, pb, pc});
+    }
+    if (nRenormalized > 0) {
+        warnMsg(
+            "  %s: %zu of %zu IBD triples did not sum to 1 to within %.0e "
+            "(worst %.3e) and were renormalized.  This is the signature of a "
+            "table printed at limited precision; if the file came from "
+            "--cal-pairwise-ibd it should be exact, and a residual this large "
+            "means something else wrote it.",
+            filename.c_str(), nRenormalized, out.size(), kExact, maxDev
+        );
+    }
+    if (nProjected > 0) {
+        warnMsg(
+            "  %s: %zu of %zu IBD triples were not decomposable into two "
+            "independent allele-sharing indicators (worst 4*pa*pc - pb^2 = "
+            "%.3e) and were projected onto Binomial(2, pa + pb/2), which "
+            "preserves the kinship.",
+            filename.c_str(), nProjected, out.size(), maxShortfall
+        );
     }
     return out;
 }
@@ -374,8 +567,44 @@ Eigen::MatrixXd buildChowLiuTree(
             }
         }
 
+        // Normalize.  Each of pa_arr, pb_arr and pc_arr has both marginals
+        // equal to p0, so an edge table pro_e has marginal (pa+pb+pc)*p0 and
+        // the tree product divided by p0^(deg-1) sums to the product of
+        // (pa+pb+pc) over the spanning-tree edges — MAF-independent, and
+        // exactly 1 for well-formed input, which loadIndexedIBD now
+        // guarantees.  The division is therefore a no-op up to rounding on
+        // any input that reaches here, and it is present so that
+        // spagrm_cgf's K(0) = 0 is structural rather than contingent on a
+        // check performed in another translation unit.  Note that a
+        // renormalization cannot repair wrong marginals; it is insurance
+        // behind the loader's check, never a substitute for it.
+        //
+        // Per-marker interpolation preserves the property: spagrm.cpp forms
+        // a convex combination of two columns, and a convex combination of
+        // two unit-sum vectors has unit sum.
+        double total = 0.0;
         for (int idx = 0; idx < arrSize; ++idx)
-            CLT(idx, mi) = arr[idx];
+            total += arr[idx];
+        if (!(total > 0.0) || !std::isfinite(total)) {
+            // Unreachable for input loadIndexedIBD accepts: every edge table
+            // is a convex mixture of three non-negative tables with unit
+            // weights, and the divide-by-marginal step divides by strictly
+            // positive p0 entries.  If it is reached, the table is not a
+            // distribution and no normalization exists, so it is named rather
+            // than passed through unnormalized — which is exactly the
+            // fabricated-plausible-number failure the surrounding machinery
+            // exists to prevent.
+            throw std::runtime_error(
+                "buildChowLiuTree: family table has non-positive or "
+                "non-finite total mass (" + std::to_string(total) +
+                ") at MAF bin " + std::to_string(mi) +
+                "; the pairwise-IBD input for this family is not a "
+                "probability distribution");
+        }
+        const double inv = 1.0 / total;
+
+        for (int idx = 0; idx < arrSize; ++idx)
+            CLT(idx, mi) = arr[idx] * inv;
     };
 
     const int nWorkers = std::max(1, std::min(nthreads, nMAF));

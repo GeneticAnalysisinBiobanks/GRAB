@@ -265,6 +265,28 @@ spa::Result SPAGRMClass::getMarkerPvalFromScore(
     // Refresh each class-3 family's probability table at this marker's MAF, and
     // accumulate its untilted variance for the EmpVar rescaling below.  This is
     // the one part of the CGF input that is per-marker rather than per-tail.
+    //
+    // The variance is the MEAN-CENTRED weighted sum with the table's mass
+    // divided through.  The predecessor accumulated `s2 - s1*s1`, which is
+    // Var only when the tabulated weights sum to one: with total mass T it
+    // gives T*E[X^2] - T^2*E[X]^2 instead of E[X^2] - E[X]^2.  Before the
+    // Chow-Liu columns were normalized, T was the product of (pa+pb+pc) over
+    // the family's spanning-tree edges, and on the bundled fixture's one
+    // affected family that made the contribution +0.159 against a true
+    // +0.075 at MAF 0.01 and -2.195 — a NEGATIVE variance — against a true
+    // +1.600 at MAF 0.30.  EmpVar rescales the score
+    // (Score_adj = Score*sqrt(EmpVar/Score_var)), so the error moved the
+    // statistic itself, in a MAF-dependent direction.
+    //
+    // The mean-centred spelling is also the one 01_findings.md D1 prescribes
+    // and the one the class-2 and class-3 CGF blocks already use; this site
+    // was missed when they were converted.  Its cancellation advantage here
+    // is real but modest — for a family of at most MAX_NUM_IN_FAM members
+    // E[X]^2/Var is bounded by a small constant, so the raw-moment form loses
+    // well under a decimal digit once T = 1 — and it is not the reason the
+    // rewrite was needed.  What it does guarantee is that every summand is a
+    // non-negative weight times a square, so the accumulated variance cannot
+    // be driven negative.
     double Var_ThreeOutlier = 0.0;
     const int n3 = static_cast<int>(m_threeSubj_scratch.size());
     for (int i = 0; i < n3; ++i) {
@@ -273,14 +295,36 @@ spa::Result SPAGRMClass::getMarkerPvalFromScore(
         const double *ss = m_threeSubj_scratch[i].stand_S.data();
         double *ap = m_threeSubj_scratch[i].arr_prob.data();
         const size_t sz = m_threeSubj_scratch[i].stand_S.size();
-        double s1 = 0.0, s2 = 0.0;
+        double w0 = 0.0, s1 = 0.0;
         for (size_t k = 0; k < sz; ++k) {
             ap[k] = MAF_ratio * c1[k] + one_minus_mr * c2[k];
-            const double tmp = ss[k] * ap[k];
-            s1 += tmp;
-            s2 += ss[k] * tmp;
+            w0 += ap[k];
+            s1 += ss[k] * ap[k];
         }
-        Var_ThreeOutlier += s2 - s1 * s1;
+        // w0 is 1 up to rounding — buildChowLiuTree normalizes each column
+        // and the interpolation above is a convex combination — but it is
+        // divided through rather than assumed, so that the mean is the mean
+        // of the law actually tabulated.
+        if (!(w0 > 0.0)) {
+            // A non-positive or non-finite total mass is not a distribution.
+            // Poison the variance rather than dividing by it: EmpVar becomes
+            // NaN, Score_adj with it, and the solver's first evaluation is
+            // non-finite, so the marker reports Status::NonFinite and P = NA
+            // — a named refusal rather than a fabricated number.  `continue`
+            // rather than `break`, so every remaining family's arr_prob is
+            // still refreshed at this marker's MAF and no stale per-marker
+            // table survives into the CGF the solver will evaluate.
+            Var_ThreeOutlier = std::numeric_limits<double>::quiet_NaN();
+            continue;
+        }
+        const double invW = 1.0 / w0;
+        const double m = s1 * invW;
+        double v = 0.0;
+        for (size_t k = 0; k < sz; ++k) {
+            const double d = ss[k] - m;
+            v += ap[k] * d * d;
+        }
+        Var_ThreeOutlier += v * invW;
     }
 
     const double EmpVar =

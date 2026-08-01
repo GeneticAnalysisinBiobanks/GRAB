@@ -451,6 +451,21 @@ TESTOBJS_log10p_test := \
     $(BUILD_DIR)/pgenlib/plink2_base.o \
     $(BUILD_DIR)/pgenlib/SFMT.o
 
+# spagrm_ibd_test exercises the two relatedness inputs SPAGRM does not build
+# in the same run — the pairwise-IBD table and the sparse GRM — so it links
+# the real loader and the real Chow-Liu builder rather than a copy of either.
+# grm_null.o pulls in SPAGRMClass (spagrm.o, and through it the saddlepoint
+# kernels) and the compressed-text reader (text_stream.o and the three
+# compression libraries).
+TESTOBJS_spagrm_ibd_test := \
+    $(BUILD_DIR)/spagrm/grm_null.o \
+    $(BUILD_DIR)/spagrm/spagrm.o \
+    $(BUILD_DIR)/io/sparse_grm.o \
+    $(BUILD_DIR)/util/spa_cgf.o \
+    $(BUILD_DIR)/util/math_helper.o \
+    $(BUILD_DIR)/util/text_stream.o \
+    $(ZSTD_OBJS) $(ZLIB_OBJS) $(DEFLATE_OBJS)
+
 TESTOBJS_lanc_simd_test := \
     $(BUILD_DIR)/localplus/lanc_io.o \
     $(BUILD_DIR)/geno_factory/variant_filter.o \

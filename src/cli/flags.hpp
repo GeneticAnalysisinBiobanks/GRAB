@@ -198,6 +198,11 @@ inline const FlagDef kSpGrmGrab = {
     "--sp-grm-grab", "FILE", "Sparse GRM, GRAB format (ID1 ID2 VALUE)",
     R"(Whitespace-delimited with mandatory header: ID1  ID2  VALUE
 (header may have # prefix).  #-comment lines skipped.
+VALUE is the genomic relationship 2*phi (twice the kinship coefficient;
+the GCTA / plink2 convention), so a self entry is 1 + F and no off-diagonal
+can exceed 1.  Off-diagonals above 1 are reported at load: they mean the
+matrix is not a pedigree kinship estimate, and SPAGRM's IBD model is
+undefined there.
 Subjects not in .fam are silently dropped.
 Mutually exclusive with --sp-grm-plink2.)"
 };
@@ -205,7 +210,11 @@ Mutually exclusive with --sp-grm-plink2.)"
 inline const FlagDef kSpGrmPlink2 = {
     "--sp-grm-plink2", "FILE", "Sparse GRM, plink2 .grm.sp format",
     R"(plink2-style sparse GRM.  The file lists one related pair per line as
-'ID1  ID2  VALUE', where VALUE is the kinship coefficient.  The companion
+'ID1  ID2  VALUE', where VALUE is the genomic relationship 2*phi (twice the
+kinship coefficient; the GCTA / plink2 convention), so a self entry is 1 + F
+and no off-diagonal can exceed 1.  Off-diagonals above 1 are reported at
+load: they mean the matrix is not a pedigree kinship estimate, and SPAGRM's
+IBD model is undefined there.  The companion
 .grm.id file ('FID  IID' per subject) is auto-detected from the file path;
 if .grm.id is absent, the loader assumes 0-based indices that match .fam
 order.  Subjects not present in the genotype .fam are silently dropped.

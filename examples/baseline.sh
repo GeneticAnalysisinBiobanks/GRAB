@@ -203,9 +203,18 @@ build/grab2 \
 # with the same meaning and the same integer SPA_STATUS encoding as the
 # SPACox block above (0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV,
 # 4 GUARD_W, 5 NONFINITE, 6 NORMAL).  Stage 4 also gave SPAGRM the shared
-# guard set, so a saddlepoint that used to emit a bare NaN — 14 markers of
-# the cross-format Binary fixture below do, all with GUARD_TEMP, i.e.
-# zeta*Score - K(zeta) < 0 — now reports NA in P with the reason named.
+# guard set, so a saddlepoint that used to emit a bare NaN now reports NA in
+# P with the reason named.
+#
+# GUARD_TEMP no longer occurs anywhere in this script, and that is a property
+# worth watching rather than a coincidence.  zeta*Score - K(zeta) is the
+# Legendre transform of a cumulant generating function and is non-negative by
+# construction, so GUARD_TEMP cannot arise from a CGF that is one — it is a
+# statement about the CGF's inputs, not about the solver.  Fourteen markers of
+# the cross-format Binary fixture below used to report it, because the
+# Chow-Liu family tables were built from IBD triples that did not sum to one
+# and the class-3 block therefore carried K(0) != 0.  All fourteen now
+# converge.  If GUARD_TEMP reappears, look at the pairwise-IBD input first.
 
 build/grab2 \
   --method SPAGRM \
