@@ -176,7 +176,7 @@ class SPAmixPlusMethod : public MethodBase {
     ) override;
 
   private:
-    spa::TwoSided markerPvalFromAF(
+    spa::Result markerPvalFromAF(
         const Eigen::Ref<const Eigen::VectorXd> &afVec,
         const Eigen::Ref<const Eigen::VectorXd> &wVec,
         double rawScore,
@@ -189,7 +189,7 @@ class SPAmixPlusMethod : public MethodBase {
     // scalar, fused and both batched paths assemble the identical row.
     static void pushResult(
         std::vector<double> &r,
-        const spa::TwoSided &ts,
+        const spa::Result &ts,
         double zScore,
         double varS
     );

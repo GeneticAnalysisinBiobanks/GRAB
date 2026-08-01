@@ -11,6 +11,14 @@
 //     p  = Phi(r*)              (lower tail)
 //        = 1 - Phi(r*)          (upper tail)
 //
+// carried here in the log domain throughout — log Phi(r*) rather than Phi(r*)
+// — because -log10(P) is the sole p-value representation (log10p_unify
+// decision D1) and the linear form is exactly zero for every association
+// stronger than p ~ 1e-308.  A parallel linear tail and a parallel linear
+// two-sided assembly existed alongside these until log10p_unify Stage 3;
+// they are gone, and a method that still emits a P column derives it as
+// `spa::pFromNegLog10P` of the assembled result.
+//
 // — but none computed it the same way.  What differed was the guard set (two
 // sites had none), the root finder (three incompatible families), the
 // tolerance conventions, and the failure semantics.  This header is tier 1 of
@@ -225,8 +233,11 @@ inline double signOf(double x) noexcept {
 
 namespace detail {
 
-constexpr double kLn10      = 2.30258509299404568402;
-constexpr double kLn2       = 0.69314718055994530942;
+// Forwards, not copies: math_helper is the lower layer and owns the tier's
+// constants (02_inventory.md §2.2).  Two spellings of ln 10 in one build is
+// exactly the duplication this branch exists to remove, even when they agree.
+constexpr double kLn10      = math::kLn10;
+constexpr double kLn2       = math::kLn2;
 
 inline double quietNaN() noexcept {
     return std::numeric_limits<double>::quiet_NaN();
@@ -243,13 +254,11 @@ inline double logPhi(double x) noexcept {
     return math::pnormLog(x, 0.0, 1.0, /*lower_tail=*/true);
 }
 
-// The single site at which the tail probability meets the normal CDF.  Both
-// bnTail and bnTailLog route through here so that the linear and log domains
-// cannot drift apart — the class of defect this whole header exists to remove.
-inline double phiTail(double x, bool lowerTail) noexcept {
-    return math::pnorm(x, 0.0, 1.0, lowerTail);
-}
-
+// The single site at which the tail probability meets the normal CDF.  There
+// used to be a linear sibling, `phiTail`, calling `math::pnorm`; log10p_unify
+// Stage 3 deleted it along with the whole linear tail path, so the drift
+// between the two domains this header was built to prevent is now prevented by
+// there being only one domain.
 inline double phiTailLog(double x, bool lowerTail) noexcept {
     return logPhi(lowerTail ? x : -x);
 }
@@ -1244,9 +1253,19 @@ inline double tailAbscissa(
 
 } // namespace detail
 
-// Tail probability from the modified signed root.
-//   lowerTail == true   -> Phi(r*)      approximates P(S <= s)
-//   lowerTail == false  -> 1 - Phi(r*)  approximates P(S >= s)
+// Natural logarithm of the tail probability from the modified signed root.
+//   lowerTail == true   -> log Phi(r*)      approximates log P(S <= s)
+//   lowerTail == false  -> log(1 - Phi(r*)) approximates log P(S >= s)
+//
+// THE tail.  Until log10p_unify Stage 3 there was a second one, `bnTail`,
+// identical to this except for its last line (`math::pnorm` in place of
+// `math::pnormLog`), and every adapter called both and carried both results
+// forward: two full passes through `detail::tailAbscissa` — a sqrt, a log, a
+// division and the whole guard set — to produce the same quantity in two
+// representations, of which the linear one is exactly zero for every
+// association past p ≈ 1e-308.  Decision D1 makes -log10(P) the sole
+// representation, so this is the only tail there is; the P column, while it
+// still exists, is `pFromNegLog10P` of the assembled result.
 //
 // Scalars rather than a struct by deliberate choice: under the SysV AMD64 ABI
 // four doubles pass in xmm0-xmm3 and the bool in edi, so the call is
@@ -1257,25 +1276,6 @@ inline double tailAbscissa(
 // the one status that returns a usable probability rather than NaN: below
 // kWSingularity the tail degrades to Phi(+/-w), which is the correct limit,
 // and the status records that the modified root was not applied.
-inline double bnTail(
-    double zeta,
-    double s,
-    double K0,
-    double K2,
-    bool lowerTail,
-    Status &st
-) noexcept {
-    const double x = detail::tailAbscissa(zeta, s, K0, K2, st);
-    if (!std::isfinite(x)) return detail::quietNaN();
-    return detail::phiTail(x, lowerTail);
-}
-
-// Natural logarithm of the same tail probability.
-//
-// Every original site returned pval1 + pval2 on the linear scale, where
-// Phi(-x) becomes denormal at x ~ 38.0 and flushes to zero at x ~ 38.5, so an
-// association with true p = 1e-400 was reported as 0.  This variant keeps the
-// extreme tail (spa_unify N2, L3), and feeds the LOG10P output column.
 inline double bnTailLog(
     double zeta,
     double s,
@@ -1293,61 +1293,69 @@ inline double bnTailLog(
 // § 6  Two-sided assembly
 // ──────────────────────────────────────────────────────────────────────
 
+// The result of a two-sided saddlepoint: the p-value, in the sole
+// representation decision D1 admits, plus the status that says what produced
+// it.
+//
 // `negLog10p` is -log10(p), i.e. the quantity reported in the LOG10P column
 // and therefore non-negative.  The field is named for the sign it carries so
 // that a caller cannot get it backwards; the design sketch called this
 // `log10p`, which reads as log10(p) and invites exactly that error.
-struct TwoSided {
-    double p;
+//
+// There is no `p` field.  There was one until log10p_unify Stage 3, filled
+// from a parallel linear tail assembly, and it was zero for every association
+// stronger than p ≈ 1e-308 — the regime in which a GWAS result is actually
+// read.  The type was called `TwoSided` then; `Result` is the name now that
+// the struct describes an outcome rather than an arrangement of two tails.
+struct Result {
     double negLog10p;
     Status status;
 };
 
-// Linear-scale assembly.  A single clamp policy for all six methods:
+// TRANSITIONAL — deleted with the P column in log10p_unify Stage 8.
 //
-//   * failure in *either* tail yields NaN in p, never a half-sized p-value.
+// The linear p-value, recovered from the sole representation: p = 10^(-L).
+// One spelling for all ten method entry points, so that the column they still
+// emit cannot be assembled ten different ways on its way out.
+//
+// `std::pow(10, -L)` and not `std::exp(-L*ln10)`: the latter rounds the
+// product L*ln10 first, and an error of 1 ulp in an exponent of magnitude
+// L*ln10 is a RELATIVE error of that size in the result, so at L = 300 it
+// would cost ~7e-14 where pow costs ~1e-16.  The unavoidable part of the
+// round trip is the representation of L itself: L carries a relative error of
+// about 2^-53, hence an absolute error of L*2^-53, and P inherits a relative
+// error of ln10*L*2^-53 ≈ 2.6e-16*L.  That, and nothing else, is why the P
+// column moves at all in Stage 3.
+//
+// NaN propagates — a p-value that does not exist must not become a number —
+// and L <= 0 returns exactly 1 rather than a pow() of a negative zero.
+inline double pFromNegLog10P(double negLog10p) noexcept {
+    if (std::isnan(negLog10p)) return detail::quietNaN();
+    if (!(negLog10p > 0.0)) return 1.0;
+    return std::pow(10.0, -negLog10p);
+}
+
+// Log-domain assembly, via log-sum-exp so that the sum of two underflowed
+// tails does not re-underflow.  Inputs are natural logarithms, as returned by
+// bnTailLog.  A single policy for all six adapters:
+//
+//   * failure in *either* tail yields NaN, never a half-sized p-value.
 //     SPAmixLocalPlus added each tail only if that tail's root converged and
 //     produced NaN only when both failed, so a marker whose upper tail
 //     converged and whose lower tail did not was reported at approximately
 //     half its correct p-value with no diagnostic.
-//   * p is clamped into [0, 1].  It is *not* floored at
-//     DBL_MIN: substituting 2.2e-308 for an underflowed tail manufactures a
-//     genome-wide-significant hit.  A p that underflows to zero is reported
-//     as zero with negLog10p = +inf; combineTailsLog is the way to keep the
-//     magnitude.
-//   * NaN never becomes 1.0.  WtCoxG wrote std::min(1.0, pval1 + pval2),
-//     and std::min(1.0, NaN) returns 1.0, so every SPA failure surfaced as a
-//     perfectly null marker.
+//   * NaN never becomes a probability.  WtCoxG wrote
+//     std::min(1.0, pval1 + pval2), and std::min(1.0, NaN) returns 1.0, so
+//     every SPA failure surfaced as a perfectly null marker.
+//   * L is clamped at zero from below (p at 1 from above) and is NOT capped
+//     from above: an underflowed tail keeps its magnitude here, which is the
+//     entire reason the assembly lives in the log domain.
 //
 // Since the SPA_STATUS re-partition this is reached only from `assemble`, and
 // only on the branch where both tails are usable; the NaN and non-usable exits
 // below are belts, not paths.  `assemble` — not this function — owns the
 // decision of what to report when a tail fails.
-inline TwoSided combineTails(
-    double pUpper,
-    double pLower,
-    Status sUpper,
-    Status sLower
-) noexcept {
-    const double nan = detail::quietNaN();
-    const Status st = worseStatus(sUpper, sLower);
-    if (!statusIsUsable(st)) return TwoSided{nan, nan, st};
-    if (!std::isfinite(pUpper) || !std::isfinite(pLower))
-        return TwoSided{nan, nan, Status::FallbackNonFinite};
-
-    double p = pUpper + pLower;
-    if (p > 1.0) p = 1.0;
-    if (p < 0.0) p = 0.0;
-    // -log10(1.0) is -0.0, which prints as "-0"; normalize the sign of zero.
-    double neg = -std::log10(p);
-    if (neg == 0.0) neg = 0.0;
-    return TwoSided{p, neg, st};
-}
-
-// Log-domain assembly, via log-sum-exp so that the sum of two underflowed
-// tails does not re-underflow.  Inputs are natural logarithms, as returned by
-// bnTailLog.
-inline TwoSided combineTailsLog(
+inline Result combineTailsLog(
     double logPUpper,
     double logPLower,
     Status sUpper,
@@ -1356,9 +1364,9 @@ inline TwoSided combineTailsLog(
     const double nan = detail::quietNaN();
     const double inf = std::numeric_limits<double>::infinity();
     const Status st = worseStatus(sUpper, sLower);
-    if (!statusIsUsable(st)) return TwoSided{nan, nan, st};
+    if (!statusIsUsable(st)) return Result{nan, st};
     if (std::isnan(logPUpper) || std::isnan(logPLower))
-        return TwoSided{nan, nan, Status::FallbackNonFinite};
+        return Result{nan, Status::FallbackNonFinite};
 
     const double hi = std::fmax(logPUpper, logPLower);
     const double lo = std::fmin(logPUpper, logPLower);
@@ -1368,46 +1376,45 @@ inline TwoSided combineTailsLog(
     else                 lse = hi + std::log1p(std::exp(lo - hi));
 
     if (lse > 0.0) lse = 0.0;                      // p clamped at 1
-    double p = std::exp(lse);
-    if (p > 1.0) p = 1.0;
+    // -log10(1.0) is -0.0, which prints as "-0"; normalize the sign of zero.
     double neg = -lse / detail::kLn10;
     if (neg == 0.0) neg = 0.0;
-    return TwoSided{p, neg, st};
+    return Result{neg, st};
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // § 7  The normal short-circuit
 // ──────────────────────────────────────────────────────────────────────
 
-// Two-sided normal p-value, for the |z| <= spaCutoff branch where the
-// saddlepoint is never attempted.  Routed through Boost's complement rather
-// than 1 - Phi(|z|), which floors at zero for |z| > 8.3.
-inline double normalTwoSided(double z) noexcept {
-    return 2.0 * math::pnorm(std::fabs(z), 0.0, 1.0, /*lower_tail=*/false);
-}
-
-// log of the same, valid to |z| well past the linear-scale underflow.
+// ln(2*Phi(-|z|)), the two-sided normal tail in the log domain: the p-value of
+// the |z| <= spaCutoff branch where the saddlepoint is never attempted, and of
+// the D5 fallback when it is attempted and fails.
+//
+// A forward to `math::normalTwoSidedLog`.  It was a copy of that function's
+// body until log10p_unify Stage 3; math_helper is the lower layer, so the
+// forward runs that way.  A linear sibling, `normalTwoSided`, was deleted at
+// the same time — `2 * math::pnorm(|z|, upper)` is zero for |z| beyond ~38.5,
+// which is where the normal fallback most needs to report a magnitude.
 inline double normalTwoSidedLog(double z) noexcept {
-    if (std::isnan(z)) return detail::quietNaN();
-    return detail::kLn2 + detail::logPhi(-std::fabs(z));
+    return math::normalTwoSidedLog(z);
 }
 
-// The complete normal-branch result, so that a method emitting P, LOG10P and
+// The complete normal-branch result, so that a method emitting LOG10P and
 // SPA_STATUS has one call for the non-SPA path.
 //
 // A non-finite z is NOT a saddlepoint failure and never was: it means Var(S)
 // was not positive or the score itself left the reals, i.e. the statistic does
 // not exist.  There is nothing to fall back to, so it is NaNoTest.
-inline TwoSided normalBranch(double z) noexcept {
+inline Result normalBranch(double z) noexcept {
     const double nan = detail::quietNaN();
-    if (!std::isfinite(z)) return TwoSided{nan, nan, Status::NaNoTest};
-    double p = normalTwoSided(z);
-    if (p > 1.0) p = 1.0;
-    if (p < 0.0) p = 0.0;
+    if (!std::isfinite(z)) return Result{nan, Status::NaNoTest};
     const double lg = normalTwoSidedLog(z);
+    // ln(2*Phi(0)) is +0.0, so -lg/ln10 is -0.0 there; normalize the sign of
+    // zero and nothing else.  A genuinely negative L would be a C2 violation
+    // and must reach the reader rather than be clamped away.
     double neg = -lg / detail::kLn10;
     if (neg == 0.0) neg = 0.0;
-    return TwoSided{p, neg, Status::Normal};
+    return Result{neg, Status::Normal};
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -1417,8 +1424,10 @@ inline TwoSided normalBranch(double z) noexcept {
 // Every tier-3 adapter used to call combineTails and combineTailsLog in turn
 // and splice the two results by hand — six copies of the same three lines,
 // each of which had to be trusted to pick `lin.p`, `lg.negLog10p` and
-// `lin.status` in that combination.  This is that splice, once, plus the
-// fallback rule (decision D5) that the copies had nowhere to live.
+// `lin.status` in that combination.  Stage 2 collapsed the six copies into
+// this one; Stage 3 removed the splice itself along with the linear tail, so
+// what is left is the fallback rule (decision D5) and the NA rule, which the
+// copies had nowhere to live.
 //
 // The rule:
 //
@@ -1429,21 +1438,13 @@ inline TwoSided normalBranch(double z) noexcept {
 //   * A status in the fallback block reports the two-sided normal tail
 //     -log10(2*Phi(-|zNorm|)), KEEPING the fallback code so the substitution
 //     is named.  The saddlepoint result is discarded entirely.
-//   * Otherwise both tails are usable and the two-sided p is their sum, in
-//     the log domain for the magnitude and on the linear scale for P.
+//   * Otherwise both tails are usable and the two-sided p is their sum, taken
+//     in the log domain by log-sum-exp.
 //
 // ONE FAILED TAIL FALLS THE WHOLE TWO-SIDED P BACK.  Adding a converged
 // saddlepoint tail to a normal one would produce a quantity that is neither a
 // saddlepoint result nor a normal one, and no status value could describe it.
-//
-// TRANSITIONAL SIGNATURE.  `pUpper`/`pLower` are the linear-scale tails from
-// `bnTail`, carried only so that the P column does not move while the linear
-// tail assembly still exists.  log10p_unify Stage 3 deletes `bnTail`,
-// `combineTails` and those two parameters, leaving
-// assemble(logPUpper, logPLower, sUpper, sLower, zNorm).
-inline TwoSided assemble(
-    double pUpper,
-    double pLower,
+inline Result assemble(
     double logPUpper,
     double logPLower,
     Status sUpper,
@@ -1453,7 +1454,7 @@ inline TwoSided assemble(
     const double nan = detail::quietNaN();
     Status st = worseStatus(sUpper, sLower);
 
-    if (statusIsNA(st)) return TwoSided{nan, nan, st};
+    if (statusIsNA(st)) return Result{nan, st};
 
     // A tail that produced NaN while reporting a usable status is a defect in
     // the producer, not a state the caller can be asked to distinguish.
@@ -1462,21 +1463,18 @@ inline TwoSided assemble(
     // number, and it routes to the fallback block rather than to NA because
     // the failure is a saddlepoint failure.
     if (statusIsUsable(st) &&
-        (!std::isfinite(pUpper) || !std::isfinite(pLower) ||
-         std::isnan(logPUpper) || std::isnan(logPLower)))
+        (std::isnan(logPUpper) || std::isnan(logPLower)))
         st = Status::FallbackNonFinite;
 
-    if (!std::isfinite(zNorm)) return TwoSided{nan, nan, Status::NaNoTest};
+    if (!std::isfinite(zNorm)) return Result{nan, Status::NaNoTest};
 
     if (statusIsFallback(st)) {
-        TwoSided out = normalBranch(zNorm);
+        Result out = normalBranch(zNorm);
         out.status = st;               // name the substitution, not the branch
         return out;
     }
 
-    const TwoSided lin = combineTails(pUpper, pLower, sUpper, sLower);
-    const TwoSided lg  = combineTailsLog(logPUpper, logPLower, sUpper, sLower);
-    return TwoSided{lin.p, lg.negLog10p, st};
+    return combineTailsLog(logPUpper, logPLower, sUpper, sLower);
 }
 
 } // namespace spa

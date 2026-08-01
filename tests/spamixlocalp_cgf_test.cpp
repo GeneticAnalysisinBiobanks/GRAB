@@ -291,10 +291,10 @@ TEST(a_nan_residual_propagates_rather_than_becoming_minus_infinity) {
     // condition rather than turning it into a probability.  With no z to fall
     // back to (decision D5 does not manufacture one) the row is NA; with a z
     // it would be the named normal substitution, never the saddlepoint value.
-    const spa::TwoSided ts = spamixlocalp_cgf::twoSidedSpa(
+    const spa::Result ts = spamixlocalp_cgf::twoSidedSpa(
         c, 0.0, 1.0, 1.0, std::numeric_limits<double>::quiet_NaN());
-    CHECK(std::isnan(ts.p));
     CHECK(std::isnan(ts.negLog10p));
+    CHECK(std::isnan(spa::pFromNegLog10P(ts.negLog10p)));
     CHECK(ts.status == spa::Status::NaNoTest);
     std::printf("    NaN residual: K'' = %s, K = %.6g, status = %s\n",
                 std::isnan(k.k2) ? "nan" : "finite", k.k0,
@@ -379,11 +379,15 @@ TEST(twosided_reproduces_the_normal_tail_when_there_are_no_outliers) {
     double worstP = 0.0, worstL = 0.0;
     for (double z : {2.5, 3.0, 5.0, 8.0, 12.0, 20.0}) {
         const double absDev = z * sigma;
-        const spa::TwoSided ts =
+        const spa::Result ts =
             spamixlocalp_cgf::twoSidedSpa(c, c.mean, absDev, c.var, z);
         CHECK(ts.status == spa::Status::SpaOk);
-        const double want = spa::normalTwoSided(z);
-        worstP = std::fmax(worstP, std::fabs(ts.p - want) / want);
+        // `spa::normalTwoSided` is gone with the linear tail path
+        // (log10p_unify Stage 3); this is the expression it evaluated.
+        const double want =
+            2.0 * math::pnorm(z, 0.0, 1.0, /*lower_tail=*/false);
+        worstP = std::fmax(
+            worstP, std::fabs(spa::pFromNegLog10P(ts.negLog10p) - want) / want);
         const double wantL = -spa::normalTwoSidedLog(z) / std::log(10.0);
         worstL = std::fmax(worstL, std::fabs(ts.negLog10p - wantL) / wantL);
     }
@@ -429,10 +433,9 @@ TEST(a_one_sided_failure_is_na_and_not_half_a_pvalue) {
     // surviving tail, and it is not a sum of one saddlepoint tail and one
     // normal tail either, which would be neither quantity.
     const double zBad = 2.5;
-    const spa::TwoSided ts =
+    const spa::Result ts =
         spamixlocalp_cgf::twoSidedSpa(c, centre, absDev, 1.0, zBad);
     CHECK(spa::statusIsFallback(ts.status));
-    CHECK(ts.p == spa::normalTwoSided(zBad));
     CHECK(ts.negLog10p == -spa::normalTwoSidedLog(zBad) / std::log(10.0));
 
     // The predecessor would have returned the lower tail alone, a number
@@ -446,7 +449,8 @@ TEST(a_one_sided_failure_is_na_and_not_half_a_pvalue) {
         [&](double t) { return spamixlocalp_cgf::k12(t, c, sLower); },
         [&](double t) { return spamixlocalp_cgf::kFull(t, c, sLower); },
         spa::SolveOpts{});
-    const double pLower = spa::bnTail(sd.zeta, sLower, sd.K0, sd.K2, true, stLower);
+    const double pLower =
+        std::exp(spa::bnTailLog(sd.zeta, sLower, sd.K0, sd.K2, true, stLower));
     CHECK(sd.status == spa::Status::SpaOk);
     CHECK(stLower == spa::Status::SpaOk);
     CHECK(pLower > 0.0 && pLower < 1.0);
@@ -482,9 +486,9 @@ TEST(saturated_and_vanishing_allele_frequency_are_exact) {
     }
     // Zero curvature everywhere: no root.  With no z supplied there is
     // nothing to substitute, so the row is NA with NA_NO_TEST.
-    const spa::TwoSided tsOne = spamixlocalp_cgf::twoSidedSpa(
+    const spa::Result tsOne = spamixlocalp_cgf::twoSidedSpa(
         c, sumHR, 1.0, 0.0, std::numeric_limits<double>::quiet_NaN());
-    CHECK(std::isnan(tsOne.p));
+    CHECK(std::isnan(tsOne.negLog10p));
     CHECK(tsOne.status == spa::Status::NaNoTest);
 
     // q == 0: G_i == 0 almost surely, every cumulant exactly zero.

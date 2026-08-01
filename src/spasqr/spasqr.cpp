@@ -61,7 +61,7 @@
 // D1's exact cancellation-free K'' = 2 r^2 e u / alpha^2, N1's
 // K = 2 log1p(p expm1(t r)), and the same scalar + AVX2 + AVX-512 triple this
 // file used to carry by hand.  The root finder is spa::solveSaddlepoint and the
-// tail is spa::bnTail / spa::bnTailLog.  Five CGF copies plus three tail copies
+// tail is spa::bnTailLog.  Five CGF copies plus three tail copies
 // plus two p-value copies collapse to ONE p-value routine, `tauPvalue`, which
 // all three MethodBase entry points call.
 //
@@ -131,7 +131,7 @@ struct SPAsqrSPAShared {
 // whose mean and variance enter K as mean*t + var*t^2/2 — exactly as before,
 // and in the same association order.
 
-inline spa::TwoSided spaTwoSided(
+inline spa::Result spaTwoSided(
     const double *oResid,
     int nOutlier,
     double MAF,
@@ -142,7 +142,7 @@ inline spa::TwoSided spaTwoSided(
     double tol,
     double zNorm
 ) {
-    double p[2], logp[2];
+    double logp[2];
     spa::Status st[2];
 
     for (int k = 0; k < 2; ++k) {
@@ -170,18 +170,17 @@ inline spa::TwoSided spaTwoSided(
             },
             opt);
 
-        spa::Status stLin = spa::Status::SpaOk;
         spa::Status stLog = spa::Status::SpaOk;
-        p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
-        st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
+        st[k] = spa::worseStatus(sd.status, stLog);
     }
 
-    // P from the linear-scale assembly, -log10(P) from the log-domain one,
-    // and the D5 fallback when either tail failed — one call, in spa.hpp.
+    // The two-sided assembly and the D5 fallback when either tail failed —
+    // one call, in spa.hpp.  One tail evaluation per side: the linear sibling
+    // of `bnTailLog` is gone with the P column's parallel assembly.
     // `zNorm` is the raw score z, not absAdj/sqrt(Var): the statistic has
     // already been rescaled to the CGF's natural variance by this point.
-    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
+    return spa::assemble(logp[0], logp[1], st[0], st[1], zNorm);
 }
 
 // ── Per-tau p-value — the single live implementation ───────────────────
@@ -194,7 +193,7 @@ inline spa::TwoSided spaTwoSided(
 // variance ratio that brings the score onto the CGF's natural scale, dropping
 // the implicit HWE assumption (G_var ~ 2p(1-p)) earlier code relied on.
 
-inline spa::TwoSided tauPvalue(
+inline spa::Result tauPvalue(
     double Score,
     double altFreq,
     double G_var,
@@ -208,13 +207,13 @@ inline spa::TwoSided tauPvalue(
 
     if (Score_var <= 0.0 || MAF <= 0.0) {
         zScore = 0.0;
-        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
+        return spa::Result{nan, spa::Status::NaNoTest};
     }
 
     zScore = Score / std::sqrt(Score_var);
 
     if (!std::isfinite(zScore))
-        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
+        return spa::Result{nan, spa::Status::NaNoTest};
 
     if (std::abs(zScore) <= spa_.SPA_Cutoff) return spa::normalBranch(zScore);
 
@@ -442,11 +441,13 @@ class SPAsqrMethod : public MethodBase {
                     : 0.0;
 
                 double z;
-                const spa::TwoSided ts = tauPvalue(m_centeredBuf(t, b), altFreqs[b],
+                const spa::Result ts = tauPvalue(m_centeredBuf(t, b), altFreqs[b],
                                                    G_var, z, tau, *m_spaShared);
                 const size_t k = static_cast<size_t>(b) * m_ntaus + t;
                 m_zBuf[k]  = z;
-                m_pBuf[k]  = ts.p;
+                // P from LOG10P: the tier stops producing a linear tail in
+                // log10p_unify Stage 3, and the column goes in Stage 8.
+                m_pBuf[k]  = spa::pFromNegLog10P(ts.negLog10p);
                 m_lpBuf[k] = ts.negLog10p;
                 m_stBuf[k] = static_cast<double>(static_cast<uint8_t>(ts.status));
             }
@@ -524,10 +525,10 @@ class SPAsqrMethod : public MethodBase {
 
         for (int i = 0; i < m_ntaus; ++i) {
             double z;
-            const spa::TwoSided ts = tauPvalue(centeredScores[i], altFreq, G_var, z,
+            const spa::Result ts = tauPvalue(centeredScores[i], altFreq, G_var, z,
                                                m_spaShared->perTau[i], *m_spaShared);
             zScores[i] = z;
-            pvals[i]   = ts.p;
+            pvals[i]   = spa::pFromNegLog10P(ts.negLog10p);
             lgs[i]     = ts.negLog10p;
             stats[i]   = static_cast<double>(static_cast<uint8_t>(ts.status));
         }

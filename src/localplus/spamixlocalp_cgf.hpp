@@ -75,9 +75,9 @@
 // any genome-wide threshold ever proposed.  It is the only anti-conservative
 // guard in the repository; everything else fails toward 1 or toward NaN.  The
 // replacement is `spa::Status::SpaWSingular` with P reported as NA (L2), and the
-// clamps at :1016 and :1059 are gone with it: `spa::combineTails` clamps into
-// [0, 1] and does not floor at DBL_MIN, and a p that genuinely underflows is
-// reported as 0 in P while LOG10P keeps its magnitude (L3).
+// clamps at :1016 and :1059 are gone with it: `spa::combineTailsLog` clamps at
+// p = 1 and has no lower clamp at all, so a p that genuinely underflows keeps
+// its magnitude in LOG10P and appears as an honest 0 in P (L3).
 //
 //   Reachability, since the audit and its re-verification disagreed.  The
 //   audit argued the sibling branch at :894 (`base <= 1e-15` yields
@@ -105,7 +105,7 @@
 // whose upper tail converged and whose lower tail did not was reported at
 // approximately half its correct p-value, with nothing in the output to say
 // so.  Halving a p-value is a factor-of-two anti-conservative error applied
-// silently and selectively to the hardest markers.  `spa::combineTails`
+// silently and selectively to the hardest markers.  `spa::combineTailsLog`
 // returns NaN whenever either tail failed, and names the worse of the two
 // statuses in SPA_STATUS.
 //
@@ -253,7 +253,7 @@ inline spa::K012 kFull(double t, const Context &c, double s) noexcept {
 // the saddlepoint for both, and the row reports the two-sided normal tail at
 // `zNorm` under a status naming the substitution (decision D5).  That is
 // D3(b)'s repair, now with a named estimator behind it instead of NA.
-inline spa::TwoSided twoSidedSpa(
+inline spa::Result twoSidedSpa(
     const Context &c,
     double sMean,
     double absDev,
@@ -267,7 +267,7 @@ inline spa::TwoSided twoSidedSpa(
         if (std::isfinite(e) && e > 0.0) zeta0 = (e > 1.2) ? 1.2 : e;
     }
 
-    double p[2], logp[2];
+    double logp[2];
     spa::Status st[2];
 
     for (int k = 0; k < 2; ++k) {
@@ -285,16 +285,16 @@ inline spa::TwoSided twoSidedSpa(
             [&](double t) { return kFull(t, c, s); },
             opt);
 
-        spa::Status stLin = spa::Status::SpaOk;
         spa::Status stLog = spa::Status::SpaOk;
-        p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
-        st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
+        st[k] = spa::worseStatus(sd.status, stLog);
     }
 
-    // P from the linear-scale assembly, -log10(P) from the log-domain one,
-    // and the D5 fallback when either tail failed — one call, in spa.hpp.
-    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
+    // The two-sided assembly and the D5 fallback when either tail failed —
+    // one call, in spa.hpp.  One tail evaluation per side: the linear sibling
+    // of `bnTailLog` that used to run beside it is gone with the P column's
+    // parallel assembly (log10p_unify Stage 3).
+    return spa::assemble(logp[0], logp[1], st[0], st[1], zNorm);
 }
 
 // The SPA_STATUS output column: 0 SPA_OK, 1 NORMAL, 2 SPA_W_SINGULAR,

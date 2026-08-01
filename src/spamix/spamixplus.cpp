@@ -294,7 +294,7 @@ void SPAmixPlusMethod::fillAFVecForMarker(
 //
 // spa_unify Stage 5.  The tail is now spamix_cgf::twoSidedSpa — the shared
 // bracketed solver, the SIMD-dispatched spa_cgf::binomIndiv kernel and
-// spa::bnTail's full guard set — in place of the two hand-written
+// spa::bnTailLog's full guard set — in place of the two hand-written
 // `spa::getProbSpaG` calls whose sum was returned unguarded.  Three
 // behavioural consequences:
 //
@@ -323,7 +323,7 @@ void SPAmixPlusMethod::fillAFVecForMarker(
 //        per-individual q̂ saturated at 1 by the AF model.
 // ======================================================================
 
-spa::TwoSided SPAmixPlusMethod::markerPvalFromAF(
+spa::Result SPAmixPlusMethod::markerPvalFromAF(
     const Eigen::Ref<const Eigen::VectorXd> &afVec,
     const Eigen::Ref<const Eigen::VectorXd> &wVec,
     double rawScore,
@@ -350,20 +350,19 @@ spa::TwoSided SPAmixPlusMethod::markerPvalFromAF(
         zScore = 0.0;
         outVarS = 0.0;
         const double nan = std::numeric_limits<double>::quiet_NaN();
-        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
+        return spa::Result{nan, spa::Status::NaNoTest};
     }
 
     zScore = (rawScore - S_mean) / std::sqrt(VarS);
     outVarS = VarS;
     if (!std::isfinite(zScore)) {
         const double nan = std::numeric_limits<double>::quiet_NaN();
-        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
+        return spa::Result{nan, spa::Status::NaNoTest};
     }
-    // spa::normalTwoSided routes through Boost's complement; for the standard
-    // normal that is bit-for-bit `2 * pnorm(-|z|)`, since both reduce to
-    // erfc(|z|/sqrt(2))/2 on the identical argument.  The branch therefore
-    // reproduces the predecessor exactly and only gains LOG10P and the
-    // NORMAL status.
+    // spa::normalBranch reports -log10(2*Phi(-|z|)) in the log domain, so the
+    // branch keeps its magnitude past |z| ~ 38.5 where the predecessor's
+    // `2 * pnorm(-|z|)` was exactly zero.  The P column, while it exists, is
+    // 10^(-LOG10P) of that (log10p_unify Stage 3).
     if (std::abs(zScore) <= m_spaCutoff) return spa::normalBranch(zScore);
 
     // ── SPA path with outlier / non-outlier split ──────────────────
@@ -450,7 +449,7 @@ spa::TwoSided SPAmixPlusMethod::markerPvalFromAF(
 
 void SPAmixPlusMethod::pushResult(
     std::vector<double> &r,
-    const spa::TwoSided &ts,
+    const spa::Result &ts,
     double zScore,
     double varS
 ) {
@@ -460,9 +459,12 @@ void SPAmixPlusMethod::pushResult(
     const double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : nan;
     const double se   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS : nan;
 
-    r.push_back(ts.p);
+    // P is derived from LOG10P, which is the only p-value the tier produces
+    // since log10p_unify Stage 3; the column itself goes away in Stage 8.
+    const double p = spa::pFromNegLog10P(ts.negLog10p);
+    r.push_back(p);
     r.push_back(ts.negLog10p);
-    r.push_back(math::zFromPval(ts.p, zOut));
+    r.push_back(math::zFromPval(p, zOut));
     r.push_back(zOut);
     r.push_back(beta);
     r.push_back(se);
@@ -485,7 +487,7 @@ void SPAmixPlusMethod::getResultVec(
     double rawScore = GVec.dot(m_resid);
 
     double zScore, VarS;
-    const spa::TwoSided ts = markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
+    const spa::Result ts = markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
     pushResult(result, ts, zScore, VarS);
 }
 
@@ -556,7 +558,7 @@ void SPAmixPlusMethod::processScoreBatch(
 
         const double rawScore = scores(0, b);
         double zScore, VarS;
-        const spa::TwoSided ts = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
+        const spa::Result ts = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
 
         auto &r = results[b];
         r.clear();
@@ -616,7 +618,7 @@ void SPAmixPlusMethod::getResultBatch(
             const double rawScore = GBatch.col(b).dot(m_resid);
 
             double zScore, VarS;
-            const spa::TwoSided ts =
+            const spa::Result ts =
                 markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
 
             auto &r = results[b];
@@ -638,7 +640,7 @@ void SPAmixPlusMethod::getResultBatch(
         const double rawScore = GBatch.col(b).dot(m_resid);
 
         double zScore, VarS;
-        const spa::TwoSided ts =
+        const spa::Result ts =
             markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
 
         auto &r = results[b];

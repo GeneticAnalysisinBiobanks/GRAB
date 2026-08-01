@@ -5,8 +5,8 @@
 // used by SPAGRM and SAGELD.
 //
 // spa_unify Stage 4.  The root finder is the shared, dynamically bracketed
-// safeguarded Newton in util/spa.hpp and the tail is spa::bnTail /
-// spa::bnTailLog; SPAGRM's own three-term-class CGF is tier 3 and lives in
+// safeguarded Newton in util/spa.hpp and the tail is spa::bnTailLog;
+// SPAGRM's own three-term-class CGF is tier 3 and lives in
 // spagrm_cgf.hpp.  The private Family-B Newton iteration (nsSPAGRM::fastGetRoot),
 // the private copy of the Barndorff-Nielsen root (nsSPAGRM::getProbSpa), the
 // MGF0/MGF1/MGF2/temp workspace (nsSPAGRM::mgf, MgfWorkspace) and the dead
@@ -27,7 +27,7 @@
 #include "geno_factory/geno_data.hpp" // GenoSpec
 #include "spagrm/spagrm_cgf.hpp"      // tier-3 CGF + ThreeSubjTable
 #include "util/math_helper.hpp"       // math::zFromPval
-#include "util/spa.hpp"               // spa::TwoSided, spa::Status
+#include "util/spa.hpp"               // spa::Result, spa::Status
 
 namespace nsSPAGRM {
 
@@ -48,14 +48,14 @@ struct FamilyData {
 //
 // `absScore` is |Score_adj|, the variance-ratio-rescaled score; both tails are
 // solved (upper at +absScore, lower at -absScore) with spa::solveSaddlepoint
-// over the tier-3 CGF, evaluated with spa::bnTail / spa::bnTailLog, and
+// over the tier-3 CGF, evaluated with spa::bnTailLog, and
 // assembled by spa::assemble.  `initZeta` is the upper-tail initial
 // abscissa; the lower tail starts at -initZeta (see the convention note in
 // spagrm.cpp).  `tol` is the relative residual tolerance and reaches BOTH
 // tails, which is the D7 repair.  `zNorm` is the raw score z, which
 // spa::assemble reports the normal tail of — under a status naming the
 // substitution — when the saddlepoint fails (decision D5).
-spa::TwoSided twoSidedSpa(
+spa::Result twoSidedSpa(
     const spagrm_cgf::Context &cgf,
     double absScore,
     double initZeta,
@@ -101,7 +101,7 @@ class SPAGRMClass {
     // saddlepoint failure reports the substituted normal tail under a
     // FALLBACK_* code, so the substitution is named rather than silent
     // (spa_unify L2, D5, D6; log10p_unify D4, D5).
-    spa::TwoSided getMarkerPvalFromScore(
+    spa::Result getMarkerPvalFromScore(
         double Score,
         double altFreq,
         double &zScore,
@@ -218,7 +218,7 @@ class SPAGRMMethod : public MethodBase {
         const double Score =
             GVec.dot(m_spagrm.resid()) - gMean * m_spagrm.residSum();
         double z, scoreVar;
-        const spa::TwoSided ts =
+        const spa::Result ts =
             m_spagrm.getMarkerPvalFromScore(Score, altFreq, z, &scoreVar);
         pushResult(ts, Score, scoreVar, result);
     }
@@ -250,7 +250,7 @@ class SPAGRMMethod : public MethodBase {
         // Per-marker SPA (not batchable)
         for (int b = 0; b < B; ++b) {
             double z, scoreVar;
-            const spa::TwoSided ts = m_spagrm.getMarkerPvalFromScore(
+            const spa::Result ts = m_spagrm.getMarkerPvalFromScore(
                 scores[b], altFreqs[b], z, &scoreVar);
             pushResult(ts, scores[b], scoreVar, results[b]);
         }
@@ -308,7 +308,7 @@ class SPAGRMMethod : public MethodBase {
             const double gMean = gSums[b] * invN;
             const double centeredScore = scores(0, b) - gMean * residSum;
             double z, scoreVar;
-            const spa::TwoSided ts = m_spagrm.getMarkerPvalFromScore(
+            const spa::Result ts = m_spagrm.getMarkerPvalFromScore(
                 centeredScore, altFreqs[b], z, &scoreVar);
             pushResult(ts, centeredScore, scoreVar, results[b]);
         }
@@ -326,19 +326,22 @@ class SPAGRMMethod : public MethodBase {
     // markers; Z, Z_Norm, BETA and SE become NaN there so downstream code
     // recognises them as missing.
     static void pushResult(
-        const spa::TwoSided &ts,
+        const spa::Result &ts,
         double score,
         double scoreVar,
         std::vector<double> &out
     ) {
         out.clear();
         out.reserve(7);
-        out.push_back(ts.p);          // P
+        // P is derived from LOG10P, which is the only p-value the tier
+        // produces since log10p_unify Stage 3; the column goes in Stage 8.
+        const double p = spa::pFromNegLog10P(ts.negLog10p);
+        out.push_back(p);             // P
         out.push_back(ts.negLog10p);  // LOG10P
         if (scoreVar > 0.0) {
             const double sd = std::sqrt(scoreVar);
             const double zNorm = score / sd;
-            out.push_back(math::zFromPval(ts.p, zNorm)); // Z (p-consistent)
+            out.push_back(math::zFromPval(p, zNorm));    // Z (p-consistent)
             out.push_back(zNorm);                        // Z_Norm (raw score z)
             out.push_back(score / scoreVar);             // BETA
             out.push_back(1.0 / sd);                     // SE

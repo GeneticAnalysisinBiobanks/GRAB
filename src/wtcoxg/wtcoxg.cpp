@@ -350,7 +350,7 @@ SpaResult spaGOneSnpHomoFromScalars(
         // the log-domain magnitude and the NORMAL status; the linear p stays
         // the expression the predecessor used, so this branch is unchanged to
         // the last bit.
-        const spa::TwoSided nb = spa::normalBranch(z);
+        const spa::Result nb = spa::normalBranch(z);
         return {pval_norm, nb.negLog10p, pval_norm, S_raw, z, spa::Status::Normal};
     }
 
@@ -387,8 +387,14 @@ SpaResult spaGOneSnpHomoFromScalars(
         ctx.resid = scratch.data();
     }
 
-    const spa::TwoSided ts = wtcoxg_cgf::twoSidedSpa(ctx, std::abs(S), S_var, z);
-    return {ts.p, ts.negLog10p, pval_norm, S_raw, z, ts.status};
+    const spa::Result ts = wtcoxg_cgf::twoSidedSpa(ctx, std::abs(S), S_var, z);
+    // P from LOG10P: log10p_unify Stage 3 deleted the parallel linear tail, so
+    // -log10(P) is the only quantity the saddlepoint tier assembles.  The
+    // `pval` field itself survives until Stage 8, because the conditional
+    // branches below still invert it through qchisq (Stage 4) and LEAF still
+    // pools it through metaPvalueScorePool (Stage 4).
+    return {spa::pFromNegLog10P(ts.negLog10p), ts.negLog10p,
+            pval_norm, S_raw, z, ts.status};
 }
 
 } // namespace

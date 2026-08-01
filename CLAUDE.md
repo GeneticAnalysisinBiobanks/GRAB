@@ -659,10 +659,14 @@ almost certainly in the method-specific code:
 - `src/util/simd_dispatch.hpp`, `src/util/simd_math.hpp` — runtime
   AVX2 / AVX-512 dispatch and vectorized exp/log kernels.
 - `src/util/spa.hpp` — the shared saddlepoint tier: `solveSaddlepoint` (the
-  bracketed-and-safeguarded Newton solver), `bnTail`/`bnTailLog` (the
-  Barndorff-Nielsen modified-signed-root tail, linear and log domain),
-  `combineTails`/`combineTailsLog` (the two-sided assembly), and the
-  `Status`/`SPA_STATUS` encoding described above.
+  bracketed-and-safeguarded Newton solver), `bnTailLog` (the
+  Barndorff-Nielsen modified-signed-root tail, log domain), `combineTailsLog`
+  and `assemble` (the two-sided assembly and the decision-D5 fallback), and
+  the `Status`/`SPA_STATUS` encoding described above.  The linear twins
+  `bnTail`, `combineTails` and `normalTwoSided` were deleted by
+  `log10p_unify` Stage 3; a method that still emits a `P` column derives it
+  as `spa::pFromNegLog10P` of the assembled `-log10(P)`, and that helper goes
+  with the column in Stage 8.
 - `src/util/spa_cgf.{hpp,cpp}` — the three shared binomial CGF variants
   (`binomUniform`, `binomIndiv`, `binomHapcount`), each with the mandated
   scalar + AVX2 + AVX-512 triple and a `simdLevel()` dispatch site.

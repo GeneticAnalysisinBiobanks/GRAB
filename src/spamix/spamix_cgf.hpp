@@ -210,7 +210,7 @@ inline spa::K012 kFull(double t, const Context &c, double s) noexcept {
 // parameter rather than something recovered from sMean and absDev because
 // three of the four callers rescale the statistic to the independence variance
 // before reaching here, so absDev/sqrt(indepVar) is NOT the reported z.
-inline spa::TwoSided twoSidedSpa(
+inline spa::Result twoSidedSpa(
     const Context &c,
     double sMean,
     double absDev,
@@ -224,7 +224,7 @@ inline spa::TwoSided twoSidedSpa(
         if (std::isfinite(e) && e > 0.0) zeta0 = (e > 1.2) ? 1.2 : e;
     }
 
-    double p[2], logp[2];
+    double logp[2];
     spa::Status st[2];
 
     for (int k = 0; k < 2; ++k) {
@@ -242,16 +242,16 @@ inline spa::TwoSided twoSidedSpa(
             [&](double t) { return kFull(t, c, s); },
             opt);
 
-        spa::Status stLin = spa::Status::SpaOk;
         spa::Status stLog = spa::Status::SpaOk;
-        p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
-        st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
+        st[k] = spa::worseStatus(sd.status, stLog);
     }
 
-    // P from the linear-scale assembly, -log10(P) from the log-domain one,
-    // and the D5 fallback when either tail failed — one call, in spa.hpp.
-    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
+    // The two-sided assembly and the D5 fallback when either tail failed —
+    // one call, in spa.hpp.  One tail evaluation per side: the linear sibling
+    // of `bnTailLog` that used to run beside it is gone with the P column's
+    // parallel assembly (log10p_unify Stage 3).
+    return spa::assemble(logp[0], logp[1], st[0], st[1], zNorm);
 }
 
 // The SPA_STATUS output column.  MethodBase hands the engine a

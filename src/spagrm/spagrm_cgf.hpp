@@ -108,7 +108,7 @@
 //     interpolation, which nothing in the code establishes, and the bound that
 //     keeps delta away from -1 for class 2 has no analogue here.  g0 is
 //     instead guarded: a non-positive or non-finite g0 propagates a non-finite
-//     K, which spa::bnTail reports as FALLBACK_NONFINITE rather than handing
+//     K, which spa::bnTailLog reports as FALLBACK_NONFINITE rather than handing
 //     `std::log` a non-positive argument as the predecessor did.
 //
 // ══════════════════════════════════════════════════════════════════════
@@ -378,7 +378,7 @@ inline spa::K012 kFull(double t, const Context &c, double s) noexcept {
         K2 += v * inv;
         // The guard 01_findings.md P6 asks for at spagrm.cpp:231.  A
         // non-positive or non-finite g0 yields a non-finite K, which
-        // spa::bnTail turns into NaN plus Status::FallbackNonFinite; the predecessor
+        // spa::bnTailLog turns into NaN plus Status::FallbackNonFinite; the predecessor
         // handed std::log a non-positive argument with no diagnostic.
         K0 += (g0 > 0.0) ? std::log(g0)
                          : -std::numeric_limits<double>::infinity();

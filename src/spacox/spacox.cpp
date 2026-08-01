@@ -128,7 +128,7 @@ std::unique_ptr<MethodBase> SPACoxMethod::clone() const {
 // spa_unify Stage 3.  What used to live here was a private Family-A Newton
 // iteration (fastGetRootK1) plus a private copy of the Barndorff-Nielsen
 // modified signed root.  Both are gone; the root finder is
-// spa::solveSaddlepoint and the tail is spa::bnTail / spa::bnTailLog.  What
+// spa::solveSaddlepoint and the tail is spa::bnTailLog.  What
 // stays is the CGF, which is SPACox's own (tier 3, see spacox_cgf.hpp).
 //
 // Four behavioural consequences, in decreasing order of importance:
@@ -177,8 +177,8 @@ namespace {
 // Two-sided assembly shared by both stages.  `cgf(t, s)` must return
 // spa::K012{K(t), K'(t) - s, K''(t)}.
 template <class Cgf>
-spa::TwoSided spaTwoSided(const Cgf &cgf, double absZ, double zNorm) {
-    double p[2], logp[2];
+spa::Result spaTwoSided(const Cgf &cgf, double absZ, double zNorm) {
+    double logp[2];
     spa::Status st[2];
 
     for (int k = 0; k < 2; ++k) {
@@ -192,23 +192,22 @@ spa::TwoSided spaTwoSided(const Cgf &cgf, double absZ, double zNorm) {
         const spa::Saddle sd = spa::solveSaddlepoint(
             s, [&](double t) { return cgf(t, s); }, opt);
 
-        spa::Status stLin = spa::Status::SpaOk;
         spa::Status stLog = spa::Status::SpaOk;
-        p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
-        st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
+        st[k] = spa::worseStatus(sd.status, stLog);
     }
 
-    // spa::assemble owns the splice and the D5 fallback rule: P from the
-    // linear assembly, -log10(P) from the log-domain one, and on a
-    // saddlepoint failure in either tail both replaced by the two-sided
-    // normal tail at zNorm under a status naming the substitution.
-    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
+    // spa::assemble owns the two-sided combination and the D5 fallback rule:
+    // on a saddlepoint failure in either tail the result is replaced by the
+    // two-sided normal tail at zNorm, under a status naming the substitution.
+    // One tail evaluation per side since log10p_unify Stage 3 deleted the
+    // parallel linear tail this loop used to run beside `bnTailLog`.
+    return spa::assemble(logp[0], logp[1], st[0], st[1], zNorm);
 }
 
 }  // namespace
 
-spa::TwoSided SPACoxMethod::getProbSpaBucketed(
+spa::Result SPACoxMethod::getProbSpaBucketed(
     const spacox_cgf::GenoWeights &gw,
     double absZ,
     double zNorm
@@ -219,7 +218,7 @@ spa::TwoSided SPACoxMethod::getProbSpaBucketed(
         absZ, zNorm);
 }
 
-spa::TwoSided SPACoxMethod::getProbSpaDense(
+spa::Result SPACoxMethod::getProbSpaDense(
     const double *w,
     int n,
     double absZ,
@@ -235,7 +234,7 @@ spa::TwoSided SPACoxMethod::getProbSpaDense(
 // Per-marker p-value (two-stage SPA)
 // ======================================================================
 
-spa::TwoSided SPACoxMethod::getMarkerPvalCore(
+spa::Result SPACoxMethod::getMarkerPvalCore(
     const Eigen::Ref<const Eigen::VectorXd> &GVec,
     double altFreq,
     double S,
@@ -273,7 +272,7 @@ spa::TwoSided SPACoxMethod::getMarkerPvalCore(
     outScoreVar = VarS;
     if (VarS <= 0.0) {
         zScore = 0.0;
-        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
+        return spa::Result{nan, spa::Status::NaNoTest};
     }
     zScore = S / std::sqrt(VarS);
 
@@ -294,12 +293,16 @@ spa::TwoSided SPACoxMethod::getMarkerPvalCore(
     spacox_cgf::buildGenoWeights(gp, m_N, twoMAF, sqrtVarS, tlScratch.weights);
 
     const double absZ1 = std::abs(zScore);
-    spa::TwoSided ts = getProbSpaBucketed(tlScratch.weights, absZ1, zScore);
+    spa::Result ts = getProbSpaBucketed(tlScratch.weights, absZ1, zScore);
 
-    // A stage-1 failure (P is NaN) falls through to stage 2 exactly as it did
-    // before, when `NaN > m_pvalCovAdjCut` evaluated false: the
+    // A stage-1 failure (the p-value is NaN) falls through to stage 2 exactly
+    // as it did before, when `NaN > m_pvalCovAdjCut` evaluated false: the
     // covariate-adjusted statistic is the better one, so it is worth trying.
-    if (ts.p > m_pvalCovAdjCut) return ts;
+    //
+    // The comparison stays on the linear scale because --covar-p-threshold is
+    // an INPUT parameter and decision D8 keeps input thresholds in linear p.
+    // `pFromNegLog10P` propagates NaN, so the fall-through above is preserved.
+    if (spa::pFromNegLog10P(ts.negLog10p) > m_pvalCovAdjCut) return ts;
 
     // ---- Stage 2: covariate-adjusted SPA ----
     //
@@ -323,7 +326,7 @@ spa::TwoSided SPACoxMethod::getMarkerPvalCore(
     outScoreVar = VarS;
     if (VarS <= 0.0) {
         zScore = 0.0;
-        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
+        return spa::Result{nan, spa::Status::NaNoTest};
     }
     zScore = S / std::sqrt(VarS);
     sqrtVarS = std::sqrt(VarS);
@@ -343,16 +346,19 @@ spa::TwoSided SPACoxMethod::getMarkerPvalCore(
 
 void SPACoxMethod::pushResult(
     std::vector<double> &out,
-    const spa::TwoSided &ts,
+    const spa::Result &ts,
     double S,
     double scoreVar
 ) {
-    out.push_back(ts.p);          // P
+    // P is derived from LOG10P, which is the only p-value the tier produces
+    // since log10p_unify Stage 3; the column itself goes away in Stage 8.
+    const double p = spa::pFromNegLog10P(ts.negLog10p);
+    out.push_back(p);             // P
     out.push_back(ts.negLog10p);  // LOG10P
     if (scoreVar > 0.0) {
         const double sd = std::sqrt(scoreVar);
         const double zNorm = S / sd;
-        out.push_back(math::zFromPval(ts.p, zNorm)); // Z (p-consistent)
+        out.push_back(math::zFromPval(p, zNorm));    // Z (p-consistent)
         out.push_back(zNorm);                        // Z_Norm (raw score z)
         out.push_back(S / scoreVar);                 // BETA
         out.push_back(1.0 / sd);                     // SE
@@ -417,7 +423,7 @@ void SPACoxMethod::getResultVec(
     // See dev-notes/methods/spacox.md §6 for the full derivation.
     const double S = GVec.dot(m_resid);
     double zScore, scoreVar;
-    const spa::TwoSided ts = getMarkerPvalCore(GVec, altFreq, S, zScore, scoreVar);
+    const spa::Result ts = getMarkerPvalCore(GVec, altFreq, S, zScore, scoreVar);
     pushResult(result, ts, S, scoreVar);
 }
 
@@ -466,7 +472,7 @@ void SPACoxMethod::getResultBatch(
         r.clear();
         r.reserve(7);
         double zScore, scoreVar;
-        const spa::TwoSided ts =
+        const spa::Result ts =
             getMarkerPvalCore(GBatch.col(b), altFreqs[b], scores[b], zScore, scoreVar);
         pushResult(r, ts, scores[b], scoreVar);
     }

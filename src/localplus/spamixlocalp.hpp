@@ -241,7 +241,7 @@ struct LocalSpaScratch {
 // 3..6 means the saddlepoint failed and the substituted two-sided normal tail
 // is reported instead (log10p_unify D5).  See spamixlocalp_cgf.hpp for what
 // each status means and for the D3 defects this replaced.
-spa::TwoSided spaLocalPval(
+spa::Result spaLocalPval(
     double S,
     double sMean,
     double varDiag,

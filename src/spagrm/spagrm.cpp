@@ -31,7 +31,7 @@ namespace nsSPAGRM {
 // a quotient temporary), a private Family-B Newton iteration `fastGetRoot`, and
 // `getProbSpa`, a private and completely unguarded copy of the
 // Barndorff-Nielsen modified signed root.  All three are gone.  The root finder
-// is spa::solveSaddlepoint and the tail is spa::bnTail / spa::bnTailLog; what
+// is spa::solveSaddlepoint and the tail is spa::bnTailLog; what
 // stays is the CGF, which is SPAGRM's own (tier 3, spagrm_cgf.hpp).
 //
 // Six behavioural consequences, in decreasing order of importance:
@@ -50,7 +50,7 @@ namespace nsSPAGRM {
 //       non-positive CGF2 therefore reached `std::sqrt` bare and produced NaN,
 //       which math::pnorm forwards silently (math_helper.hpp:70).  D1 and D6
 //       are one defect jointly here, not two independent ones, and the joint
-//       repair is the shared guard set in spa::bnTail plus the mean-centred
+//       repair is the shared guard set in spa::bnTailLog plus the mean-centred
 //       K'' in spagrm_cgf.hpp.
 //
 //       Nor is the damage merely "a conservative p = 2.0" as D6 states.  With
@@ -59,7 +59,7 @@ namespace nsSPAGRM {
 //       the P column unclamped.  math::zFromPval(2.0, ·) then clamps inside
 //       qnorm and reports |Z| ≈ 8.2, so the row was internally inconsistent —
 //       P = 2 alongside a genome-wide-significant Z — rather than conservative.
-//       spa::combineTails clamps into [0, 1] and, more to the point, reports NA
+//       spa::combineTailsLog clamps at p = 1 and, more to the point, reports NA
 //       with a named status instead.
 //
 //   D5.  Neither `fastGetRoot` nor `getProbSpa` had a convergence flag at all
@@ -113,14 +113,14 @@ namespace nsSPAGRM {
 // `zeta` constructor parameter are deleted with it; nsGRMNull::ZETA_DEFAULT is
 // no longer referenced.
 
-spa::TwoSided twoSidedSpa(
+spa::Result twoSidedSpa(
     const spagrm_cgf::Context &cgf,
     double absScore,
     double initZeta,
     double tol,
     double zNorm
 ) {
-    double p[2], logp[2];
+    double logp[2];
     spa::Status st[2];
 
     for (int k = 0; k < 2; ++k) {
@@ -138,18 +138,17 @@ spa::TwoSided twoSidedSpa(
             [&](double t) { return spagrm_cgf::kFull(t, cgf, s); },
             opt);
 
-        spa::Status stLin = spa::Status::SpaOk;
         spa::Status stLog = spa::Status::SpaOk;
-        p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
-        st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
+        st[k] = spa::worseStatus(sd.status, stLog);
     }
 
-    // spa::assemble owns the splice and the D5 fallback rule: P from the
-    // linear assembly, -log10(P) from the log-domain one, and on a saddlepoint
-    // failure in either tail both replaced by the two-sided normal tail at
-    // zNorm under a status naming the substitution.
-    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
+    // spa::assemble owns the two-sided combination and the D5 fallback rule:
+    // on a saddlepoint failure in either tail the result is replaced by the
+    // two-sided normal tail at zNorm, under a status naming the substitution.
+    // One tail evaluation per side since log10p_unify Stage 3 deleted the
+    // parallel linear tail this loop used to run beside `bnTailLog`.
+    return spa::assemble(logp[0], logp[1], st[0], st[1], zNorm);
 }
 
 } // namespace nsSPAGRM
@@ -223,7 +222,7 @@ void SPAGRMClass::rebuildScratch() {
 // defects, so keeping it would have left two of the seven copies of D1's
 // cancelling block alive in a function nothing calls.
 
-spa::TwoSided SPAGRMClass::getMarkerPvalFromScore(
+spa::Result SPAGRMClass::getMarkerPvalFromScore(
     double Score,
     double altFreq,
     double &zScore,
@@ -241,13 +240,13 @@ spa::TwoSided SPAGRMClass::getMarkerPvalFromScore(
     // saddlepoint to attempt and nothing to report but the reason.
     if (Score_var <= 0.0 || MAF <= 0.0) {
         zScore = 0.0;
-        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
+        return spa::Result{nan, spa::Status::NaNoTest};
     }
 
     zScore = Score / std::sqrt(Score_var);
 
     if (!std::isfinite(zScore))
-        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
+        return spa::Result{nan, spa::Status::NaNoTest};
 
     // Normal approximation below the SPA cutoff.  spa::normalBranch routes the
     // tail through Boost's complement, which is the same double the old

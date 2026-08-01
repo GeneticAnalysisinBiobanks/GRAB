@@ -18,7 +18,7 @@
 //      documented as intentional, and 02_design.md rules it a modelling
 //      question rather than a defect.  The test pins the asymmetry in both
 //      directions: kFull must report the mismatched pair unchanged, and
-//      bnTail must consume it without "correcting" either member.  A future
+//      bnTailLog must consume it without "correcting" either member.  A future
 //      change that quietly makes the pair consistent will fail here, which is
 //      the point.
 //
@@ -203,16 +203,16 @@ TEST(d4_the_mismatched_variance_pair_is_carried_through_unchanged) {
     CHECK(d.k1 == got.k1);
     CHECK(d.k2 == got.k2);
 
-    // And spa::bnTail must consume the pair as two opaque scalars: feeding it
-    // the same zeta and s with K2 replaced by the "consistent" value must move
-    // the answer, i.e. the kernel is not silently recomputing one from the
+    // And spa::bnTailLog must consume the pair as two opaque scalars: feeding
+    // it the same zeta and s with K2 replaced by the "consistent" value must
+    // move the answer, i.e. the kernel is not silently recomputing one from the
     // other.  s is taken at the saddlepoint, s = K'(zeta), so that
     // zeta*s - K(zeta) >= 0 by convexity and no guard fires.
     const double sAtRoot = got.k1;   // kFull was called with s = 0
     spa::Status stA = spa::Status::SpaOk, stB = spa::Status::SpaOk;
-    const double pA = spa::bnTail(0.4, sAtRoot, got.k0, got.k2, false, stA);
-    const double pB = spa::bnTail(0.4, sAtRoot, got.k0,
-                                  static_cast<double>(withV01.K2), false, stB);
+    const double pA = spa::bnTailLog(0.4, sAtRoot, got.k0, got.k2, false, stA);
+    const double pB = spa::bnTailLog(0.4, sAtRoot, got.k0,
+                                     static_cast<double>(withV01.K2), false, stB);
     CHECK(stA == spa::Status::SpaOk);
     CHECK(stB == spa::Status::SpaOk);
     CHECK(pA != pB);
@@ -275,18 +275,21 @@ TEST(gaussian_cgf_reproduces_the_closed_form_two_sided_p) {
     c.varK2 = 4.0;
     const double sd = 2.0;
     for (double dev : {1.0, 3.0, 7.0, 15.0, 40.0}) {
-        const spa::TwoSided ts = wtcoxg_cgf::twoSidedSpa(c, dev, c.varK01, dev / sd);
+        const spa::Result ts = wtcoxg_cgf::twoSidedSpa(c, dev, c.varK01, dev / sd);
         const double want = 2.0 * Phi(-dev / sd);
         CHECK(ts.status == spa::Status::SpaOk);
+        // The P column, derived from LOG10P since log10p_unify Stage 3.
+        const double p = spa::pFromNegLog10P(ts.negLog10p);
         if (want > 0.0) {
-            const double rel = std::fabs(ts.p - want) / want;
+            const double rel = std::fabs(p - want) / want;
             std::printf("    dev=%5.1f  p=%.12e  closed form=%.12e  rel=%.2e\n",
-                        dev, ts.p, want, rel);
+                        dev, p, want, rel);
             CHECK(rel < 1e-9);
         }
-        // LOG10P must agree with -log10(p) wherever the linear scale survives.
-        if (ts.p > 1e-300) {
-            const double lg = -std::log10(ts.p);
+        // LOG10P must agree with the closed form's own -log10 wherever the
+        // linear scale survives.
+        if (want > 1e-300) {
+            const double lg = -std::log10(want);
             CHECK(std::fabs(ts.negLog10p - lg) < 1e-9 * std::fmax(1.0, std::fabs(lg)));
         }
     }
@@ -308,25 +311,25 @@ TEST(d2_a_degenerate_saddlepoint_is_named_never_a_masked_one) {
     // column is what makes this one loud.
     Context c = makeCtx(1.0, 0.0, 0.0, 0.0);
     const double zBad = 3.0;
-    const spa::TwoSided ts = wtcoxg_cgf::twoSidedSpa(c, 3.0, 0.0, zBad);
+    const spa::Result ts = wtcoxg_cgf::twoSidedSpa(c, 3.0, 0.0, zBad);
     CHECK(spa::statusIsFallback(ts.status));
-    CHECK(ts.p == spa::normalTwoSided(zBad));
     CHECK(ts.negLog10p == -spa::normalTwoSidedLog(zBad) / std::log(10.0));
     std::printf("    deterministic genotype: p=%g status=%s\n",
-                ts.p, spa::statusName(ts.status));
+                spa::pFromNegLog10P(ts.negLog10p), spa::statusName(ts.status));
 
     // With no z either, there is nothing to fall back to and the row is NA.
-    const spa::TwoSided tsNa = wtcoxg_cgf::twoSidedSpa(
+    const spa::Result tsNa = wtcoxg_cgf::twoSidedSpa(
         c, 3.0, 0.0, std::numeric_limits<double>::quiet_NaN());
-    CHECK(std::isnan(tsNa.p));
     CHECK(std::isnan(tsNa.negLog10p));
+    CHECK(std::isnan(spa::pFromNegLog10P(tsNa.negLog10p)));
     CHECK(tsNa.status == spa::Status::NaNoTest);
 
     // And the idiom itself: this is what the old code did.
     const double nan = std::numeric_limits<double>::quiet_NaN();
     CHECK(std::min(1.0, nan) == 1.0);              // the defect, demonstrated
-    CHECK(std::isnan(spa::combineTails(0.5, nan, spa::Status::SpaOk,
-                                       spa::Status::SpaOk).p));  // the repair
+    CHECK(std::isnan(spa::combineTailsLog(std::log(0.5), nan,
+                                          spa::Status::SpaOk,
+                                          spa::Status::SpaOk).negLog10p));
 }
 
 TEST(status_code_matches_the_documented_integer_encoding) {

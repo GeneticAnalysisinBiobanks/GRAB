@@ -59,13 +59,13 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 //
 // spa_unify Stage 5.  The two `spa::getProbSpaG` calls whose sum was returned
 // unguarded are replaced by spamix_cgf::twoSidedSpa — the shared bracketed
-// solver, spa::bnTail's full guard set, and spa::combineTails' single clamp and
+// solver, spa::bnTailLog's full guard set, and spa::combineTailsLog's single clamp and
 // NaN policy.  The genotype law here has ONE q for every subject, so the
 // binomial block is spa_cgf::binomUniform: 02_design.md lists SPAGxE under
 // binomIndiv, but that is only because the predecessor materialized
 // `std::vector<double> mafOut(nOut, q)` per marker per environment and passed
 // the constant vector to the per-individual kernel.  That allocation is gone.
-spa::TwoSided spaScorePval(
+spa::Result spaScorePval(
     const OutlierData &part,
     double wSum,
     double wSq,
@@ -81,16 +81,16 @@ spa::TwoSided spaScorePval(
     if (!(scoreVar > 0.0)) {             // monomorphic / degenerate weight
         zScore = 0.0;
         outVar = 0.0;
-        return spa::TwoSided{kNaN, kNaN, spa::Status::NaNoTest};
+        return spa::Result{kNaN, spa::Status::NaNoTest};
     }
     const double sMean = 2.0 * q * wSum; // retrospective mean E[S] = 2q·Σw
     zScore = (rawScore - sMean) / std::sqrt(scoreVar);
     outVar = scoreVar;
     if (!std::isfinite(zScore))
-        return spa::TwoSided{kNaN, kNaN, spa::Status::NaNoTest};
-    // spa::normalTwoSided is bit-for-bit `2 * pnorm(-|z|)` for the standard
-    // normal — both reduce to erfc(|z|/√2)/2 on the identical argument — so the
-    // normal branch is unchanged and only gains LOG10P and the NORMAL status.
+        return spa::Result{kNaN, spa::Status::NaNoTest};
+    // spa::normalBranch reports -log10(2*Phi(-|z|)) in the log domain, so the
+    // branch keeps its magnitude past |z| ~ 38.5 where the predecessor's
+    // `2 * pnorm(-|z|)` was exactly zero (log10p_unify Stage 3).
     if (std::abs(zScore) <= spaCutoff) return spa::normalBranch(zScore);
 
     // ── Saddlepoint tail: variance-ratio rescale + outlier / non-outlier split.
@@ -141,7 +141,7 @@ spa::TwoSided spaScorePval(
 //
 // This is the per-individual genotype law, so the binomial block is
 // spa_cgf::binomIndiv.
-spa::TwoSided spaScorePvalMix(
+spa::Result spaScorePvalMix(
     const OutlierData &part,
     const Eigen::VectorXd &w,
     const Eigen::VectorXd &afVec,
@@ -157,12 +157,12 @@ spa::TwoSided spaScorePvalMix(
     if (!(scoreVar > 0.0)) {
         zScore = 0.0;
         outVar = 0.0;
-        return spa::TwoSided{kNaN, kNaN, spa::Status::NaNoTest};
+        return spa::Result{kNaN, spa::Status::NaNoTest};
     }
     zScore = (s - sMean) / std::sqrt(scoreVar);
     outVar = scoreVar;
     if (!std::isfinite(zScore))
-        return spa::TwoSided{kNaN, kNaN, spa::Status::NaNoTest};
+        return spa::Result{kNaN, spa::Status::NaNoTest};
     if (std::abs(zScore) <= spaCutoff) return spa::normalBranch(zScore);
 
     // Gaussian non-outlier block with per-individual q̂_i, by complement:
@@ -383,7 +383,7 @@ namespace {
 void writeEnvBlock(
     std::vector<double> &out,
     int base,
-    const spa::TwoSided &ts,
+    const spa::Result &ts,
     double pWald,
     bool waldEnabled,
     double z,
@@ -393,10 +393,12 @@ void writeEnvBlock(
     out[base + 7] = spamix_cgf::statusCode(ts.status);
     if (!(var > 0.0)) return;
 
-    double finalP = ts.p;
+    // P from LOG10P (log10p_unify Stage 3); the CCT below is still evaluated
+    // on the linear scale, which Stage 5 changes.
+    double finalP = spa::pFromNegLog10P(ts.negLog10p);
     double negLog = ts.negLog10p;
     if (waldEnabled) {
-        const double ps[2] = {ts.p, pWald};
+        const double ps[2] = {finalP, pWald};
         finalP = math::cauchyCombine(ps, 2);
         negLog = -std::log10(finalP);
         if (negLog == 0.0) negLog = 0.0;   // normalize -0.0
@@ -477,7 +479,7 @@ void SPAGxEMethod::evalMarker(
 
         double z = 0.0, var = 0.0, score;
         double pWald = kNaN;
-        spa::TwoSided ts{kNaN, kNaN, spa::Status::NaNoTest};
+        spa::Result ts{kNaN, spa::Status::NaNoTest};
         if (!branchB) {
             // Branch A: precomputed λ-orthogonalised weight and its Φ-form.
             const EnvData &ed = m_envs[e];
@@ -600,7 +602,7 @@ void SPAGxEMethod::evalMarkerMix(
         const EnvData &ed = m_envs[e];
         double z = 0.0, var = 0.0, score;
         double pWald = kNaN;
-        spa::TwoSided ts{kNaN, kNaN, spa::Status::NaNoTest};
+        spa::Result ts{kNaN, spa::Status::NaNoTest};
         if (!branchB) {
             // Branch A: variance-weighted λ (per marker) on the per-individual q̂.
             //   λ = Σ 2q̂(1−q̂) E R² / Σ 2q̂(1−q̂) R²

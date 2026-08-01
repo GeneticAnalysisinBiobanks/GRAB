@@ -18,9 +18,9 @@
 //   § 3  Every Status value constructed and returned.
 //   § 4  The bracket invariant, checked at every iteration through the
 //        instrumentation hook.
-//   § 5  bnTail / bnTailLog agreement, and log-domain survival past the point
-//        where the linear scale reaches zero.
-//   § 6  bnTail's treatment of (K0, K2) as opaque scalars (WtCoxG's D4 pair).
+//   § 5  bnTailLog against an independent linear reference, and log-domain
+//        survival past the point where the linear scale reaches zero.
+//   § 6  bnTailLog's treatment of (K0, K2) as opaque scalars (WtCoxG's D4 pair).
 //   § 7  Two-sided assembly: no half-sized p-values, no NaN becoming 1.0, no
 //        DBL_MIN substitution.
 //   § 8  The normal short-circuit.
@@ -560,7 +560,7 @@ ScaleOutcome twoSidedAtScale(const MixedCgf &base, double z, double scale) {
     const spa::K012 at0 = c.kFull(0.0);
     const double sd = std::sqrt(at0.k2);
 
-    double p[2], logp[2];
+    double logp[2];
     spa::Status st[2];
     double zetaUpper = 0.0;
 
@@ -581,16 +581,18 @@ ScaleOutcome twoSidedAtScale(const MixedCgf &base, double z, double scale) {
             [&](double t) { return c.kFull(t); }, opt);
         if (k == 0) zetaUpper = r.zeta * scale;
 
-        spa::Status stLin = spa::Status::SpaOk;
         spa::Status stLog = spa::Status::SpaOk;
-        p[k] = spa::bnTail(r.zeta, c.s, r.K0, r.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(r.zeta, c.s, r.K0, r.K2, lowerTail, stLog);
-        st[k] = spa::worseStatus(r.status, spa::worseStatus(stLin, stLog));
+        st[k] = spa::worseStatus(r.status, stLog);
     }
 
-    const spa::TwoSided lin = spa::combineTails(p[0], p[1], st[0], st[1]);
-    const spa::TwoSided lg = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
-    return ScaleOutcome{lin.p, lg.negLog10p, zetaUpper, lin.status};
+    // P is still pinned, and must be: while the column exists it is
+    // `pFromNegLog10P` of the assembled result, so bit-identity of P follows
+    // from bit-identity of LOG10P only if that conversion is itself a pure
+    // function of LOG10P — which is exactly what this asserts.
+    const spa::Result lg = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
+    return ScaleOutcome{spa::pFromNegLog10P(lg.negLog10p), lg.negLog10p,
+                        zetaUpper, lg.status};
 }
 
 bool bitIdentical(double a, double b) {
@@ -833,50 +835,45 @@ TEST(status_names_and_classification) {
 TEST(assemble_fallback_and_na_blocks) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
     const double z = 4.25;
-    const double pNorm = spa::normalTwoSided(z);
     const double lNorm = -spa::normalTwoSidedLog(z) / std::log(10.0);
 
     // Both tails usable: the saddlepoint result passes through untouched.
     {
         const double lu = std::log(0.03), ll = std::log(0.02);
-        const spa::TwoSided r = spa::assemble(0.03, 0.02, lu, ll,
-                                              spa::Status::SpaOk,
-                                              spa::Status::SpaOk, z);
+        const spa::Result r = spa::assemble(lu, ll, spa::Status::SpaOk,
+                                            spa::Status::SpaOk, z);
         CHECK(r.status == spa::Status::SpaOk);
-        CHECK(std::fabs(r.p - 0.05) < 1e-15);
         CHECK(std::fabs(r.negLog10p - (-std::log10(0.05))) < 1e-12);
+        CHECK(std::fabs(spa::pFromNegLog10P(r.negLog10p) - 0.05) < 1e-15);
     }
 
     // One failed tail falls the WHOLE two-sided p back, and to the normal
-    // tail exactly — bit-for-bit 2*Phi(-|z|), not a mixture of the two.
+    // tail exactly — bit-for-bit -log10(2*Phi(-|z|)), not a mixture of the two.
     for (spa::Status f : {spa::Status::FallbackMaxIter,
                           spa::Status::FallbackGuardTemp,
                           spa::Status::FallbackGuardCurv,
                           spa::Status::FallbackNonFinite}) {
-        const spa::TwoSided r = spa::assemble(0.03, nan, std::log(0.03), nan,
-                                              spa::Status::SpaOk, f, z);
+        const spa::Result r = spa::assemble(std::log(0.03), nan,
+                                            spa::Status::SpaOk, f, z);
         CHECK(r.status == f);
-        CHECK(r.p == pNorm);
         CHECK(std::fabs(r.negLog10p - lNorm) <= 0.0);
     }
 
     // The NA block never falls back, whatever z is.
     for (spa::Status n : {spa::Status::NaPostFail, spa::Status::NaNoTest}) {
-        const spa::TwoSided r = spa::assemble(0.03, nan, std::log(0.03), nan,
-                                              spa::Status::SpaOk, n, z);
+        const spa::Result r = spa::assemble(std::log(0.03), nan,
+                                            spa::Status::SpaOk, n, z);
         CHECK(r.status == n);
-        CHECK(std::isnan(r.p));
         CHECK(std::isnan(r.negLog10p));
     }
 
     // A non-finite z is "no test exists", not a saddlepoint failure, and it
     // outranks a fallback status: there is nothing to fall back to.
     {
-        const spa::TwoSided r = spa::assemble(0.03, nan, std::log(0.03), nan,
-                                              spa::Status::SpaOk,
-                                              spa::Status::FallbackGuardCurv, nan);
+        const spa::Result r = spa::assemble(std::log(0.03), nan,
+                                            spa::Status::SpaOk,
+                                            spa::Status::FallbackGuardCurv, nan);
         CHECK(r.status == spa::Status::NaNoTest);
-        CHECK(std::isnan(r.p));
         CHECK(std::isnan(r.negLog10p));
     }
 }
@@ -1008,22 +1005,22 @@ TEST(status_guardcurv_from_solver) {
 
 TEST(status_guardcurv_from_tail) {
     spa::Status st = spa::Status::SpaOk;
-    CHECK(std::isnan(spa::bnTail(1.0, 1.0, 0.0, -1.0, false, st)));
-    CHECK(st == spa::Status::FallbackGuardCurv);
-
-    st = spa::Status::SpaOk;
-    CHECK(std::isnan(spa::bnTail(1.0, 1.0, 0.0, 0.0, false, st)));
-    CHECK(st == spa::Status::FallbackGuardCurv);
-
-    st = spa::Status::SpaOk;
     CHECK(std::isnan(spa::bnTailLog(1.0, 1.0, 0.0, -1.0, false, st)));
+    CHECK(st == spa::Status::FallbackGuardCurv);
+
+    st = spa::Status::SpaOk;
+    CHECK(std::isnan(spa::bnTailLog(1.0, 1.0, 0.0, 0.0, false, st)));
+    CHECK(st == spa::Status::FallbackGuardCurv);
+
+    st = spa::Status::SpaOk;
+    CHECK(std::isnan(spa::bnTailLog(1.0, 1.0, 0.0, -1.0, true, st)));
     CHECK(st == spa::Status::FallbackGuardCurv);
 }
 
 TEST(status_guardtemp) {
     // zeta*s - K0 = 1*1 - 2 = -1 < 0, so w is not real.
     spa::Status st = spa::Status::SpaOk;
-    CHECK(std::isnan(spa::bnTail(1.0, 1.0, 2.0, 1.0, false, st)));
+    CHECK(std::isnan(spa::bnTailLog(1.0, 1.0, 2.0, 1.0, false, st)));
     CHECK(st == spa::Status::FallbackGuardTemp);
 
     st = spa::Status::SpaOk;
@@ -1032,7 +1029,7 @@ TEST(status_guardtemp) {
 
     // Also reached when zeta*s overflows negative.
     st = spa::Status::SpaOk;
-    CHECK(std::isnan(spa::bnTail(-1e300, 1e300, 0.0, 1.0, false, st)));
+    CHECK(std::isnan(spa::bnTailLog(-1e300, 1e300, 0.0, 1.0, false, st)));
     CHECK(st == spa::Status::FallbackGuardTemp);
 }
 
@@ -1051,16 +1048,16 @@ TEST(status_guardw) {
     // p-value of exactly 0.0 or 1.0 depending on the tail.  Phi(0) = 0.5 in
     // both tails is the right answer: the statistic sits at the mean.
     spa::Status st = spa::Status::SpaOk;
-    CHECK(spa::bnTail(2.0, 1.5, 3.0, 1.0, false, st) == 0.5);  // 2*1.5-3 == 0
-    CHECK(st == spa::Status::SpaWSingular);
+    CHECK_REL(spa::bnTailLog(2.0, 1.5, 3.0, 1.0, false, st), -kLn2, 1e-15);
+    CHECK(st == spa::Status::SpaWSingular);                    // 2*1.5-3 == 0
 
     st = spa::Status::SpaOk;
-    CHECK(spa::bnTail(0.0, 1.0, 0.0, 1.0, false, st) == 0.5);   // zeta == 0
-    CHECK(st == spa::Status::SpaWSingular);
+    CHECK_REL(spa::bnTailLog(0.0, 1.0, 0.0, 1.0, false, st), -kLn2, 1e-15);
+    CHECK(st == spa::Status::SpaWSingular);                    // zeta == 0
 
     st = spa::Status::SpaOk;
-    CHECK(spa::bnTail(-0.0, 1.0, 0.0, 1.0, true, st) == 0.5);   // zeta == -0
-    CHECK(st == spa::Status::SpaWSingular);
+    CHECK_REL(spa::bnTailLog(-0.0, 1.0, 0.0, 1.0, true, st), -kLn2, 1e-15);
+    CHECK(st == spa::Status::SpaWSingular);                    // zeta == -0
 
     st = spa::Status::SpaOk;
     CHECK_REL(spa::bnTailLog(2.0, 1.5, 3.0, 1.0, true, st), -kLn2, 1e-15);
@@ -1068,25 +1065,25 @@ TEST(status_guardw) {
 
     // Two-sided, that is a p of exactly 1 with a status that says why.
     spa::Status su = spa::Status::SpaOk, sl = spa::Status::SpaOk;
-    const double pu = spa::bnTail(0.0, 1.0, 0.0, 1.0, false, su);
-    const double pl = spa::bnTail(0.0, 1.0, 0.0, 1.0, true, sl);
-    const spa::TwoSided ts = spa::combineTails(pu, pl, su, sl);
+    const double lu = spa::bnTailLog(0.0, 1.0, 0.0, 1.0, false, su);
+    const double ll = spa::bnTailLog(0.0, 1.0, 0.0, 1.0, true, sl);
+    const spa::Result ts = spa::combineTailsLog(lu, ll, su, sl);
     CHECK(ts.status == spa::Status::SpaWSingular);
     CHECK(spa::statusIsUsable(ts.status));
-    CHECK(ts.p == 1.0);
     CHECK(ts.negLog10p == 0.0);
+    CHECK(spa::pFromNegLog10P(ts.negLog10p) == 1.0);
 
-    // Inside the band the returned probability is Phi(+/-w) — the same phiTail
-    // call serves both branches, so the only difference from an exact match is
-    // whether the compiler contracts `zeta*s - K0` into an FMA in one
-    // translation unit and not the other.
+    // Inside the band the returned probability is Phi(+/-w) — the same
+    // phiTailLog call serves both branches, so the only difference from an
+    // exact match is whether the compiler contracts `zeta*s - K0` into an FMA
+    // in one translation unit and not the other.
     const double zeta = 0.5 * spa::kWSingularity;   // Gaussian CGF, sigma == 1
     const double s = zeta, K0 = 0.5 * zeta * zeta, K2 = 1.0;
     const double w = std::sqrt(2.0 * (zeta * s - K0));
     CHECK(w < spa::kWSingularity);
     for (bool lower : {false, true}) {
         st = spa::Status::SpaOk;
-        CHECK_REL(spa::bnTail(zeta, s, K0, K2, lower, st),
+        CHECK_REL(std::exp(spa::bnTailLog(zeta, s, K0, K2, lower, st)),
                   math::pnorm(w, 0.0, 1.0, lower), 1e-14);
         CHECK(st == spa::Status::SpaWSingular);
     }
@@ -1094,7 +1091,7 @@ TEST(status_guardw) {
     // Immediately outside it the modified root is formed again.
     const double zOut = 2.0 * spa::kWSingularity;
     st = spa::Status::FallbackMaxIter;
-    (void)spa::bnTail(zOut, zOut, 0.5 * zOut * zOut, 1.0, false, st);
+    (void)spa::bnTailLog(zOut, zOut, 0.5 * zOut * zOut, 1.0, false, st);
     CHECK(st == spa::Status::SpaOk);
 }
 
@@ -1124,8 +1121,11 @@ TEST(guardw_fires_before_r_star_is_formed) {
         const double s = zeta, K0 = 0.5 * zeta * zeta;
 
         spa::Status s0 = spa::Status::SpaOk, s1 = spa::Status::SpaOk;
-        const double p0 = spa::bnTail(zeta, s, K0, K2, false, s0);
-        const double p1 = spa::bnTail(zeta, s, K0 + dK, K2, false, s1);
+        // Compared on the linear scale, as the sensitivity argument is stated:
+        // exp() is monotone and its own relative error (1e-16) is nine orders
+        // below the 8e-9 movement being bounded.
+        const double p0 = std::exp(spa::bnTailLog(zeta, s, K0, K2, false, s0));
+        const double p1 = std::exp(spa::bnTailLog(zeta, s, K0 + dK, K2, false, s1));
         CHECK(s0 == spa::Status::SpaWSingular);
         CHECK(s1 == spa::Status::SpaWSingular);
 
@@ -1150,8 +1150,8 @@ TEST(guardw_fires_before_r_star_is_formed) {
         const double zeta = 4.0 * spa::kWSingularity;   // w = 4e-3
         const double s = zeta, K0 = 0.5 * zeta * zeta;
         spa::Status s0 = spa::Status::FallbackMaxIter, s1 = spa::Status::FallbackMaxIter;
-        const double p0 = spa::bnTail(zeta, s, K0, K2, false, s0);
-        const double p1 = spa::bnTail(zeta, s, K0 + dK, K2, false, s1);
+        const double p0 = std::exp(spa::bnTailLog(zeta, s, K0, K2, false, s0));
+        const double p1 = std::exp(spa::bnTailLog(zeta, s, K0 + dK, K2, false, s1));
         CHECK(s0 == spa::Status::SpaOk);
         CHECK(s1 == spa::Status::SpaOk);
         // dK/|w|^3 = 1e-11/6.4e-8 = 1.6e-4, so |dp| ~ 6e-5, and the two-sided
@@ -1192,23 +1192,23 @@ TEST(status_nonfinite_from_tail) {
     const double bad[] = {kNaN, kInf, -kInf};
     for (double b : bad) {
         spa::Status st = spa::Status::SpaOk;
-        CHECK(std::isnan(spa::bnTail(b, 1.0, 0.0, 1.0, false, st)));
-        CHECK(st == spa::Status::FallbackNonFinite);
-
-        st = spa::Status::SpaOk;
-        CHECK(std::isnan(spa::bnTail(1.0, b, 0.0, 1.0, false, st)));
-        CHECK(st == spa::Status::FallbackNonFinite);
-
-        st = spa::Status::SpaOk;
-        CHECK(std::isnan(spa::bnTail(1.0, 1.0, b, 1.0, false, st)));
-        CHECK(st == spa::Status::FallbackNonFinite);
-
-        st = spa::Status::SpaOk;
-        CHECK(std::isnan(spa::bnTail(1.0, 1.0, 0.0, b, false, st)));
-        CHECK(st == spa::Status::FallbackNonFinite);
-
-        st = spa::Status::SpaOk;
         CHECK(std::isnan(spa::bnTailLog(b, 1.0, 0.0, 1.0, false, st)));
+        CHECK(st == spa::Status::FallbackNonFinite);
+
+        st = spa::Status::SpaOk;
+        CHECK(std::isnan(spa::bnTailLog(1.0, b, 0.0, 1.0, false, st)));
+        CHECK(st == spa::Status::FallbackNonFinite);
+
+        st = spa::Status::SpaOk;
+        CHECK(std::isnan(spa::bnTailLog(1.0, 1.0, b, 1.0, false, st)));
+        CHECK(st == spa::Status::FallbackNonFinite);
+
+        st = spa::Status::SpaOk;
+        CHECK(std::isnan(spa::bnTailLog(1.0, 1.0, 0.0, b, false, st)));
+        CHECK(st == spa::Status::FallbackNonFinite);
+
+        st = spa::Status::SpaOk;
+        CHECK(std::isnan(spa::bnTailLog(b, 1.0, 0.0, 1.0, true, st)));
         CHECK(st == spa::Status::FallbackNonFinite);
     }
 }
@@ -1256,18 +1256,14 @@ TEST(status_nonfinite_from_solver_interior) {
 }
 
 TEST(status_normalbranch) {
-    const spa::TwoSided b = spa::normalBranch(1.5);
+    const spa::Result b = spa::normalBranch(1.5);
     CHECK(b.status == spa::Status::Normal);
     CHECK(statusStr(b.status) == "NORMAL");
     CHECK(spa::statusIsUsable(b.status));
 
     // It survives the two-sided assembly, so a method that took the normal
     // branch on both sides still reports NORMAL rather than OK.
-    const spa::TwoSided both =
-        spa::combineTails(0.05, 0.05, spa::Status::Normal,
-                          spa::Status::Normal);
-    CHECK(both.status == spa::Status::Normal);
-    const spa::TwoSided bothLog =
+    const spa::Result bothLog =
         spa::combineTailsLog(-3.0, -3.0, spa::Status::Normal,
                              spa::Status::Normal);
     CHECK(bothLog.status == spa::Status::Normal);
@@ -1523,8 +1519,15 @@ TEST(evaluation_budget_per_tail_is_pinned) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// § 5  bnTail and bnTailLog
+// § 5  bnTailLog
 // ══════════════════════════════════════════════════════════════════════
+//
+// log10p_unify Stage 3 deleted `bnTail`, the linear sibling that used to run
+// beside `bnTailLog` on every call.  Where a test below compared the two, it
+// now compares the log tail against `math::pnorm` evaluated at the same
+// abscissa — an INDEPENDENT reference rather than a sibling sharing the whole
+// of `tailAbscissa` with the routine under test, which is the stronger check
+// of the two and was available all along.
 
 // Construct (zeta, s, K0, K2) producing a chosen w, so the tail can be probed
 // anywhere in the range including far past the underflow floor.  For a
@@ -1543,7 +1546,7 @@ static GaussTailPoint gaussTailPoint(double w, double var) {
     return GaussTailPoint{zeta, var * zeta, 0.5 * var * zeta * zeta, var};
 }
 
-TEST(bntail_gaussian_case_reduces_to_phi) {
+TEST(bntaillog_gaussian_case_reduces_to_phi) {
     for (double w = 0.25; w <= 10.0; w += 0.25) {
         const GaussTailPoint g = gaussTailPoint(w, 2.5);
         spa::Status st = spa::Status::FallbackMaxIter;
@@ -1555,29 +1558,35 @@ TEST(bntail_gaussian_case_reduces_to_phi) {
         // nothing more.
         const double tol = 1e-15 * (1.0 + w * w);
 
-        const double up = spa::bnTail(g.zeta, g.s, g.K0, g.K2, false, st);
+        const double up = spa::bnTailLog(g.zeta, g.s, g.K0, g.K2, false, st);
         CHECK(st == spa::Status::SpaOk);
-        CHECK_REL(up, math::pnorm(w, 0.0, 1.0, false), tol);
+        CHECK_REL(std::exp(up), math::pnorm(w, 0.0, 1.0, false), tol);
 
         const GaussTailPoint gn = gaussTailPoint(-w, 2.5);
-        const double lo = spa::bnTail(gn.zeta, gn.s, gn.K0, gn.K2, true, st);
+        const double lo = spa::bnTailLog(gn.zeta, gn.s, gn.K0, gn.K2, true, st);
         CHECK(st == spa::Status::SpaOk);
-        CHECK_REL(lo, math::pnorm(-w, 0.0, 1.0, true), tol);
+        CHECK_REL(std::exp(lo), math::pnorm(-w, 0.0, 1.0, true), tol);
 
         // The upper tail at +w and the lower tail at -w are the same number.
         CHECK_REL(up, lo, 1e-15);
     }
 }
 
-TEST(bntaillog_agrees_with_log_bntail) {
+TEST(bntaillog_agrees_with_log_of_an_independent_linear_tail) {
+    // Before Stage 3 this compared bnTailLog against log(bnTail), i.e. against
+    // a sibling that shared `tailAbscissa` with it in full; the reference is
+    // now `math::pnorm` at the abscissa reconstructed here from (zeta, s, K0,
+    // K2), so the two paths have nothing in common past the inputs.
     int nCompared = 0;
     for (double w = 0.5; w <= 37.0; w += 0.125) {
         const GaussTailPoint g = gaussTailPoint(w, 1.75);
-        spa::Status stL = spa::Status::FallbackMaxIter, stP = spa::Status::FallbackMaxIter;
-        const double p = spa::bnTail(g.zeta, g.s, g.K0, g.K2, false, stP);
+        spa::Status stL = spa::Status::FallbackMaxIter;
         const double lp = spa::bnTailLog(g.zeta, g.s, g.K0, g.K2, false, stL);
-        CHECK(stP == spa::Status::SpaOk);
         CHECK(stL == spa::Status::SpaOk);
+
+        // r* rebuilt independently: for this Gaussian construction v == w, so
+        // the reference abscissa is w itself.
+        const double p = math::pnorm(w, 0.0, 1.0, /*lower_tail=*/false);
         if (p > 0.0 && std::isfinite(std::log(p))) {
             CHECK_MSG(std::fabs(lp - std::log(p)) <=
                           1e-13 * std::fmax(1.0, std::fabs(std::log(p))),
@@ -1587,9 +1596,7 @@ TEST(bntaillog_agrees_with_log_bntail) {
         }
         // The lower tail must behave identically under the sign flip.
         const GaussTailPoint gn = gaussTailPoint(-w, 1.75);
-        const double p2 = spa::bnTail(gn.zeta, gn.s, gn.K0, gn.K2, true, stP);
         const double lp2 = spa::bnTailLog(gn.zeta, gn.s, gn.K0, gn.K2, true, stL);
-        CHECK_REL(p2, p, 1e-15);
         CHECK_NEAR(lp2, lp, 1e-14 * std::fmax(1.0, std::fabs(lp)));
     }
     CHECK_MSG(nCompared > 250, "only " + std::to_string(nCompared) + " comparisons");
@@ -1603,7 +1610,8 @@ TEST(bntaillog_survives_past_linear_underflow) {
     for (double w = 36.0; w <= 200.0; w += 2.0) {
         const GaussTailPoint g = gaussTailPoint(w, 1.0);
         spa::Status st = spa::Status::FallbackMaxIter;
-        const double p = spa::bnTail(g.zeta, g.s, g.K0, g.K2, false, st);
+        // What the deleted linear tail would have returned at this abscissa.
+        const double p = math::pnorm(w, 0.0, 1.0, /*lower_tail=*/false);
         const double lp = spa::bnTailLog(g.zeta, g.s, g.K0, g.K2, false, st);
         CHECK(st == spa::Status::SpaOk);
         CHECK_MSG(std::isfinite(lp), "bnTailLog non-finite at w=" + std::to_string(w));
@@ -1613,7 +1621,7 @@ TEST(bntaillog_survives_past_linear_underflow) {
                   "w=" + std::to_string(w) + " lp=" + std::to_string(lp));
         if (p == 0.0) sawLinearZero = true;
     }
-    CHECK_MSG(sawLinearZero, "linear bnTail never underflowed to zero");
+    CHECK_MSG(sawLinearZero, "the linear tail never underflowed to zero");
 
     // p = 1e-400 has log p = -920.9.  Invert log Phi(-w) = that by bisection
     // on w, then confirm the log tail reproduces it while the linear tail has
@@ -1631,9 +1639,13 @@ TEST(bntaillog_survives_past_linear_underflow) {
     spa::Status st;
     const double lp = spa::bnTailLog(gg.zeta, gg.s, gg.K0, gg.K2, false, st);
     CHECK_REL(lp, targetLog, 1e-12);
-    CHECK(spa::bnTail(gg.zeta, gg.s, gg.K0, gg.K2, false, st) == 0.0);
-    // Expressed the way the LOG10P column will carry it.
+    // The linear tail at the same abscissa has nothing left at all.
+    CHECK(std::exp(lp) == 0.0);
+    // Expressed the way the LOG10P column carries it — and the way the P
+    // column, while it exists, is derived back from it: an honest zero, never
+    // a floor.
     CHECK_CLOSE(-lp / kLn10, 400.0, 1e-12, 0.0);
+    CHECK(spa::pFromNegLog10P(-lp / kLn10) == 0.0);
 }
 
 TEST(bntaillog_matches_an_independent_higher_precision_reference) {
@@ -1668,10 +1680,10 @@ TEST(bntaillog_matches_an_independent_higher_precision_reference) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// § 6  bnTail treats K0 and K2 as opaque scalars
+// § 6  bnTailLog treats K0 and K2 as opaque scalars
 // ══════════════════════════════════════════════════════════════════════
 
-TEST(bntail_does_not_reconcile_an_inconsistent_k0_k2_pair) {
+TEST(bntaillog_does_not_reconcile_an_inconsistent_k0_k2_pair) {
     // WtCoxG builds k0_total from var_n_K01 and k2_total from var_n_K2, which
     // are different variances (wtcoxg.cpp:430-435 documents this as
     // intentional; spa_unify D4 rules it out of scope pending a maintainer
@@ -1681,21 +1693,22 @@ TEST(bntail_does_not_reconcile_an_inconsistent_k0_k2_pair) {
     const double zeta = 0.8, s = 4.0, K0 = 1.2;
     for (double K2 : {0.5, 1.0, 2.0, 7.5, 1e4}) {
         spa::Status st = spa::Status::FallbackMaxIter;
-        const double got = spa::bnTail(zeta, s, K0, K2, false, st);
+        const double got = spa::bnTailLog(zeta, s, K0, K2, false, st);
         CHECK(st == spa::Status::SpaOk);
         const double temp = zeta * s - K0;
         const double w = std::sqrt(2.0 * temp);   // zeta > 0
         const double v = zeta * std::sqrt(K2);
         const double rStar = w + std::log(v / w) / w;
-        CHECK_REL(got, math::pnorm(rStar, 0.0, 1.0, false), 0.0);
+        CHECK_REL(std::exp(got),
+                  math::pnorm(rStar, 0.0, 1.0, false), 1e-15);
     }
     // And the answers really are distinct, so nothing was normalized away.
     spa::Status st;
-    CHECK(spa::bnTail(zeta, s, K0, 0.5, false, st) !=
-          spa::bnTail(zeta, s, K0, 7.5, false, st));
+    CHECK(spa::bnTailLog(zeta, s, K0, 0.5, false, st) !=
+          spa::bnTailLog(zeta, s, K0, 7.5, false, st));
 }
 
-TEST(bntail_matches_the_production_kernel_on_random_inputs) {
+TEST(bntaillog_matches_the_production_kernel_on_random_inputs) {
     // Reproduction of the arithmetic at wtcoxg.cpp:502-514 and
     // spacox.cpp:385-400, so the migrations in Stages 3 to 7 have a fixed
     // point to land on.
@@ -1715,7 +1728,7 @@ TEST(bntail_matches_the_production_kernel_on_random_inputs) {
         if (temp1 <= 0.0) continue;
         const double w = ((zeta >= 0) ? 1.0 : -1.0) * std::sqrt(2.0 * temp1);
         const double v = zeta * std::sqrt(K2);
-        // Skip the band in which bnTail deliberately does NOT form r*.
+        // Skip the band in which bnTailLog deliberately does NOT form r*.
         if (std::fabs(w) <= spa::kWSingularity || v == 0.0 || (v / w) <= 0.0)
             continue;
 
@@ -1723,14 +1736,15 @@ TEST(bntail_matches_the_production_kernel_on_random_inputs) {
             const double want = math::pnorm(w + (1.0 / w) * std::log(v / w), 0.0,
                                             1.0, lower);
             spa::Status st = spa::Status::FallbackMaxIter;
-            const double got = spa::bnTail(zeta, s, K0, K2, lower, st);
+            const double got = std::exp(spa::bnTailLog(zeta, s, K0, K2, lower, st));
             CHECK(st == spa::Status::SpaOk);
             // Not bit-identical, and deliberately so: the production sites
-            // write (1/w)*log(v/w), which rounds twice, while bnTail writes
+            // write (1/w)*log(v/w), which rounds twice, while bnTailLog writes
             // log(v/w)/w, which rounds once and is the more accurate of the
             // two.  The residual difference is a few ULP in r*, amplified into
             // the p-value by |d log p / d r*| = |r*|.  Measured worst case
-            // across this sweep is 9.4e-15 relative.
+            // across this sweep is 9.4e-15 relative; the exp() round trip that
+            // Stage 3 added to this comparison contributes ~1e-16 more.
             CHECK_REL(got, want, 1e-13);
         }
         ++nChecked;
@@ -1743,19 +1757,94 @@ TEST(bntail_matches_the_production_kernel_on_random_inputs) {
 // ══════════════════════════════════════════════════════════════════════
 
 TEST(combine_tails_sums_and_reports_negative_log10) {
-    const spa::TwoSided r = spa::combineTails(1e-8, 3e-9, spa::Status::SpaOk,
-                                              spa::Status::SpaOk);
+    const spa::Result r = spa::combineTailsLog(
+        std::log(1e-8), std::log(3e-9), spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(r.status == spa::Status::SpaOk);
-    CHECK_REL(r.p, 1.3e-8, 1e-15);
-    CHECK_REL(r.negLog10p, -std::log10(1.3e-8), 0.0);
+    CHECK_REL(r.negLog10p, -std::log10(1.3e-8), 1e-15);
+    // The P column, recovered from L.  The tolerance is the analytic cost of
+    // the round trip, ln10*L*2^-53 = 4.0e-15 here (measured 1.65e-15), not a
+    // fudge: see p_from_neglog10p_round_trip_is_within_the_analytic_bound.
+    CHECK_REL(spa::pFromNegLog10P(r.negLog10p), 1.3e-8,
+              kLn10 * r.negLog10p * std::numeric_limits<double>::epsilon());
     CHECK(r.negLog10p > 0.0);
 
-    // p == 1 gives +0, not -0.
-    const spa::TwoSided one = spa::combineTails(0.5, 0.5, spa::Status::SpaOk,
-                                                spa::Status::SpaOk);
-    CHECK(one.p == 1.0);
+    // p == 1 gives +0, not -0, and converts back to exactly 1.
+    const spa::Result one = spa::combineTailsLog(
+        std::log(0.5), std::log(0.5), spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(one.negLog10p == 0.0);
     CHECK(!std::signbit(one.negLog10p));
+    CHECK(spa::pFromNegLog10P(one.negLog10p) == 1.0);
+}
+
+// The round trip P = 10^(-LOG10P) is the whole of what Stage 3 changed about
+// the P column, so its error is pinned here rather than inferred from a
+// six-significant-figure output file.  The bound is analytic: LOG10P carries a
+// relative error of about 2^-53 from the division by ln 10, hence an ABSOLUTE
+// error of L*2^-53, and P = 10^(-L) inherits ln10*L*2^-53 relative.  Nothing
+// in the conversion may be worse than that — in particular it must not be
+// written exp(-L*ln10), which would round the product first and lose another
+// factor of ~ln10*L.
+TEST(p_from_neglog10p_round_trip_is_within_the_analytic_bound) {
+    const double eps = std::numeric_limits<double>::epsilon();
+    double worstRel = 0.0, worstAtL = 0.0;
+    int nChecked = 0;
+
+    for (double L = 0.05; L <= 300.0; L *= 1.03) {
+        // The reference: the same p-value formed WITHOUT passing through
+        // -log10, in long double, then rounded once.
+        const long double pRef = std::pow(10.0L, -static_cast<long double>(L));
+        if (pRef == 0.0L) break;
+        const double got = spa::pFromNegLog10P(L);
+        const double rel =
+            static_cast<double>(std::fabs((static_cast<long double>(got) - pRef) / pRef));
+        const double bound = std::fmax(kLn10 * L * eps, 4.0 * eps);
+        CHECK_MSG(rel <= bound,
+                  "L=" + std::to_string(L) + " rel " + std::to_string(rel) +
+                      " bound " + std::to_string(bound));
+        if (rel > worstRel) { worstRel = rel; worstAtL = L; }
+        ++nChecked;
+    }
+    CHECK(nChecked > 250);
+    std::fprintf(stderr,
+                 "\n      10^(-L) alone, over %d values of L: "
+                 "worst relative error %.3g at L = %.4g\n",
+                 nChecked, worstRel, worstAtL);
+
+    // The full path the P column now takes: p -> L = -log10(p) -> 10^(-L).
+    // The dominant term is NOT the exponentiation but the representation of L
+    // itself, which carries L*2^-53 of absolute error and hence ln10*L*2^-53
+    // of relative error in P.  This is the whole of the movement Stage 3
+    // introduces into the P column, and the reason the gate on it is stated
+    // relative to L rather than as a flat constant.
+    double worstFull = 0.0, worstFullAtL = 0.0;
+    int nFull = 0;
+    for (double e10 = 0.05; e10 <= 300.0; e10 *= 1.05) {
+        const double pIn = std::pow(10.0, -e10);
+        if (pIn == 0.0) break;
+        const double L = -std::log10(pIn);
+        const double back = spa::pFromNegLog10P(L);
+        const double rel = std::fabs(back - pIn) / pIn;
+        const double bound = std::fmax(2.0 * kLn10 * L * eps, 4.0 * eps);
+        CHECK_MSG(rel <= bound,
+                  "L=" + std::to_string(L) + " round-trip rel " +
+                      std::to_string(rel) + " bound " + std::to_string(bound));
+        if (rel > worstFull) { worstFull = rel; worstFullAtL = L; }
+        ++nFull;
+    }
+    CHECK(nFull > 150);
+    std::fprintf(stderr,
+                 "      p -> -log10 -> 10^(-L) round trip over %d values: "
+                 "worst relative error %.3g at L = %.4g\n\n",
+                 nFull, worstFull, worstFullAtL);
+
+    // Exact at the ends, and NaN is never laundered into a number.
+    CHECK(spa::pFromNegLog10P(0.0) == 1.0);
+    CHECK(spa::pFromNegLog10P(-0.0) == 1.0);
+    CHECK(spa::pFromNegLog10P(kInf) == 0.0);
+    CHECK(std::isnan(spa::pFromNegLog10P(kNaN)));
+    for (int e = 1; e <= 300; ++e)
+        CHECK(spa::pFromNegLog10P(static_cast<double>(e)) ==
+              std::pow(10.0, -static_cast<double>(e)));
 }
 
 TEST(combine_tails_never_reports_half_a_p_value) {
@@ -1765,41 +1854,42 @@ TEST(combine_tails_never_reports_half_a_p_value) {
     // no diagnostic.
     // GuardW is deliberately absent: it is a degraded success that always
     // returns a probability, so the (GuardW, NaN) pair below is not a state
-    // bnTail can produce.  Its own behaviour is asserted after the loop.
+    // bnTailLog can produce.  Its own behaviour is asserted after the loop.
     const spa::Status failures[] = {
         spa::Status::FallbackMaxIter, spa::Status::FallbackGuardTemp, spa::Status::FallbackGuardCurv,
         spa::Status::FallbackNonFinite,
     };
     for (spa::Status f : failures) {
-        const spa::TwoSided a =
-            spa::combineTails(1e-8, kNaN, spa::Status::SpaOk, f);
-        CHECK(std::isnan(a.p));
+        const spa::Result a =
+            spa::combineTailsLog(std::log(1e-8), kNaN, spa::Status::SpaOk, f);
         CHECK(std::isnan(a.negLog10p));
         CHECK(a.status == f);
 
-        const spa::TwoSided b =
-            spa::combineTails(kNaN, 1e-8, f, spa::Status::SpaOk);
-        CHECK(std::isnan(b.p));
+        const spa::Result b =
+            spa::combineTailsLog(kNaN, std::log(1e-8), f, spa::Status::SpaOk);
+        CHECK(std::isnan(b.negLog10p));
         CHECK(b.status == f);
 
-        const spa::TwoSided c =
+        const spa::Result c =
             spa::combineTailsLog(-18.4, kNaN, spa::Status::SpaOk, f);
-        CHECK(std::isnan(c.p));
+        CHECK(std::isnan(c.negLog10p));
         CHECK(c.status == f);
     }
 
     // One degraded tail and one ordinary tail: a real p, and a status that
     // says the modified root was dropped on one side.
-    const spa::TwoSided g = spa::combineTails(
-        1e-8, 0.5, spa::Status::SpaOk, spa::Status::SpaWSingular);
+    const spa::Result g = spa::combineTailsLog(
+        std::log(1e-8), std::log(0.5), spa::Status::SpaOk,
+        spa::Status::SpaWSingular);
     CHECK(g.status == spa::Status::SpaWSingular);
     CHECK(spa::statusIsUsable(g.status));
-    CHECK_REL(g.p, 0.50000001, 1e-15);
+    CHECK_REL(spa::pFromNegLog10P(g.negLog10p), 0.50000001, 1e-15);
 
     // ...but a genuine failure on the other side still wins.
-    const spa::TwoSided h = spa::combineTails(
-        kNaN, 0.5, spa::Status::FallbackMaxIter, spa::Status::SpaWSingular);
-    CHECK(std::isnan(h.p));
+    const spa::Result h = spa::combineTailsLog(
+        kNaN, std::log(0.5), spa::Status::FallbackMaxIter,
+        spa::Status::SpaWSingular);
+    CHECK(std::isnan(h.negLog10p));
     CHECK(h.status == spa::Status::FallbackMaxIter);
 }
 
@@ -1810,41 +1900,44 @@ TEST(combine_tails_never_turns_nan_into_one) {
     // statistic, not a conservative one.
     CHECK(std::min(1.0, kNaN) == 1.0);  // the behavior being fixed
 
-    const spa::TwoSided r =
-        spa::combineTails(kNaN, 0.25, spa::Status::SpaOk, spa::Status::SpaOk);
-    CHECK(std::isnan(r.p));
+    const spa::Result r = spa::combineTailsLog(
+        kNaN, std::log(0.25), spa::Status::SpaOk, spa::Status::SpaOk);
+    CHECK(std::isnan(r.negLog10p));
     CHECK(r.status == spa::Status::FallbackNonFinite);
 
-    const spa::TwoSided r2 =
-        spa::combineTails(0.25, kInf, spa::Status::SpaOk, spa::Status::SpaOk);
-    CHECK(std::isnan(r2.p));
-    CHECK(r2.status == spa::Status::FallbackNonFinite);
+    // ...and the NaN survives the derivation of the P column too, rather than
+    // being converted into a number on the way out.
+    CHECK(std::isnan(spa::pFromNegLog10P(r.negLog10p)));
 }
 
-TEST(combine_tails_clamps_into_the_unit_interval_without_flooring_at_dbl_min) {
+TEST(combine_tails_clamps_at_p_equals_one_without_flooring_at_dbl_min) {
     // Over-unity sums are clamped down...
-    const spa::TwoSided hi = spa::combineTails(0.9, 0.9, spa::Status::SpaOk,
-                                               spa::Status::SpaOk);
-    CHECK(hi.p == 1.0);
+    const spa::Result hi = spa::combineTailsLog(
+        std::log(0.9), std::log(0.9), spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(hi.status == spa::Status::SpaOk);
     CHECK(hi.negLog10p == 0.0);
+    CHECK(spa::pFromNegLog10P(hi.negLog10p) == 1.0);
 
-    // ...but a p that underflowed to zero is reported as zero.  Substituting
-    // DBL_MIN, as spamixlocalp.cpp:987 does, manufactures a
-    // genome-wide-significant hit out of a numerical failure.
-    const spa::TwoSided lo = spa::combineTails(0.0, 0.0, spa::Status::SpaOk,
-                                               spa::Status::SpaOk);
-    CHECK(lo.p == 0.0);
-    CHECK(lo.p != std::numeric_limits<double>::min());
-    CHECK(lo.negLog10p == kInf);
+    // ...but a tail that underflowed keeps its magnitude, which is the entire
+    // reason the assembly is in the log domain.  Substituting DBL_MIN for it,
+    // as spamixlocalp.cpp:987 did, manufactures a genome-wide-significant hit
+    // out of a numerical failure; reporting an honest 0 in P alongside a
+    // finite LOG10P does not.
+    const spa::Result lo = spa::combineTailsLog(
+        -800.0, -800.0, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(lo.status == spa::Status::SpaOk);
+    CHECK(std::isfinite(lo.negLog10p));
+    CHECK(lo.negLog10p > 347.0);
+    const double p = spa::pFromNegLog10P(lo.negLog10p);
+    CHECK(p == 0.0);
+    CHECK(p != std::numeric_limits<double>::min());
 }
 
 TEST(combine_tails_log_is_log_sum_exp) {
     // Agreement with the closed form wherever both are representable.
     for (double e1 = -1.0; e1 >= -900.0; e1 -= 37.0)
         for (double e2 = -1.0; e2 >= -900.0; e2 -= 53.0) {
-            const spa::TwoSided lg = spa::combineTailsLog(
+            const spa::Result lg = spa::combineTailsLog(
                 e1, e2, spa::Status::SpaOk, spa::Status::SpaOk);
             const double m = std::fmax(e1, e2);
             const double want =
@@ -1854,30 +1947,33 @@ TEST(combine_tails_log_is_log_sum_exp) {
         }
 
     // Two tails that both underflow on the linear scale still combine.
-    const spa::TwoSided deep = spa::combineTailsLog(
+    const spa::Result deep = spa::combineTailsLog(
         -920.0, -921.0, spa::Status::SpaOk, spa::Status::SpaOk);
-    CHECK(deep.p == 0.0);
+    CHECK(spa::pFromNegLog10P(deep.negLog10p) == 0.0);
     CHECK(std::isfinite(deep.negLog10p));
     CHECK_REL(deep.negLog10p,
               -(-920.0 + std::log1p(std::exp(-1.0))) / kLn10, 1e-14);
 
     // Equal tails: log(2*e^x) = x + log 2.
-    const spa::TwoSided eq = spa::combineTailsLog(
+    const spa::Result eq = spa::combineTailsLog(
         -1000.0, -1000.0, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK_REL(eq.negLog10p, (1000.0 - 0.69314718055994530942) / kLn10, 1e-14);
 
-    // Both tails exactly zero probability.
-    const spa::TwoSided zero = spa::combineTailsLog(
+    // Both tails exactly zero probability.  Unreachable from bnTailLog, whose
+    // abscissa guards reject every input that could produce it; asserted so
+    // that if it ever becomes reachable it surfaces as +Inf — a C1 violation
+    // tests/regress.py fails on — rather than as a plausible finite number.
+    const spa::Result zero = spa::combineTailsLog(
         -kInf, -kInf, spa::Status::SpaOk, spa::Status::SpaOk);
-    CHECK(zero.p == 0.0);
     CHECK(zero.negLog10p == kInf);
+    CHECK(spa::pFromNegLog10P(zero.negLog10p) == 0.0);
 
-    // Over-unity is clamped the same way the linear form clamps it.
-    const spa::TwoSided over = spa::combineTailsLog(
+    // Over-unity is clamped at p = 1, i.e. at L = 0.
+    const spa::Result over = spa::combineTailsLog(
         -0.1, -0.1, spa::Status::SpaOk, spa::Status::SpaOk);
-    CHECK(over.p == 1.0);
     CHECK(over.negLog10p == 0.0);
     CHECK(!std::signbit(over.negLog10p));
+    CHECK(spa::pFromNegLog10P(over.negLog10p) == 1.0);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1959,7 +2055,7 @@ TEST(pnormlog_is_accurate_far_past_the_linear_underflow) {
     CHECK(std::isfinite(math::pnormLog(-40.0, 0.0, 1.0, true)));
 }
 
-// Property 2 of the gate, stated on the output surface rather than on bnTail:
+// Property 2 of the gate, stated on the output surface rather than on bnTailLog:
 // a two-sided p of 1e-400 survives into the LOG10P column, and P reports the
 // honest 0 rather than a fabricated floor.
 TEST(a_p_of_1e_minus_400_is_recovered_in_log10p) {
@@ -1974,32 +2070,38 @@ TEST(a_p_of_1e_minus_400_is_recovered_in_log10p) {
     const double w = 0.5 * (blo + bhi);
     const double lTail = math::pnormLog(-w, 0.0, 1.0, true);
 
-    const spa::TwoSided lg = spa::combineTailsLog(
+    const spa::Result lg = spa::combineTailsLog(
         lTail, lTail, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(lg.status == spa::Status::SpaOk);
     CHECK_CLOSE(lg.negLog10p, 400.0, 1e-12, 0.0);
-    CHECK(lg.p == 0.0);           // honest zero, not DBL_MIN
+    CHECK(spa::pFromNegLog10P(lg.negLog10p) == 0.0);   // honest zero, not DBL_MIN
 
-    // The linear assembly of the same two tails has nothing left: both tails
-    // underflowed, so it reports p = 0 with negLog10p = +inf.  That is the
-    // defect L3 exists to route around, and the reason LOG10P is a column.
-    const spa::TwoSided lin = spa::combineTails(
-        std::exp(lTail), std::exp(lTail), spa::Status::SpaOk,
-        spa::Status::SpaOk);
-    CHECK(lin.p == 0.0);
-    CHECK(std::isinf(lin.negLog10p));
+    // The deleted linear assembly had nothing left here: both tails had
+    // already underflowed to exactly zero before it saw them, so it could only
+    // report p = 0 with -log10(p) = +inf.  That is the defect L3 exists to
+    // route around, and the reason LOG10P is THE column rather than a
+    // companion to one.
+    CHECK(std::exp(lTail) == 0.0);
+    CHECK(std::isinf(-std::log10(std::exp(lTail) + std::exp(lTail))));
 
     // log-sum-exp, not a naive sum of exponentials: the two tails are equal,
     // so their combination must be exactly one ln 2 above either of them.
     CHECK_NEAR(lg.negLog10p * -kLn10, lTail + kLn2, 1e-11);
 }
 
-// Property 3 of the gate: LOG10P and -log10(P) agree to 1e-9 wherever
-// P > 1e-300.  This is checked at FULL double precision here because it cannot
-// be checked end to end on the fixture -- LOG10P is printed to six significant
-// figures, so a file-level comparison resolves no better than ~1e-6 relative.
+// Property 3 of the gate: the log-domain assembly agrees with a straight
+// linear sum of the same two tails wherever the linear sum still exists.  This
+// is checked at FULL double precision here because it cannot be checked end to
+// end on the fixture -- LOG10P is printed to six significant figures, so a
+// file-level comparison resolves no better than ~1e-6 relative.
+//
+// Until log10p_unify Stage 3 the linear side of this comparison was
+// `spa::combineTails`, the second assembly the tier carried.  It is now formed
+// here, in the test, out of `math::pnorm`: the point of the check is that the
+// log-domain result is right, and a reference that shares no code with it is
+// a better witness to that than a sibling implementation was.
 TEST(log10p_agrees_with_minus_log10_p_at_full_precision) {
-    double worst = 0.0, worstAt = 0.0;
+    double worst = 0.0, worstAt = 0.0, worstPRel = 0.0, worstPAtL = 0.0;
     int nChecked = 0;
     for (double w = 0.05; w <= 26.0; w += 0.005) {
         // Two independent tails, deliberately unequal so the assembly is a
@@ -2009,25 +2111,37 @@ TEST(log10p_agrees_with_minus_log10_p_at_full_precision) {
         const double pu = math::pnorm(-w, 0.0, 1.0, true);
         const double pl = math::pnorm(-1.37 * w - 0.2, 0.0, 1.0, true);
 
-        const spa::TwoSided lin = spa::combineTails(
-            pu, pl, spa::Status::SpaOk, spa::Status::SpaOk);
-        const spa::TwoSided lg = spa::combineTailsLog(
+        const double pLin = pu + pl;
+        const double lLin = -std::log10(pLin);
+        const spa::Result lg = spa::combineTailsLog(
             lu, ll, spa::Status::SpaOk, spa::Status::SpaOk);
-        if (!(lin.p > 1e-300)) continue;
+        if (!(pLin > 1e-300)) continue;
 
-        const double d = std::fabs(lg.negLog10p - lin.negLog10p) /
-                         std::fmax(1.0, lin.negLog10p);
+        const double d = std::fabs(lg.negLog10p - lLin) / std::fmax(1.0, lLin);
         if (d > worst) { worst = d; worstAt = w; }
         CHECK_MSG(d <= 1e-9, "w=" + std::to_string(w) + " rel diff " +
                                  std::to_string(d));
-        // The two assemblies must also agree on p itself while it is
-        // representable.
-        CHECK_REL(lg.p, lin.p, 1e-12);
+        // And the P column derived from the log domain agrees with the linear
+        // sum it replaced, while the latter is representable.  This is the
+        // Stage 3 gate on P stated at full precision: the round trip through
+        // -log10 costs ln10*L*2^-53 relative, which over this sweep
+        // (L <= 300) is at most 7.7e-14.
+        const double pRel =
+            std::fabs(spa::pFromNegLog10P(lg.negLog10p) - pLin) / pLin;
+        if (pRel > worstPRel) { worstPRel = pRel; worstPAtL = lLin; }
+        CHECK_REL(spa::pFromNegLog10P(lg.negLog10p), pLin,
+                  std::fmax(4.0 * kLn10 * lLin * 2.220446049250313e-16, 1e-15));
         ++nChecked;
     }
     CHECK(nChecked > 5000);
     CHECK_MSG(worst < 1e-9, "worst " + std::to_string(worst) + " at w=" +
                                 std::to_string(worstAt));
+    // The Stage 3 ledger number for the P column: how far 10^(-LOG10P) sits
+    // from the linear sum of the same two tails, at full double precision.
+    std::fprintf(stderr,
+                 "\n      P column, 10^(-LOG10P) vs the deleted linear sum, "
+                 "%d points: worst relative move %.3g at L = %.4g\n\n",
+                 nChecked, worstPRel, worstPAtL);
 }
 
 TEST(status_severity_ordering_is_total_and_deterministic) {
@@ -2055,15 +2169,21 @@ TEST(status_severity_ordering_is_total_and_deterministic) {
 // § 8  The normal short-circuit
 // ══════════════════════════════════════════════════════════════════════
 
-TEST(normal_two_sided_and_its_log) {
-    CHECK_REL(spa::normalTwoSided(0.0), 1.0, 0.0);
-    CHECK_REL(spa::normalTwoSided(1.959963984540054), 0.05, 1e-12);
-    CHECK_REL(spa::normalTwoSided(-1.959963984540054), 0.05, 1e-12);
+TEST(normal_two_sided_log_and_its_linear_reference) {
+    // The linear `spa::normalTwoSided` is gone (log10p_unify Stage 3); the
+    // reference is `2*math::pnorm(|z|, upper)`, which is what it computed.
+    auto linear = [](double z) {
+        return 2.0 * math::pnorm(std::fabs(z), 0.0, 1.0, /*lower_tail=*/false);
+    };
+
+    CHECK(spa::normalTwoSidedLog(0.0) == 0.0);                    // ln 1
+    CHECK_REL(std::exp(spa::normalTwoSidedLog(1.959963984540054)), 0.05, 1e-12);
+    CHECK_REL(std::exp(spa::normalTwoSidedLog(-1.959963984540054)), 0.05, 1e-12);
     // 2*Phi(-5) = 2 * 2.866515718791939e-7, an independently tabulated value.
-    CHECK_REL(spa::normalTwoSided(5.0), 5.733031437583878e-7, 1e-12);
+    CHECK_REL(std::exp(spa::normalTwoSidedLog(5.0)), 5.733031437583878e-7, 1e-12);
 
     for (double z = 0.5; z <= 37.0; z += 0.5) {
-        const double p = spa::normalTwoSided(z);
+        const double p = linear(z);
         const double lp = spa::normalTwoSidedLog(z);
         CHECK_MSG(std::fabs(lp - std::log(p)) <= 1e-13 * std::fmax(1.0, std::fabs(lp)),
                   "z=" + std::to_string(z));
@@ -2074,27 +2194,36 @@ TEST(normal_two_sided_and_its_log) {
         const double lp = spa::normalTwoSidedLog(z);
         CHECK(std::isfinite(lp));
         CHECK(lp < -0.49 * z * z);
-        CHECK(spa::normalTwoSided(z) == 0.0);
+        CHECK(linear(z) == 0.0);
+    }
+
+    // The forward to math_helper is a forward, not a copy: bit-identical.
+    for (double z : {0.0, 0.25, 1.0, 3.7, 12.5, 45.0, 200.0}) {
+        CHECK(spa::normalTwoSidedLog(z) == math::normalTwoSidedLog(z));
+        CHECK(spa::normalTwoSidedLog(-z) == math::normalTwoSidedLog(z));
     }
 
     CHECK(std::isnan(spa::normalTwoSidedLog(kNaN)));
-    CHECK(std::isnan(spa::normalBranch(kNaN).p));
+    CHECK(std::isnan(spa::normalBranch(kNaN).negLog10p));
     CHECK(spa::normalBranch(kNaN).status == spa::Status::NaNoTest);
 }
 
 TEST(normal_branch_bundle_is_self_consistent) {
     for (double z : {0.0, 0.5, 2.0, 6.0, 25.0}) {
-        const spa::TwoSided b = spa::normalBranch(z);
+        const spa::Result b = spa::normalBranch(z);
         CHECK(b.status == spa::Status::Normal);
-        CHECK_REL(b.p, spa::normalTwoSided(z), 0.0);
-        if (b.p > 0.0)
-            CHECK_MSG(std::fabs(b.negLog10p + std::log10(b.p)) <=
-                          1e-13 * std::fmax(1.0, b.negLog10p),
-                      "z=" + std::to_string(z));
+        CHECK(b.negLog10p == -spa::normalTwoSidedLog(z) / kLn10 ||
+              b.negLog10p == 0.0);
+        const double p = spa::pFromNegLog10P(b.negLog10p);
+        const double pLin =
+            2.0 * math::pnorm(std::fabs(z), 0.0, 1.0, /*lower_tail=*/false);
+        // The round trip -log10 -> 10^(-.) costs ln10*L*2^-53 relative.
+        CHECK_REL(p, pLin, std::fmax(4.0 * kLn10 * b.negLog10p *
+                                         2.220446049250313e-16, 1e-15));
     }
-    CHECK(spa::normalBranch(0.0).p == 1.0);
     CHECK(spa::normalBranch(0.0).negLog10p == 0.0);
     CHECK(!std::signbit(spa::normalBranch(0.0).negLog10p));
+    CHECK(spa::pFromNegLog10P(spa::normalBranch(0.0).negLog10p) == 1.0);
 }
 
 TEST(sign_of_is_zero_at_zero) {
@@ -2165,8 +2294,6 @@ TEST(end_to_end_two_sided_spa_p_value) {
         CHECK(rl.zeta < 0.0);
 
         spa::Status su, sl;
-        const double pu = spa::bnTail(ru.zeta, sUpper, ru.K0, ru.K2, false, su);
-        const double pl = spa::bnTail(rl.zeta, sLower, rl.K0, rl.K2, true, sl);
         const double lu = spa::bnTailLog(ru.zeta, sUpper, ru.K0, ru.K2, false, su);
         const double ll = spa::bnTailLog(rl.zeta, sLower, rl.K0, rl.K2, true, sl);
 
@@ -2174,17 +2301,20 @@ TEST(end_to_end_two_sided_spa_p_value) {
         CHECK_MSG(sl == spa::Status::SpaOk, "tail lower " + statusStr(sl));
         if (su != spa::Status::SpaOk || sl != spa::Status::SpaOk) continue;
 
-        const spa::TwoSided lin = spa::combineTails(pu, pl, su, sl);
-        const spa::TwoSided lg = spa::combineTailsLog(lu, ll, su, sl);
+        // The production path: one tail evaluation per side, one assembly.
+        const spa::Result lg = spa::assemble(lu, ll, su, sl, z);
+        // An independent linear reference for the same two tails.
+        const double pLin = std::exp(lu) + std::exp(ll);
 
-        CHECK(lin.status == spa::Status::SpaOk);
-        CHECK(lin.p > 0.0 && lin.p <= 1.0);
-        CHECK_REL(lg.p, lin.p, 1e-13);
-        CHECK_NEAR(lg.negLog10p, lin.negLog10p, 1e-11);
+        CHECK(lg.status == spa::Status::SpaOk);
+        const double p = spa::pFromNegLog10P(lg.negLog10p);
+        CHECK(p > 0.0 && p <= 1.0);
+        CHECK_REL(p, pLin, 1e-13);
+        CHECK_NEAR(lg.negLog10p, -std::log10(pLin), 1e-11);
 
         // Strictly decreasing in |z|, since both tails are.
-        CHECK_MSG(lin.p < prevP, "z=" + std::to_string(z) + " p not decreasing");
-        prevP = lin.p;
+        CHECK_MSG(p < prevP, "z=" + std::to_string(z) + " p not decreasing");
+        prevP = p;
         ++nChecked;
     }
     CHECK(nChecked >= 11);

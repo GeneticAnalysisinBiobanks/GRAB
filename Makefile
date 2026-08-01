@@ -414,6 +414,10 @@ TEST_CXXFLAGS := $(filter-out -DNDEBUG,$(GRAB_CXXFLAGS))
 # therefore link the object rather than including the implementation.
 TESTOBJS_spa_cgf_test  := $(BUILD_DIR)/util/spa_cgf.o
 TESTOBJS_bench_spa_cgf := $(BUILD_DIR)/util/spa_cgf.o
+# bench_spa_tail times the tail path against the linear tail log10p_unify
+# Stage 3 deleted; spa.hpp is header-only but reaches math_helper's pnorm and
+# pnormLog, which are out of line.
+TESTOBJS_bench_spa_tail := $(BUILD_DIR)/util/math_helper.o
 # bench_hwe times the deleted linear HWE test against plink2's HweLnP, which
 # reaches it through the geno_factory wrapper.
 TESTOBJS_bench_hwe := \

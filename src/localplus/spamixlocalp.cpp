@@ -869,13 +869,13 @@ double computePhiVariance(
 // The saddlepoint itself lives in localplus/spamixlocalp_cgf.hpp (tier 3 of
 // the split described in util/spa.hpp): the CGF of the outlier block is the
 // shared `spa_cgf::binomHapcount` kernel, the root finder and the
-// Barndorff-Nielsen tail are `spa::solveSaddlepoint` and `spa::bnTail`, and
+// Barndorff-Nielsen tail are `spa::solveSaddlepoint` and `spa::bnTailLog`, and
 // the two-sided assembly and the SPA_STATUS enumeration are `spa::`.  What
 // remains here is what touches subjects: the outlier gather, the Gaussian
 // block over the non-outliers, and the normal short-circuit.
 // ======================================================================
 
-spa::TwoSided spaLocalPval(
+spa::Result spaLocalPval(
     double S,
     double sMean,
     double varDiag,
@@ -894,7 +894,7 @@ spa::TwoSided spaLocalPval(
     if (!(varS > 0.0) || !std::isfinite(varS) || !std::isfinite(S) ||
         !std::isfinite(sMean)) {
         const double nan = std::numeric_limits<double>::quiet_NaN();
-        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
+        return spa::Result{nan, spa::Status::NaNoTest};
     }
 
     const double z = (S - sMean) / std::sqrt(varS);
@@ -1515,7 +1515,7 @@ static void runUnifiedGWAS(
                             double varS      = varOffRaw * qTerm + diagVar;
 
                             auto hapCol = bHapBig.col(b * K + k);
-                            const spa::TwoSided res = spaLocalPval(
+                            const spa::Result res = spaLocalPval(
                                 S, sMean, diagVar,
                                 R_mat.col(p), hapCol,
                                 q, varS, outliers[p], spaScratch, spaCutoff);
@@ -1525,7 +1525,11 @@ static void runUnifiedGWAS(
                                                          : std::numeric_limits<double>::quiet_NaN();
 
                             buf += '\t';
-                            writeNum(buf, fmtBuf, res.p);
+                            // P from LOG10P: the saddlepoint tier stopped
+                            // assembling a linear tail in log10p_unify
+                            // Stage 3, and this column goes in Stage 8.
+                            writeNum(buf, fmtBuf,
+                                     spa::pFromNegLog10P(res.negLog10p));
                             buf += '\t';
                             writeNum(buf, fmtBuf, res.negLog10p);
                             buf += '\t';

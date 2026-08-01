@@ -142,7 +142,7 @@ class SPACoxMethod : public MethodBase {
 // ---- Two-sided saddlepoint p-value ----
 //
 // Both tails are solved with spa::solveSaddlepoint and evaluated with
-// spa::bnTail / spa::bnTailLog, then assembled by spa::assemble.  The
+// spa::bnTailLog, then assembled by spa::assemble.  The
 // only SPACox-specific part is the CGF callable, which is why these take one.
 //
 // `getProbSpaBucketed` is stage 1 (weights collapsed into buckets, P1);
@@ -153,13 +153,13 @@ class SPACoxMethod : public MethodBase {
 // SPACox standardizes its weights, so |zNorm| equals `absZ` — the two are
 // still passed separately so the call site, not a comment, is what has to
 // hold.
-    spa::TwoSided getProbSpaBucketed(
+    spa::Result getProbSpaBucketed(
         const spacox_cgf::GenoWeights &gw,
         double absZ,
         double zNorm
     ) const;
 
-    spa::TwoSided getProbSpaDense(
+    spa::Result getProbSpaDense(
         const double *w,
         int n,
         double absZ,
@@ -179,7 +179,7 @@ class SPACoxMethod : public MethodBase {
 // SE = 1 / sqrt(Var(S)) consume this variance so that both stages
 // share the same nominal Fisher information.  Set to zero for
 // degenerate markers where Var(S) ≤ 0.
-    spa::TwoSided getMarkerPvalCore(
+    spa::Result getMarkerPvalCore(
         const Eigen::Ref<const Eigen::VectorXd> &GVec,
         double altFreq,
         double S,
@@ -190,7 +190,7 @@ class SPACoxMethod : public MethodBase {
 // Push P, LOG10P, Z, Z_Norm, BETA, SE, SPA_STATUS in header order.
     static void pushResult(
         std::vector<double> &out,
-        const spa::TwoSided &ts,
+        const spa::Result &ts,
         double S,
         double scoreVar
     );

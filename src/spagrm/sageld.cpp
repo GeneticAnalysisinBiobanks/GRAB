@@ -380,8 +380,11 @@ double sageldMarkerLambdaPval(
     // the saddlepoint Status.  SAGELD's output surface is unchanged by this
     // stage (it gains no LOG10P / SPA_STATUS columns of its own), so only P is
     // consumed here; a saddlepoint failure still reports NA in P, now for a
-    // reason the SPAGRM output would name.
-    return sg.getMarkerPvalFromScore(Score_i, altFreq, zScore, outScoreVar).p;
+    // reason the SPAGRM output would name.  log10p_unify Stage 7 stops
+    // discarding the other two; Stage 3 only changes where the P comes from,
+    // since -log10(P) is now the sole quantity the tier assembles.
+    return spa::pFromNegLog10P(
+        sg.getMarkerPvalFromScore(Score_i, altFreq, zScore, outScoreVar).negLog10p);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -501,7 +504,9 @@ class SAGELDMethod : public MethodBase {
                 // Mean-λ path (SG-1 centering unchanged).
                 score = GVec.dot(env.spagrm_combined.resid()) -
                         gMean * env.spagrm_combined.residSum();
-                pGxE = env.spagrm_combined.getMarkerPvalFromScore(score, altFreq, zGxE, &scoreVar).p;
+                pGxE = spa::pFromNegLog10P(
+                    env.spagrm_combined.getMarkerPvalFromScore(
+                        score, altFreq, zGxE, &scoreVar).negLog10p);
             }
 
             if (scoreVar > 0.0) {

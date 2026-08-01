@@ -7,7 +7,8 @@ namespace math {
 
 namespace {
 
-constexpr double kLn2      = 0.69314718055994530942;  // ln 2
+// kLn2 and kLn10 live in the header (math::kLn2 / math::kLn10); this file
+// reads them from there rather than keeping a second spelling.
 constexpr double kLnPi     = 1.14472988584940017414;  // ln π
 constexpr double kLn2OverPi = kLn2 - kLnPi;           // ln(2/π)
 
@@ -78,6 +79,11 @@ double zFromNegLog10P(
     // 04_validation.md §2 invariant 3.
     const double tol = 4.0 * std::numeric_limits<double>::epsilon() * std::fabs(target);
     for (int it = 0; it < kZMaxIter; ++it) {
+        // `kLn2 + lnPhi` IS normalTwoSidedLog(z) for the z > 0 this loop
+        // maintains, and is bit-identical to it.  It is spelled out rather
+        // than called because the derivative below needs lnPhi on its own, and
+        // recovering it as (normalTwoSidedLog(z) − kLn2) would not round back
+        // to the same double.
         const double lnPhi = pnormLog(-z, 0.0, 1.0, /*lower_tail=*/true);
         const double f     = kLn2 + lnPhi - target;
         if (std::fabs(f) <= tol) break;

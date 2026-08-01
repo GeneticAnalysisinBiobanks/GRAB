@@ -210,10 +210,27 @@ inline double pt(
 // Stages 4, 5 and 7 switch their call sites over.
 // ──────────────────────────────────────────────────────────────────────
 
-// ln 10.  One spelling for the tier.  (spa::detail::kLn10 in src/util/spa.hpp
-// carries the same value; the saddlepoint tier should forward to this one when
-// it is next edited — see 02_inventory.md §2.2.)
+// ln 10 and ln 2.  One spelling for the tier: `spa::detail::kLn10` and
+// `spa::detail::kLn2` are forwards to these (02_inventory.md §2.2), and
+// math_helper.cpp's own uses read them from here.
 inline constexpr double kLn10 = 2.30258509299404568402;
+inline constexpr double kLn2  = 0.69314718055994530942;
+
+// Natural logarithm of the two-sided normal tail, ln(2·Φ(−|z|)).
+//
+// The one implementation of that quantity in the tree.  It is the p-value of
+// the normal branch (|Z| ≤ --spa-z-threshold), of the D5 fallback when the
+// saddlepoint fails, and of every Wald leg; `spa::normalTwoSidedLog` is a
+// forward to it, and `zFromNegLog10P` above inverts it.
+//
+// Written on the log scale throughout rather than as log(2·pnorm(−|z|)):
+// `pnormLog` keeps the Mills-ratio asymptote past |z| ≈ 37, where the linear
+// tail underflows to exactly zero and its logarithm is −∞.  NaN propagates;
+// z = 0 gives ln 1 = 0 exactly.
+inline double normalTwoSidedLog(double z) {
+    if (std::isnan(z)) return std::numeric_limits<double>::quiet_NaN();
+    return kLn2 + pnormLog(-std::fabs(z), 0.0, 1.0, /*lower_tail=*/true);
+}
 
 // Two-sided p-value → signed z, taking the p-value as L = −log10(P).
 //

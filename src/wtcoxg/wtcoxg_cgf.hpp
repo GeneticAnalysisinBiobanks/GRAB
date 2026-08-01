@@ -59,8 +59,8 @@
 //     reporting of it: five conditions, each returning a bare NaN, and a
 //     caller that wrote `std::min(1.0, pval1 + pval2)` — which returns 1.0
 //     when either tail is NaN, so every failure surfaced as a perfectly null
-//     marker (01_findings.md D2).  `spa::bnTail` keeps every one of those
-//     guards and names which one fired; `spa::combineTails` propagates the
+//     marker (01_findings.md D2).  `spa::bnTailLog` keeps every one of those
+//     guards and names which one fired; `spa::combineTailsLog` propagates the
 //     failure as NaN plus a status instead of masking it.
 //
 // ══════════════════════════════════════════════════════════════════════
@@ -91,7 +91,7 @@
 //      by (wtcoxg.cpp:464-467 before this change).
 //   2. `kFull` returns K built from varK01 and K'' built from varK2, so the
 //      tail receives the same mismatched pair as before.
-//   3. `spa::bnTail` takes K0 and K2 as opaque scalars and its documentation
+//   3. `spa::bnTailLog` takes K0 and K2 as opaque scalars and its documentation
 //      says why: a kernel that assumed K2 = K0'' and "corrected" one of them
 //      would compute a different statistic from the one WtCoxG defines.
 //
@@ -185,7 +185,7 @@ inline spa::K012 kFull(double t, const Context &c, double s) noexcept {
 // `zNorm` is the caller's raw score z = S / sqrt(Var S).  It is a parameter
 // rather than absDev/sqrt(indepVar) because the caller has already divided S
 // by the variance ratio, so the two are not the same number.
-inline spa::TwoSided twoSidedSpa(
+inline spa::Result twoSidedSpa(
     const Context &c,
     double absDev,
     double indepVar,
@@ -198,7 +198,7 @@ inline spa::TwoSided twoSidedSpa(
         if (std::isfinite(e) && e > 0.0) zeta0 = (e > 1.2) ? 1.2 : e;
     }
 
-    double p[2], logp[2];
+    double logp[2];
     spa::Status st[2];
 
     for (int k = 0; k < 2; ++k) {
@@ -216,16 +216,16 @@ inline spa::TwoSided twoSidedSpa(
             [&](double t) { return kFull(t, c, s); },
             opt);
 
-        spa::Status stLin = spa::Status::SpaOk;
         spa::Status stLog = spa::Status::SpaOk;
-        p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
-        st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
+        st[k] = spa::worseStatus(sd.status, stLog);
     }
 
-    // P from the linear-scale assembly, -log10(P) from the log-domain one,
-    // and the D5 fallback when either tail failed — one call, in spa.hpp.
-    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
+    // The two-sided assembly and the D5 fallback when either tail failed —
+    // one call, in spa.hpp.  One tail evaluation per side: the linear sibling
+    // of `bnTailLog` that used to run beside it is gone with the P column's
+    // parallel assembly (log10p_unify Stage 3).
+    return spa::assemble(logp[0], logp[1], st[0], st[1], zNorm);
 }
 
 // The SPA_STATUS output column.  MethodBase hands the engine a

@@ -45,7 +45,7 @@
 //
 //   7. THE g0 GUARD FIRES.  A degenerate class-3 table (all probabilities zero)
 //      used to reach `std::log` with a non-positive argument silently; it must
-//      now produce a non-finite K, which spa::bnTail reports as NONFINITE.
+//      now produce a non-finite K, which spa::bnTailLog reports as NONFINITE.
 
 #include <cfloat>
 #include <cmath>
@@ -615,10 +615,10 @@ TEST(degenerate_class3_table_yields_a_non_finite_k_not_a_silent_log_of_zero) {
     const spa::K012 F = spagrm_cgf::kFull(0.5, c, 0.0);
     CHECK(!std::isfinite(F.k0));
 
-    // And spa::bnTail turns that into NaN plus a named status rather than
-    // forwarding it into math::pnorm.
+    // And spa::bnTailLog turns that into NaN plus a named status rather than
+    // forwarding it into math::pnormLog.
     spa::Status st = spa::Status::SpaOk;
-    const double p = spa::bnTail(0.5, 1.0, F.k0, 1.0, /*lowerTail=*/false, st);
+    const double p = spa::bnTailLog(0.5, 1.0, F.k0, 1.0, /*lowerTail=*/false, st);
     CHECK(std::isnan(p));
     CHECK(!spa::statusIsUsable(st));
 }
