@@ -1,7 +1,7 @@
 // wald.cpp — Standard-model Wald tests for the last coefficient of a design.
 //
-// Fits a standard model and returns the two-sided Wald p-value of the LAST
-// coefficient of the supplied design.  The numeric patterns mirror
+// Fits a standard model and returns  L = −log10 P  of the two-sided Wald
+// p-value of the LAST coefficient of the supplied design.  The numeric patterns mirror
 // src/util/regression.cpp (OLS / IRLS / Breslow-Cox Newton / proportional-odds
 // Fisher scoring), but here the fitters retain the coefficient covariance —
 // [information]⁻¹ — instead of a residual, and extract the (last, last) element
@@ -22,10 +22,17 @@
 //
 // A singular information matrix, non-convergence, or a degenerate design
 // returns NaN.
+//
+// The four fitters returned a linear p until log10p_unify Stage 7; both tails
+// they invert underflow to exactly zero inside the range a genome-wide scan
+// reaches, so the magnitude is now what leaves the file (decision D1).  The
+// two tails are evaluated by `math::ptLog` (Student-t, DLMF 8.17.7 below
+// Boost's underflow — 01_numerics §3.3) and `math::normalTwoSidedLog`
+// (normal); neither has a floor, so neither imposes one on L.
 
 #include "util/wald.hpp"
 
-#include "util/math_helper.hpp" // math::pnorm, math::pt
+#include "util/math_helper.hpp" // math::kLn10, math::ptLog, math::normalTwoSidedLog
 
 #include <algorithm>
 #include <cmath>
@@ -71,11 +78,28 @@ double invDiagLast(const Eigen::MatrixXd &M) {
     return std::isfinite(d) ? d : -1.0;
 }
 
+// L = −log10 P from ln P.  The sign of zero is normalized: at the tested
+// coefficient exactly zero both tails return ln P = +0.0, and −(+0.0)/ln10 is
+// −0.0, which `plink2::dtoa_g` prints as "-0".  Nothing else is adjusted — a
+// genuinely negative L would be a C2 violation (04_validation §2) and must
+// reach the reader rather than be clamped away.
+inline double negLog10FromLn(double lnP) noexcept {
+    double L = -lnP / math::kLn10;
+    if (L == 0.0) L = 0.0;
+    return L;
+}
+
+// L of the two-sided normal tail 2Φ(−|z|), shared by the three fitters whose
+// reference distribution is the normal (logistic / Cox / ordinal).
+inline double normalLog10P(double z) noexcept {
+    return negLog10FromLn(math::normalTwoSidedLog(z));
+}
+
 } // namespace
 
 // ── Linear: OLS, Var(β̂) = σ̂²(ZᵀZ)⁻¹, Student-t with n−k df ─────────────────
 // Z includes the intercept column; the tested coefficient is Z's last column.
-double lastCoefLinearPval(const Eigen::MatrixXd &Z, const Eigen::VectorXd &y) {
+double lastCoefLinearLog10P(const Eigen::MatrixXd &Z, const Eigen::VectorXd &y) {
     const Eigen::Index n = Z.rows(), k = Z.cols();
     if (n <= k) return kNaN;
     const Eigen::MatrixXd ZtZ = Z.transpose() * Z;
@@ -91,12 +115,16 @@ double lastCoefLinearPval(const Eigen::MatrixXd &Z, const Eigen::VectorXd &y) {
     const double se = std::sqrt(sigma2 * invLast);
     if (!(se > 0.0) || !std::isfinite(se)) return kNaN;
     const double t = beta[k - 1] / se;
-    return 2.0 * math::pt(-std::abs(t), df); // two-sided Pr(>|t|)
+    // −log10 of the two-sided Pr(>|t|).  math::ptLog is the same quantity
+    // 2·pt(−|t|, df) evaluated as ln I_x(df/2, 1/2), x = df/(df+t²): Boost's
+    // regularized incomplete beta wherever that returns a normal double, and
+    // the DLMF 8.17.7 hypergeometric series below it.
+    return negLog10FromLn(math::ptLog(t, df));
 }
 
 // ── Logistic: IRLS to convergence, Var(β̂) = (ZᵀWZ)⁻¹, normal reference ─────
 // Z includes the intercept column; the tested coefficient is Z's last column.
-double lastCoefLogisticPval(const Eigen::MatrixXd &Z, const Eigen::VectorXd &y) {
+double lastCoefLogisticLog10P(const Eigen::MatrixXd &Z, const Eigen::VectorXd &y) {
     const Eigen::Index n = Z.rows(), k = Z.cols();
     if (n <= k) return kNaN;
     const double nCase = y.sum();
@@ -134,12 +162,12 @@ double lastCoefLogisticPval(const Eigen::MatrixXd &Z, const Eigen::VectorXd &y) 
     const double se = std::sqrt(invLast);
     if (!(se > 0.0) || !std::isfinite(se)) return kNaN;
     const double zstat = beta[k - 1] / se;
-    return 2.0 * math::pnorm(-std::abs(zstat));
+    return normalLog10P(zstat);
 }
 
 // ── Cox: Breslow partial-likelihood Newton, Var(β̂) = H⁻¹, normal reference ──
 // X has no intercept (baseline hazard); the tested coefficient is X's last column.
-double lastCoefCoxPval(
+double lastCoefCoxLog10P(
     const Eigen::VectorXd &time,
     const Eigen::VectorXd &event,
     const Eigen::MatrixXd &X
@@ -227,7 +255,7 @@ double lastCoefCoxPval(
     const double se = std::sqrt(invLast);
     if (!(se > 0.0) || !std::isfinite(se)) return kNaN;
     const double zstat = beta[p - 1] / se;
-    return 2.0 * math::pnorm(-std::abs(zstat));
+    return normalLog10P(zstat);
 }
 
 // ── Ordinal: proportional-odds Fisher scoring, normal reference ─────────────
@@ -236,7 +264,7 @@ double lastCoefCoxPval(
 // so the tested coefficient is the final θ element.  The covariance uses the
 // observed information (analytic −∂²ℓ/∂θ∂θᵀ at the MLE, matching clm) by default,
 // or the BHHH outer-product information when `info == OrdinalInfo::BHHH`.
-double lastCoefOrdinalPval(const Eigen::VectorXi &y, const Eigen::MatrixXd &X,
+double lastCoefOrdinalLog10P(const Eigen::VectorXi &y, const Eigen::MatrixXd &X,
                            OrdinalInfo info) {
     const Eigen::Index n = X.rows(), p = X.cols();
     if (n <= p) return kNaN;
@@ -389,7 +417,7 @@ double lastCoefOrdinalPval(const Eigen::VectorXi &y, const Eigen::MatrixXd &X,
     const double se = std::sqrt(invLast);
     if (!(se > 0.0) || !std::isfinite(se)) return kNaN;
     const double zstat = beta[p - 1] / se; // tested coefficient is β's last element
-    return 2.0 * math::pnorm(-std::abs(zstat));
+    return normalLog10P(zstat);
 }
 
 } // namespace wald

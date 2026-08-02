@@ -11,8 +11,9 @@
 // Threading model: per-marker QR refit is driven through MethodBase /
 // multiPhenoEngine (no-LOCO) or locoEngine (LOCO) — identical to the
 // score-mode dispatch.  Output is plink2-style one-marker-per-line wide
-// format with LOG10P_CCT + P_tau* + Z_tau* + BETA_tau* + SE_tau* columns,
-// written via TextWriter honoring --compression {gz, zst}.
+// format with LOG10P_CCT + P_tau* + LOG10P_tau* + Z_tau* + BETA_tau* +
+// SE_tau* + SPA_STATUS_tau* columns, written via TextWriter honoring
+// --compression {gz, zst}.
 
 #include "spasqr/spasqr.hpp"
 #include "spasqr/qmme.hpp"
@@ -210,17 +211,32 @@ class SPAsqrWaldMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 1 + 4 * static_cast<int>(m_shared->taus.size());
+        return 1 + 6 * static_cast<int>(m_shared->taus.size());
     }
 
+    // LOG10P_CCT, then six per-tau groups: P, LOG10P, Z, BETA, SE, SPA_STATUS.
+    // The grouping (all taus of one quantity, then all taus of the next) is
+    // score mode's, and LOG10P / SPA_STATUS are placed exactly where score mode
+    // places them — LOG10P after the P group, SPA_STATUS appended last — so the
+    // two modes remain readable against each other.
+    //
+    // SPA_STATUS_tau is `1 NORMAL` on every tau that produced a test: this leg
+    // is a plain Wald z against the normal, so no saddlepoint is ever attempted
+    // and decision D4 assigns exactly that code to a test which does not use
+    // one.  A tau whose sandwich variance is not usable (the LDLT failed, or
+    // V[γγ] <= 0) has no statistic at all and takes `8 NA_NO_TEST` with P,
+    // LOG10P, Z, BETA and SE all NA.  There is no fallback in between, because
+    // a variance that does not exist leaves nothing to fall back to.
     std::string getHeaderColumns() const override {
         std::ostringstream oss;
         const auto &labels = m_shared->tauLabels;
         oss << "\tLOG10P_CCT";
-        for (const auto &lab : labels) oss << "\tP_"    << lab;
-        for (const auto &lab : labels) oss << "\tZ_"    << lab;
-        for (const auto &lab : labels) oss << "\tBETA_" << lab;
-        for (const auto &lab : labels) oss << "\tSE_"   << lab;
+        for (const auto &lab : labels) oss << "\tP_"          << lab;
+        for (const auto &lab : labels) oss << "\tLOG10P_"     << lab;
+        for (const auto &lab : labels) oss << "\tZ_"          << lab;
+        for (const auto &lab : labels) oss << "\tBETA_"       << lab;
+        for (const auto &lab : labels) oss << "\tSE_"         << lab;
+        for (const auto &lab : labels) oss << "\tSPA_STATUS_" << lab;
         return oss.str();
     }
 
@@ -238,6 +254,8 @@ class SPAsqrWaldMethod : public MethodBase {
         std::vector<double> zs   (ntaus, std::numeric_limits<double>::quiet_NaN());
         std::vector<double> ps   (ntaus, std::numeric_limits<double>::quiet_NaN());
         std::vector<double> Ls   (ntaus, std::numeric_limits<double>::quiet_NaN());
+        std::vector<double> sts  (ntaus,
+            static_cast<double>(static_cast<uint8_t>(spa::Status::NaNoTest)));
 
         // GVec is pheno-dense, NaN-imputed by the engine.
         const Eigen::VectorXd G = GVec;
@@ -264,11 +282,13 @@ class SPAsqrWaldMethod : public MethodBase {
                 // what the Cauchy combination is taken over.  Carrying L and
                 // deriving P from it (log10p_unify Stage 5, the pattern Stage 3
                 // established for the tier's own P column) removes that ceiling
-                // from LOG10P_CCT.  The P_tau group is derived through
-                // spa::pFromNegLog10P until Stage 8 deletes it, and Stage 7
-                // replaces it with LOG10P_tau and adds SPA_STATUS_tau.
+                // from LOG10P_CCT.  Since Stage 7 the magnitude is also a
+                // column of its own, and the P_tau group is derived through
+                // spa::pFromNegLog10P until Stage 8 deletes it.
                 Ls[t]    = -spa::normalTwoSidedLog(z) / math::kLn10;
                 ps[t]    = spa::pFromNegLog10P(Ls[t]);
+                sts[t]   = static_cast<double>(
+                    static_cast<uint8_t>(spa::Status::Normal));
             }
         }
 
@@ -281,9 +301,11 @@ class SPAsqrWaldMethod : public MethodBase {
         result.reserve(resultSize());
         result.push_back(lCCT);
         for (double p : ps)    result.push_back(p);
+        for (double L : Ls)    result.push_back(L);
         for (double z : zs)    result.push_back(z);
         for (double b : betas) result.push_back(b);
         for (double s : ses)   result.push_back(s);
+        for (double s : sts)   result.push_back(s);
     }
 
     int preferredBatchSize() const override {

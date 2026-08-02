@@ -444,8 +444,12 @@ TESTOBJS_wtcoxg_cgf_test := \
 # assertions to a suite that already links rather than changing both at once.
 # Stage 9 additionally cross-checks LOG10P_HWE, so the suite links the HWE
 # wrapper and plink2's statistics object that supplies HweLnP behind it.
+# Stage 7 adds the shared Wald tier (src/util/wald.cpp): its four fitters now
+# return L = -log10 P, and § 9 of the suite checks that tail against Boost's
+# ibeta and against the closed-form 2x2-table Wald test.
 TESTOBJS_log10p_test := \
     $(BUILD_DIR)/util/math_helper.o \
+    $(BUILD_DIR)/util/wald.o \
     $(BUILD_DIR)/geno_factory/hwe.o \
     $(BUILD_DIR)/pgenlib/plink2_stats.o \
     $(BUILD_DIR)/pgenlib/plink2_base.o \

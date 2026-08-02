@@ -482,7 +482,14 @@ inline const FlagDef kSpasqrMode = {
           small marker sets — see --chunk-ksnp for details.  Output is
           plink2-style one-marker-per-line wide format:
           CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
-          LOG10P_CCT P_tau{val}... Z_tau{val}... BETA_tau{val}... SE_tau{val}...
+          LOG10P_CCT P_tau{val}... LOG10P_tau{val}... Z_tau{val}...
+          BETA_tau{val}... SE_tau{val}... SPA_STATUS_tau{val}...
+          SPA_STATUS_tau is 1 (NORMAL) wherever the tau produced a test: the
+          Wald leg is a plain z against the normal reference and never runs a
+          saddlepoint, which is the case that code covers.  A tau whose
+          sandwich variance is unusable (the LDLT failed, or V[gg] <= 0) has
+          no statistic at all and takes 8 (NA_NO_TEST) with every other cell
+          of that tau NA.
           (--pred-list gives y_resp = Y − loco_chr; --compression honored.))"
 };
 
@@ -620,7 +627,8 @@ inline const FlagDef kEnvirName = {
 test.  Each name must match a numeric column of --pheno and must also appear
 in --covar-name.  Usage differs by method:
   SPAGxE / SPAGxEmix — multiple envs are comma-separated; each produces its
-    own 5-wide output block (P_Gx<E> Z_Gx<E> Z_Norm_Gx<E> BETA_Gx<E> SE_Gx<E>).
+    own 8-wide output block (P_Gx<E> LOG10P_Gx<E> LOG10P_Wald_Gx<E> Z_Gx<E>
+    Z_Norm_Gx<E> BETA_Gx<E> SE_Gx<E> SPA_STATUS_Gx<E>).
     E enters the genotype-independent null model  trait ~ X + E  (fixed
     effect); the model is fit once and reused across envs (only lambda differs).
   SAGELD (pheno mode) — a single env column, REQUIRED together with
@@ -759,7 +767,25 @@ inline const MethodDef kSAGELD = {
     R"(Residual mode: PREFIX.SAGELD[.gz|.zst]   single file
   Pheno mode:    PREFIX.<COL>.SAGELD[.gz|.zst]   one file per --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P_G  P_Gx<E1>  [...]  Z_G  Z_Gx<E1>  [...])",
+  P_G  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+  P_Gx<E1>  LOG10P_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>
+            SPA_STATUS_Gx<E1>   [... per env]
+  --sageld-method gallop replaces the G×E block with the exact Wald pair
+  P_Gx<E> LOG10P_Gx<E> Z_Gx<E> BETA_Gx<E> SE_Gx<E> SPA_STATUS_Gx<E> (no Z_Norm:
+  the GALLOP z is already p-consistent).
+    LOG10P_*      -log10 of the p beside it, computed in the log domain so it
+                  survives past the point where the linear-scale tail
+                  underflows (p ~ 1e-316).  P is 10^(-LOG10P).
+    SPA_STATUS_*  outcome of the test that produced the p-value, as the
+                  integer spa::Status.  SPA_STATUS_G is 1 (NORMAL) wherever
+                  Var(S_G) > 0 -- the G main effect is a plain two-sided
+                  normal test and never attempts a saddlepoint -- and 8
+                  (NA_NO_TEST) where it is not.  SPA_STATUS_Gx is the
+                  saddlepoint outcome of that environment's G×E score test,
+                  the same encoding --method spagrm reports, because SAGELD
+                  runs the same SPAGRMClass; under --sageld-method gallop it
+                  is 1 (NORMAL) on both blocks, GALLOP being a Wald test.
+                  Filter with SPA_STATUS <= 2 before judging significance.)",
     R"(Two input modes (mutually exclusive):
   Residual mode — supply lme4::lmer() residuals directly via --resid-name.
                   Column layout: R_G followed by (R_<E>, R_Gx<E>) pairs.
@@ -793,8 +819,8 @@ inline const MethodDef kSPAGxE = {
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAGxE[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P_G  Z_G  BETA_G  SE_G
-  P_Gx<E1>  LOG10P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
+  P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+  P_Gx<E1>  LOG10P_Gx<E1>  LOG10P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
             BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
     LOG10P_*      -log10(P_Gx), computed in the log domain on every path, so
                   it survives past the point where the linear-scale tail
@@ -803,20 +829,28 @@ inline const MethodDef kSPAGxE = {
                   and that combination is taken over the two magnitudes as
                   well: the Cauchy statistic's terms are 1/(pi*p) and so
                   overflow for p <= 1e-308, which is why it is never formed.
-                  P_Gx is 10^(-LOG10P_Gx).  One ceiling is left, on the Wald
-                  leg alone: it is still produced as a linear p, so a Wald p
-                  that underflowed to exactly zero enters the combination as
-                  an infinite magnitude.
-    SPA_STATUS_*  per-environment saddlepoint outcome: 0 OK, 1 MAXITER,
-                  2 GUARD_TEMP, 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE,
-                  6 NORMAL (|Z| below --spa-z-threshold, saddlepoint not
-                  attempted).  It always describes the SADDLEPOINT leg: in
-                  Branch B a failed saddlepoint whose Wald refit succeeded
-                  still yields a finite P_Gx, and the status is the only
-                  record that the SPA leg dropped out of the combination.
-  The marginal block P_G Z_G BETA_G SE_G is always the normal approximation,
-  never a saddlepoint, so it carries neither column; -log10(P_G) is recoverable
-  from the exact Z_G.)",
+                  P_Gx is 10^(-LOG10P_Gx).  The Branch-B Wald leg is reported
+                  as a magnitude too (LOG10P_Wald_Gx, NA where no Wald ran),
+                  and enters the combination as one, so no leg of it has an
+                  underflow ceiling.
+    SPA_STATUS_*  per-environment saddlepoint outcome: 0 SPA_OK, 1 NORMAL
+                  (|Z| below --spa-z-threshold, saddlepoint not attempted, or
+                  the test does not use one), 2 SPA_W_SINGULAR (degraded
+                  success), 3-6 the saddlepoint failed and LOG10P_Gx is the
+                  substituted two-sided normal tail (3 MAXITER, 4 GUARD_TEMP,
+                  5 GUARD_CURV, 6 NONFINITE), 7 NA_POST_FAIL and 8 NA_NO_TEST
+                  with LOG10P_Gx = NA.  Filter with SPA_STATUS <= 2 before
+                  judging significance.  SPA_STATUS_Gx always describes the
+                  SADDLEPOINT leg: in Branch B a failed saddlepoint whose Wald
+                  refit succeeded still yields a finite P_Gx, and the status is
+                  the only record that the SPA leg dropped out of the
+                  combination.
+  The marginal block is always the normal approximation, never a saddlepoint,
+  so SPA_STATUS_G is 1 (NORMAL) wherever Var(S_G) > 0 and 8 (NA_NO_TEST) where
+  it is not.  Its p-value is still reported on the linear scale as P_G; until
+  that column moves to the -log10 scale like the rest, its magnitude is
+  recoverable from the exact Z_G, which the normal approximation makes
+  p-consistent by construction.)",
     R"(Every --envir-name column must also appear in --covar-name (it enters the
 genotype-independent null model  trait ~ X + E).  Passing an optional sparse
 GRM (--sp-grm-grab / --sp-grm-plink2) engages the SPAGxE+ relatedness-corrected
@@ -846,13 +880,13 @@ inline const MethodDef kSPAGxEmix = {
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAGxEmix[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P_G  Z_G  BETA_G  SE_G
-  P_Gx<E1>  LOG10P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
+  P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+  P_Gx<E1>  LOG10P_Gx<E1>  LOG10P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
             BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
     LOG10P_* and SPA_STATUS_* are as documented under --method spagxe.
   A marker whose per-individual allele frequencies all saturate at 0 or 1
-  has Var(S_G) = 0 and no statistic at all: the whole row is NA with
-  SPA_STATUS 5 (NONFINITE).  Three of the 3000 markers in the bundled
+  has Var(S_G) = 0 and no statistic at all: every p-value cell of the row is
+  NA and both status columns are 8 (NA_NO_TEST).  Three of the 3000 markers in the bundled
   examples/1kg fixture are of that kind, all with ALT_FREQ > 0.99.)",
     R"(SPAGxEmix accounts for admixture by estimating a per-individual allele
 frequency q_i from the --pc-cols principal components (the same cascade as

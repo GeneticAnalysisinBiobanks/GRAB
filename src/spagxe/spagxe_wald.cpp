@@ -10,7 +10,10 @@
 // This file assembles the full-interaction design  M = [covar | g | g∘E]  per
 // marker (the interaction g∘E is the appended last column), drops incomplete-
 // case rows, and calls the matching standard-model Wald fitter in
-// src/util/wald.hpp to obtain the two-sided Wald p-value of the G:E coefficient.
+// src/util/wald.hpp to obtain the MAGNITUDE  L = −log10 P  of the two-sided
+// Wald p-value of the G:E coefficient (log10p_unify Stage 7; the fitters
+// returned a linear p until then, and that p was the last quantity in this
+// path with an underflow ceiling).
 // The fitters themselves (OLS / logistic IRLS / Breslow-Cox Newton /
 // proportional-odds Fisher scoring) live in namespace wald so any method can
 // share them without depending on SPAGxE.
@@ -21,7 +24,7 @@
 
 #include "spagxe/spagxe_wald.hpp"
 
-#include "util/wald.hpp" // wald::lastCoef*Pval, wald::OrdinalInfo
+#include "util/wald.hpp" // wald::lastCoef*Log10P, wald::OrdinalInfo
 
 #include <cmath>
 #include <limits>
@@ -37,7 +40,7 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 // Dispatcher — assemble  M = [covar | g | g∘E], drop NaN rows, fit per trait.
 // ══════════════════════════════════════════════════════════════════════════
 
-double waldInteractionPval(
+double waldInteractionLog10P(
     const WaldData &wd,
     const Eigen::Ref<const Eigen::VectorXd> &g,
     const Eigen::Ref<const Eigen::VectorXd> &E,
@@ -84,8 +87,8 @@ double waldInteractionPval(
         Z.rightCols(M.cols()) = Mf;
         Eigen::VectorXd yf(m);
         for (Eigen::Index i = 0; i < m; ++i) yf[i] = wd.y[keep[i]];
-        return (wd.trait == TraitType::Linear) ? wald::lastCoefLinearPval(Z, yf)
-                                               : wald::lastCoefLogisticPval(Z, yf);
+        return (wd.trait == TraitType::Linear) ? wald::lastCoefLinearLog10P(Z, yf)
+                                               : wald::lastCoefLogisticLog10P(Z, yf);
     }
     case TraitType::Cox: {
         Eigen::VectorXd tf(m), ef(m);
@@ -93,13 +96,13 @@ double waldInteractionPval(
             tf[i] = wd.time[keep[i]];
             ef[i] = wd.event[keep[i]];
         }
-        return wald::lastCoefCoxPval(tf, ef, Mf);
+        return wald::lastCoefCoxLog10P(tf, ef, Mf);
     }
     case TraitType::Ordinal: {
         Eigen::VectorXi yf(m);
         for (Eigen::Index i = 0; i < m; ++i)
             yf[i] = static_cast<int>(std::lround(wd.y[keep[i]]));
-        return wald::lastCoefOrdinalPval(yf, Mf, ordInfo);
+        return wald::lastCoefOrdinalLog10P(yf, Mf, ordInfo);
     }
     default:
         return kNaN;

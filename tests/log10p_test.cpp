@@ -25,6 +25,7 @@
 //   § 5  pmvnorm2dHalfRectLog
 //   § 7  metaPvalueScorePool     (Stage 4)
 //   § 8  logAddExp / logSubExp   (Stage 6)
+//   § 9  the shared Wald tier    (Stage 7)
 //
 // Stage 9 appends its HweLnP cross-check as a new section immediately before
 // TINYTEST_MAIN at the end of the file; nothing here has to move for it.
@@ -35,6 +36,9 @@
 
 #include "util/math_helper.hpp"
 #include "util/spa.hpp"
+#include "util/wald.hpp"
+
+#include <Eigen/Dense>
 
 #include <boost/math/special_functions/beta.hpp>
 
@@ -557,14 +561,22 @@ TEST(stage5_spagxe_branch_b_two_legs) {
     const double waldOnly[] = {kNaN, -std::log10(3e-4)};
     CHECK_REL(math::cauchyCombineLog10(waldOnly, 2), -std::log10(3e-4), 1e-13);
 
-    // The Wald leg's remaining ceiling, stated as a test so that Stage 7 has a
-    // failing assertion to delete: a Wald p that underflowed to exactly zero
-    // gives L = +Inf, which the combination propagates.  This is the linear
-    // routine's own behaviour (it returned 0 there, whose -log10 is the same
-    // +Inf), not something Stage 5 introduced.
-    const double underflowed[] = {12.0, -std::log10(0.0)};
-    CHECK(std::isinf(underflowed[1]));
-    CHECK(std::isinf(math::cauchyCombineLog10(underflowed, 2)));
+    // Stage 5 left one ceiling here: the Wald leg arrived as a linear p, so a
+    // Wald tail past 1e-308 entered the combination as -log10(0) = +Inf and
+    // carried that infinity into LOG10P_Gx.  Stage 7 removed the ceiling at
+    // the source -- wald::lastCoef*Log10P returns the magnitude -- so what has
+    // to hold now is the positive statement: a Wald leg BELOW the linear
+    // underflow combines to a finite magnitude, and it is the leg that
+    // dominates.  See § 9 for the fitters that produce that magnitude.
+    const double deepWald[] = {12.0, 415.0};
+    const double gotDeep = math::cauchyCombineLog10(deepWald, 2);
+    CHECK(std::isfinite(gotDeep));
+    CHECK_NEAR(gotDeep, 415.0 - std::log10(2.0), 5e-7);
+    // The combination is still not defensible against an actual infinity, and
+    // must not silently launder one: +Inf in, +Inf out, so a caller that ever
+    // manufactures one sees it in the column rather than a plausible number.
+    const double infLeg[] = {12.0, std::numeric_limits<double>::infinity()};
+    CHECK(std::isinf(math::cauchyCombineLog10(infLeg, 2)));
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1406,6 +1418,180 @@ TEST(logSubExp_reports_a_negative_difference_rather_than_returning_one) {
     CHECK(std::isnan(math::logSubExp(-3.0, -2.0)));    // would be negative
     CHECK(std::isnan(math::logSubExp(nan, -2.0)));
     CHECK(std::isnan(math::logSubExp(-2.0, nan)));
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 9  The shared Wald tier  (added by Stage 7)
+//
+// src/util/wald.{hpp,cpp} holds the four standard-model fitters SPAsqr-wald,
+// SAGELD and SPAGxE share.  Stage 7 changed exactly one expression in each:
+// the two-sided tail that turns the fitted z (or t) into a p-value now
+// produces L = -log10 P instead of the linear p.  Everything above that line
+// -- the OLS solve, the IRLS, the Breslow Newton, the Fisher scoring, and the
+// (last,last) element of the inverse information -- is untouched, so these
+// tests are about the tail and about the ceiling it used to have.
+//
+// The references are outside the code under test: Boost's regularized
+// incomplete beta for the Student-t leg (04_validation §2, invariant 2), and
+// the closed-form 2x2-table log-odds-ratio MLE for the logistic leg.
+// ══════════════════════════════════════════════════════════════════════
+
+namespace {
+
+// A deterministic OLS design: n rows, [1 | x1 | x2], the tested coefficient
+// last.  `noise` scales the departure from an exactly linear y, and therefore
+// controls |t|: at noise = 0 the residual sum of squares is zero and t is
+// infinite, so the tests below pick a noise level for the regime they want.
+void makeLinearDesign(int n, double noise, Eigen::MatrixXd &Z, Eigen::VectorXd &y) {
+    Z.resize(n, 3);
+    y.resize(n);
+    for (int i = 0; i < n; ++i) {
+        const double u = static_cast<double>(i) / static_cast<double>(n - 1);
+        Z(i, 0) = 1.0;
+        Z(i, 1) = std::sin(7.0 * u);            // an uncorrelated-ish covariate
+        Z(i, 2) = u * u - 0.3 * u;              // the tested regressor
+        y(i) = 0.5 + 0.25 * Z(i, 1) + 3.0 * Z(i, 2)
+             + noise * std::sin(41.0 * u + 0.3);
+    }
+}
+
+// The t statistic of the last coefficient, recomputed by a different
+// factorization than wald.cpp uses (column-pivoted Householder QR, and an
+// explicit inverse for the variance element, rather than a Cholesky of ZᵀZ and
+// a solve against the last basis vector).
+double lastCoefTStat(const Eigen::MatrixXd &Z, const Eigen::VectorXd &y) {
+    const Eigen::Index n = Z.rows(), k = Z.cols();
+    const Eigen::VectorXd beta = Z.colPivHouseholderQr().solve(y);
+    const double rss = (y - Z * beta).squaredNorm();
+    const double df = static_cast<double>(n - k);
+    const double invLast = (Z.transpose() * Z).inverse()(k - 1, k - 1);
+    return beta[k - 1] / std::sqrt(rss / df * invLast);
+}
+
+} // namespace
+
+// The Student-t leg against Boost's ibeta, in the region where the linear
+// p-value is representable and the two spellings must agree.  This is the row
+// 04_validation §2 invariant 2 names for the Wald leg, and the tolerance it
+// states.
+TEST(stage7_wald_linear_matches_boost_ibeta_where_p_is_representable) {
+    for (double noise : {3.0, 0.5, 0.08}) {
+        Eigen::MatrixXd Z;
+        Eigen::VectorXd y;
+        makeLinearDesign(60, noise, Z, y);
+
+        const double t  = lastCoefTStat(Z, y);
+        const double df = 57.0;
+        const double p  = boost::math::ibeta(0.5 * df, 0.5, df / (df + t * t));
+        CHECK(p > 1e-300);                    // the regime this test is about
+
+        const double got = wald::lastCoefLinearLog10P(Z, y);
+        CHECK_REL(got, -std::log10(p), 1e-12);
+    }
+}
+
+// Past Boost's underflow the linear spelling returns exactly zero -- the
+// ceiling Stage 7 removed -- and the magnitude stays finite and keeps rising.
+// The pre-Stage-7 fitter would have handed its caller a p of 0, whose -log10
+// is +Inf: a C1 violation, and the reason the fitters return L at all.
+TEST(stage7_wald_linear_has_no_ceiling) {
+    Eigen::MatrixXd Z;
+    Eigen::VectorXd y;
+    makeLinearDesign(40, 1e-9, Z, y);
+
+    const double t  = lastCoefTStat(Z, y);
+    const double df = 37.0;
+    CHECK(std::fabs(t) > 1e6);
+    // The predecessor's value, evaluated the predecessor's way.
+    const double pLinear = boost::math::ibeta(0.5 * df, 0.5, df / (df + t * t));
+    CHECK(pLinear == 0.0);
+    CHECK(std::isinf(-std::log10(pLinear)));
+
+    const double got = wald::lastCoefLinearLog10P(Z, y);
+    CHECK(std::isfinite(got));
+    CHECK(got > 300.0);
+    // And it is the same quantity math::ptLog evaluates at that t -- the tie
+    // between this fitter and the tail § 4 pins against Boost.  The tolerance
+    // is 1e-8 rather than 1e-12 because `t` here comes from a DIFFERENT
+    // factorization than the fitter's, and at rss = 2e-17 the two agree only
+    // to about 4e-10 relative; ln I_x is roughly -df*ln|t| there, so that
+    // difference is amplified by df/L into the observed 8e-10.  It is a
+    // property of the two OLS solves, not of the tail.
+    CHECK_REL(got, -math::ptLog(t, df) / math::kLn10, 1e-8);
+}
+
+// The logistic leg against the closed-form 2x2-table Wald test: for
+// Z = [1 | x] with x and y both binary, the MLE is the sample log odds ratio
+// and its standard error is sqrt(1/a + 1/b + 1/c + 1/d).  Neither expression
+// appears anywhere in wald.cpp, which reaches the same numbers through IRLS
+// and the observed information.
+TEST(stage7_wald_logistic_matches_the_two_by_two_closed_form) {
+    const int a = 40, b = 10, c = 15, d = 35;   // x=1,y=1 / x=1,y=0 / x=0,y=1 / x=0,y=0
+    const int n = a + b + c + d;
+    Eigen::MatrixXd Z(n, 2);
+    Eigen::VectorXd y(n);
+    int r = 0;
+    auto fill = [&](int count, double xv, double yv) {
+        for (int i = 0; i < count; ++i, ++r) { Z(r, 0) = 1.0; Z(r, 1) = xv; y(r) = yv; }
+    };
+    fill(a, 1.0, 1.0); fill(b, 1.0, 0.0); fill(c, 0.0, 1.0); fill(d, 0.0, 0.0);
+
+    const double logOR = std::log(static_cast<double>(a) * d
+                                  / (static_cast<double>(b) * c));
+    const double se = std::sqrt(1.0 / a + 1.0 / b + 1.0 / c + 1.0 / d);
+    const double z = logOR / se;
+    const double Lref = -std::log10(std::erfc(std::fabs(z) / std::sqrt(2.0)));
+
+    const double got = wald::lastCoefLogisticLog10P(Z, y);
+    CHECK_REL(got, Lref, 1e-8);
+}
+
+// A design the fitters cannot fit reports NaN, not a number.  The caller turns
+// that into `8 NA_NO_TEST` with LOG10P = NA (decision D4): a rank-deficient
+// design has no statistic, so there is nothing to fall back to and the normal
+// substitution of D5 does not apply.
+TEST(stage7_wald_degenerate_design_returns_nan_not_a_number) {
+    Eigen::MatrixXd Z(20, 3);
+    Eigen::VectorXd y(20);
+    for (int i = 0; i < 20; ++i) {
+        const double u = static_cast<double>(i);
+        Z(i, 0) = 1.0;
+        Z(i, 1) = u;
+        Z(i, 2) = 2.0 * u;            // exactly collinear with column 1
+        y(i) = u + 0.5;
+    }
+    CHECK(std::isnan(wald::lastCoefLinearLog10P(Z, y)));
+
+    Eigen::MatrixXd Zs(2, 3);         // fewer rows than columns
+    Eigen::VectorXd ys(2);
+    Zs.setOnes();
+    ys.setZero();
+    CHECK(std::isnan(wald::lastCoefLinearLog10P(Zs, ys)));
+    CHECK(std::isnan(wald::lastCoefLogisticLog10P(Zs, ys)));
+}
+
+// The three normal-reference legs (logistic / Cox / ordinal) share one
+// expression, -math::normalTwoSidedLog(z)/ln10, so the property that matters
+// for all three is the one the shared tail has: it agrees with the linear
+// two-sided tail wherever that is representable, and keeps a magnitude past
+// the point where the linear tail is exactly zero.  The pre-Stage-7 fitters
+// returned that zero.
+TEST(stage7_wald_normal_tail_agrees_below_underflow_and_survives_past_it) {
+    // Up to z = 37 the linear tail is a normal double and the two agree to
+    // rounding.  Beyond that erfc goes subnormal (at z = 38 it is 5.77e-316,
+    // and the agreement degrades to 4e-12 for that reason alone), and by
+    // z = 38.6 it is exactly zero.
+    for (double z : {0.0, 1.0, 4.7595, 20.0, 30.0, 37.0}) {
+        const double linear = std::erfc(std::fabs(z) / std::sqrt(2.0));
+        CHECK(linear > 0.0);
+        CHECK_REL(-math::normalTwoSidedLog(z) / math::kLn10, -std::log10(linear), 1e-13);
+    }
+    CHECK(std::erfc(40.0 / std::sqrt(2.0)) == 0.0);       // the ceiling
+    const double deep = -math::normalTwoSidedLog(40.0) / math::kLn10;
+    CHECK(std::isfinite(deep));
+    CHECK_NEAR(deep, 349.1359765, 1e-6);
+    // Monotone and unbounded above, which -log10 of an underflowed p is not.
+    CHECK(-math::normalTwoSidedLog(100.0) / math::kLn10 > deep);
 }
 
 TINYTEST_MAIN

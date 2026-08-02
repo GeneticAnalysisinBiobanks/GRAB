@@ -241,6 +241,18 @@ build/grab2 \
   --compression-level 3
 
 ## ── SAGELD (fit mode: --pheno-name + --envir-name) ────────────────────
+# Output columns (log10p_unify Stage 7): the nine meta columns, a six-wide
+# G main-effect block  P_G LOG10P_G Z_G BETA_G SE_G SPA_STATUS_G, then a
+# seven-wide block per environment
+#   P_Gx<E>  LOG10P_Gx<E>  Z_Gx<E>  Z_Norm_Gx<E>  BETA_Gx<E>  SE_Gx<E>
+#   SPA_STATUS_Gx<E>
+# LOG10P and SPA_STATUS are new in Stage 7.  Both were already produced by
+# SPAGRMClass::getMarkerPvalFromScore -- the routine SAGELD shares with
+# --method spagrm -- and discarded at the call site, which CLAUDE.md listed as
+# the first of the known gaps in the output-column contract.  SPA_STATUS_Gx is
+# therefore the same saddlepoint outcome SPAGRM reports on the same cohort;
+# SPA_STATUS_G is the constant 1 (NORMAL), the G main effect being a plain
+# two-sided normal test that never attempts a saddlepoint.
 
 build/grab2 \
   --method SAGELD \
@@ -307,6 +319,10 @@ done
 # relatedness through the random intercept/slope, so it takes NEITHER
 # --sp-grm NOR --pairwise-ibd; supplying them only triggers a warning.
 # Output: ${OUT}.<pheno>.GALLOP.gz (gzip path through multiPhenoEngine).
+# Columns are two six-wide Wald blocks, P LOG10P Z BETA SE SPA_STATUS for the
+# G main effect and for the G x TIME interaction.  SPA_STATUS is 1 (NORMAL) on
+# both wherever the 2x2 solve produced a positive SE -- GALLOP runs no
+# saddlepoint at all -- and 8 (NA_NO_TEST) where it did not.
 
 build/grab2 \
   --method SAGELD \
@@ -595,8 +611,12 @@ build/grab2 \
 # marker-engine thread pool; chunk size auto-shrinks when --chunk-ksnp
 # is left at its 8-ksnp default (8192 SNPs) so the worker pool stays fed even on
 # small --extract subsets.  Output is plink2-style one-marker-per-line
-# wide format (LOG10P_CCT + P_tau* + Z_tau* + BETA_tau* + SE_tau* columns),
-# written through TextWriter honoring --compression.  A distinct --out
+# wide format (LOG10P_CCT + P_tau* + LOG10P_tau* + Z_tau* + BETA_tau* +
+# SE_tau* + SPA_STATUS_tau* columns), written through TextWriter honoring
+# --compression.  SPA_STATUS_tau is 1 (NORMAL) wherever the tau produced a
+# test -- the Wald leg is a plain normal-reference z and never attempts a
+# saddlepoint -- and 8 (NA_NO_TEST) where the sandwich variance is unusable
+# (log10p_unify Stage 7).  A distinct --out
 # prefix keeps the per-phenotype .SPAsqr.zst files from colliding with
 # the score-mode artifacts produced above.
 
@@ -738,9 +758,10 @@ build/grab2 \
 # also appear in --covar-name (it enters the genotype-independent null model
 # trait ~ X + E).  Plain-text output exercises the uncompressed writer path.
 #
-# Output columns (spa_unify Stage 5): the nine meta columns, the marginal
-# block P_G Z_G BETA_G SE_G, then an eight-wide block per environment
-#   P_Gx<E>  LOG10P_Gx<E>  P_Wald_Gx<E>  Z_Gx<E>  Z_Norm_Gx<E>
+# Output columns (log10p_unify Stage 7): the nine meta columns, the marginal
+# block P_G Z_G BETA_G SE_G SPA_STATUS_G, then an eight-wide block per
+# environment
+#   P_Gx<E>  LOG10P_Gx<E>  LOG10P_Wald_Gx<E>  Z_Gx<E>  Z_Norm_Gx<E>
 #   BETA_Gx<E>  SE_Gx<E>  SPA_STATUS_Gx<E>
 # SPA_STATUS_Gx uses the same integer encoding as the SPACox and SPAGRM
 # blocks above and always describes the saddlepoint leg, so a Branch-B
@@ -748,9 +769,11 @@ build/grab2 \
 # finite P_Gx together with the status that says the SPA dropped out of the
 # Cauchy combination.  LOG10P_Gx is log-domain on every path: where the
 # reported p is the saddlepoint p it comes from the tail assembly, and where
-# Branch B adds a Wald leg the combination itself is taken over the two
-# magnitudes (log10p_unify Stage 5).  The marginal block is always the normal
-# approximation and gains neither column.
+# Branch B adds a Wald leg the combination is taken over the two magnitudes
+# (Stage 5), both of which are produced as magnitudes at the source (Stage 7).
+# The marginal block is always the normal approximation, so it carries no
+# LOG10P_G, and SPA_STATUS_G is the constant 1 (NORMAL) wherever Var(S_G) > 0
+# and 8 (NA_NO_TEST) where it is not.
 #
 # A distinct --out prefix keeps the fitted residual and per-marker tables from
 # colliding with the SPACox/SAGELD ${OUT}.* artifacts.
@@ -781,7 +804,7 @@ build/grab2 \
 ## ── SPAGxE+ (sparse-GRM relatedness correction; --sp-grm-plink2) ───────
 # Passing an optional sparse GRM engages the SPAGxE+ variance correction (a
 # retrospective GRM quadratic form; no --pairwise-ibd needed).  The GRM path
-# keeps no Branch-B Wald leg (paper), so P_Wald_Gx<E> is NA throughout.  gzip
+# keeps no Branch-B Wald leg (paper), so LOG10P_Wald_Gx<E> is NA throughout.  gzip
 # output exercises the gz writer path.
 
 build/grab2 \
@@ -824,9 +847,10 @@ build/grab2 \
 # model takes the logistic branch, the binarised genotype is one for
 # essentially every subject, IRLS runs to its cap under complete separation,
 # and sigmoid of the resulting linear predictor rounds to exactly 1, so
-# every q_i is 1, every 2q_i(1-q_i) is 0 and Var(S_G) vanishes.  Stage 5
-# preserves the values and reports SPA_STATUS_GxMALE = 5 (NONFINITE) so the
-# row states why.  The same three markers are ordinary under the uniform-q
+# every q_i is 1, every 2q_i(1-q_i) is 0 and Var(S_G) vanishes.  The values
+# are preserved and the row states why: SPA_STATUS_GxMALE = 8 (NA_NO_TEST)
+# since the Stage 2 re-partition, and SPA_STATUS_G = 8 as well since Stage 7
+# gave the marginal block a status of its own.  The same three markers are ordinary under the uniform-q
 # SPAGxE block above, which does not use the AF model.
 
 build/grab2 \

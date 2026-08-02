@@ -23,7 +23,7 @@
 #include "geno_factory/geno_data.hpp" // parseGenoIIDs, makeGenoData, GenoMeta
 #include "io/sparse_grm.hpp"          // SparseGRM
 #include "io/subject_data.hpp"        // SubjectData, extractPhenoVec/Mat, PerPhenoInfo
-#include "spagxe/spagxe_wald.hpp"     // spagxe_wald::{WaldData, waldInteractionPval}
+#include "spagxe/spagxe_wald.hpp"     // spagxe_wald::{WaldData, waldInteractionLog10P}
 #include "spamix/spamix_cgf.hpp"      // spamix_cgf::{Context, twoSidedSpa, statusCode}
 #include "spamix/indiv_af.hpp"        // AFContext, computeAFVec (SPAGxEmix)
 #include "util/outlier.hpp"           // OutlierData, detectOutliers
@@ -353,15 +353,16 @@ std::unique_ptr<MethodBase> SPAGxEMethod::clone() const {
 }
 
 std::string SPAGxEMethod::getHeaderColumns() const {
-    // Leading marginal block P_G Z_G BETA_G SE_G (normal-approx, so its Z is
-    // already p-consistent and needs no Z_Norm), then an 8-wide G×E block per
-    // environment: the final p P_Gx (CCT in Branch B, SPA otherwise); its
-    // −log10 LOG10P_Gx; the Branch-B Wald p P_Wald_Gx (NaN when no Wald ran);
-    // the p-consistent Z and the raw-score Z_Norm (which differ in the tails);
-    // BETA/SE; and the saddlepoint outcome SPA_STATUS_Gx.
-    std::string h = "\tP_G\tZ_G\tBETA_G\tSE_G";
+    // Leading marginal block P_G Z_G BETA_G SE_G SPA_STATUS_G (normal-approx,
+    // so its Z is already p-consistent and needs no Z_Norm, and its status is
+    // the constant 1 NORMAL wherever a statistic exists), then an 8-wide G×E
+    // block per environment: the final p P_Gx (CCT in Branch B, SPA otherwise);
+    // its −log10 LOG10P_Gx; the Branch-B Wald magnitude LOG10P_Wald_Gx (NaN
+    // when no Wald ran); the p-consistent Z and the raw-score Z_Norm (which
+    // differ in the tails); BETA/SE; and the saddlepoint outcome SPA_STATUS_Gx.
+    std::string h = "\tP_G\tZ_G\tBETA_G\tSE_G\tSPA_STATUS_G";
     for (const auto &n : m_envNames)
-        h += "\tP_Gx" + n + "\tLOG10P_Gx" + n + "\tP_Wald_Gx" + n + "\tZ_Gx" + n +
+        h += "\tP_Gx" + n + "\tLOG10P_Gx" + n + "\tLOG10P_Wald_Gx" + n + "\tZ_Gx" + n +
              "\tZ_Norm_Gx" + n + "\tBETA_Gx" + n + "\tSE_Gx" + n +
              "\tSPA_STATUS_Gx" + n;
     return h;
@@ -371,22 +372,22 @@ namespace {
 
 // The eight cells of one environment's G×E block.
 //
-// `ts` is the saddlepoint (or normal-branch) result for the score test; `pWald`
-// is the Branch-B prospective Wald p, NaN where no Wald leg ran.  When a Wald p
-// is present the reported p is the Cauchy combination of the two, and since
-// log10p_unify Stage 5 that combination is taken in the log domain
-// (math::cauchyCombineLog10) rather than on the linear scale.  LOG10P_Gx is
-// therefore the magnitude the CCT itself produces, NOT −log10 of a linear
-// combination: the saddlepoint leg enters as its own L and is no longer
+// `ts` is the saddlepoint (or normal-branch) result for the score test; `lWald`
+// is the magnitude −log10 of the Branch-B prospective Wald p, NaN where no Wald
+// leg ran.  When a Wald leg is present the reported p is the Cauchy combination
+// of the two, and since log10p_unify Stage 5 that combination is taken in the
+// log domain (math::cauchyCombineLog10) rather than on the linear scale.
+// LOG10P_Gx is therefore the magnitude the CCT itself produces, NOT −log10 of a
+// linear combination: the saddlepoint leg enters as its own L and is no longer
 // truncated at the point where the linear p underflows, and P_Gx is recovered
 // from the magnitude by spa::pFromNegLog10P until Stage 8 removes it.
 //
-// One limitation remains and belongs to Stage 7: the Wald leg still arrives as
-// a linear p from wald::lastCoef*Pval, so its L is recovered as −log10(pWald)
-// and is +∞ if that p underflowed to exactly zero, which would carry into
-// LOG10P_Gx.  That is the behaviour the linear routine already had (it returned
-// P_CCT = 0 there, whose −log10 is the same +∞); Stage 7 converts the four Wald
-// fitters to return L and closes it.
+// Since Stage 7 the Wald leg is a magnitude at the source as well
+// (wald::lastCoef*Log10P through spagxe_wald::waldInteractionLog10P), so the
+// last ceiling in this path is gone: a Wald tail below the linear underflow
+// used to enter the combination as −log10(0) = +∞ and carry that infinity into
+// LOG10P_Gx, which was a C1 violation waiting on an input extreme enough to
+// trigger it.
 //
 // SPA_STATUS always describes the SADDLEPOINT, independently of what reached
 // the p-value columns — which matters precisely because the combination skips a
@@ -396,7 +397,7 @@ void writeEnvBlock(
     std::vector<double> &out,
     int base,
     const spa::Result &ts,
-    double pWald,
+    double lWald,
     bool waldEnabled,
     double z,
     double var,
@@ -407,13 +408,12 @@ void writeEnvBlock(
 
     double negLog = ts.negLog10p;
     if (waldEnabled) {
-        // The CCT in the log domain (Stage 5).  The saddlepoint leg is already
-        // a magnitude; the Wald leg is inverted from its linear p, which is
-        // exact wherever that p is representable.  The -0.0 normalization the
-        // linear form needed goes with it: the combination of n copies of one p
-        // is that p, so with the L >= -log10(0.999) clamp on every input the
-        // result is bounded below by 4.34e-4 and cannot come back as a zero.
-        const double Ls[2] = {ts.negLog10p, -std::log10(pWald)};
+        // The CCT in the log domain (Stage 5), over two magnitudes (Stage 7).
+        // The -0.0 normalization the linear form needed goes with it: the
+        // combination of n copies of one p is that p, so with the
+        // L >= -log10(0.999) clamp on every input the result is bounded below
+        // by 4.34e-4 and cannot come back as a zero.
+        const double Ls[2] = {ts.negLog10p, lWald};
         negLog = math::cauchyCombineLog10(Ls, 2);
     }
     // P from LOG10P (log10p_unify Stage 3); the column goes in Stage 8.
@@ -421,7 +421,7 @@ void writeEnvBlock(
 
     out[base + 0] = finalP;                      // P_Gx<E> (final)
     out[base + 1] = negLog;                      // LOG10P_Gx<E>
-    out[base + 2] = pWald;                       // P_Wald_Gx<E> (NaN if none)
+    out[base + 2] = lWald;                       // LOG10P_Wald_Gx<E> (NaN if none)
     // Z from LOG10P_Gx, not from P_Gx (Stage 4): the linear inversion
     // saturated at |Z| = 37.0470962993612 for every L >= 299.698970.  Since
     // Stage 5, `negLog` is the CCT's own magnitude, so the saturation is gone
@@ -441,7 +441,10 @@ void SPAGxEMethod::evalMarker(
     std::vector<double> &out
 ) {
     const int nEnv = static_cast<int>(m_envNames.size());
-    out.assign(static_cast<size_t>(4 + 8 * nEnv), kNaN);
+    out.assign(static_cast<size_t>(5 + 8 * nEnv), kNaN);
+    // Pre-set so that a marker leaving the marginal block empty still says why
+    // (decision D4): no statistic exists there, it is not a failed one.
+    out[4] = spamix_cgf::statusCode(spa::Status::NaNoTest);   // SPA_STATUS_G
 
     const double q = altFreq;
 
@@ -459,6 +462,10 @@ void SPAGxEMethod::evalMarker(
         out[1] = zG;          // Z_G (normal ⇒ p-consistent)
         out[2] = sG / varSG;  // BETA_G
         out[3] = 1.0 / sdG;   // SE_G
+        // 1 NORMAL: this block never attempts a saddlepoint, and decision D4
+        // covers exactly that case.  Var(S_G) <= 0 leaves the pre-set
+        // 8 NA_NO_TEST — there is no statistic to report, not a failed one.
+        out[4] = spamix_cgf::statusCode(spa::Status::Normal);   // SPA_STATUS_G
     }
 
     const bool branchB = (pMarg <= m_marginalCutoff);
@@ -490,14 +497,14 @@ void SPAGxEMethod::evalMarker(
                              m_wald->trait != spagxe_wald::TraitType::None;
 
     for (int e = 0; e < nEnv; ++e) {
-        const int base = 4 + 8 * e;
+        const int base = 5 + 8 * e;
         // A marker that never reaches the score test still gets a status: a
         // bare row of NA says nothing about why, and this family's NA are not
         // hypothetical (see the SPAGxEmix note in evalMarkerMix).
         out[base + 7] = spamix_cgf::statusCode(spa::Status::NaNoTest);
 
         double z = 0.0, var = 0.0, score;
-        double pWald = kNaN;
+        double lWald = kNaN;
         spa::Result ts{kNaN, spa::Status::NaNoTest};
         if (!branchB) {
             // Branch A: precomputed λ-orthogonalised weight and its Φ-form.
@@ -516,9 +523,9 @@ void SPAGxEMethod::evalMarker(
             // Prospective Wald p of the G:E coefficient in trait ~ X+E+g+g:E,
             // over the same environment used for the score weight.
             if (waldEnabled)
-                pWald = spagxe_wald::waldInteractionPval(*m_wald, GVec, m_envs[e].E);
+                lWald = spagxe_wald::waldInteractionLog10P(*m_wald, GVec, m_envs[e].E);
         }
-        writeEnvBlock(out, base, ts, pWald, waldEnabled, z, var, score);
+        writeEnvBlock(out, base, ts, lWald, waldEnabled, z, var, score);
     }
 }
 
@@ -539,7 +546,10 @@ void SPAGxEMethod::evalMarkerMix(
     std::vector<double> &out
 ) {
     const int nEnv = static_cast<int>(m_envNames.size());
-    out.assign(static_cast<size_t>(4 + 8 * nEnv), kNaN);
+    out.assign(static_cast<size_t>(5 + 8 * nEnv), kNaN);
+    // Pre-set so that a marker leaving the marginal block empty still says why
+    // (decision D4): no statistic exists there, it is not a failed one.
+    out[4] = spamix_cgf::statusCode(spa::Status::NaNoTest);   // SPA_STATUS_G
 
     const double q = altFreq;
 
@@ -589,6 +599,7 @@ void SPAGxEMethod::evalMarkerMix(
         out[1] = zG;                    // Z_G (normal ⇒ p-consistent)
         out[2] = (sG - meanSG) / varSG; // BETA_G
         out[3] = 1.0 / sdG;             // SE_G
+        out[4] = spamix_cgf::statusCode(spa::Status::Normal);   // SPA_STATUS_G
     }
 
     const bool branchB = (pMarg <= m_marginalCutoff);
@@ -615,12 +626,12 @@ void SPAGxEMethod::evalMarkerMix(
                              m_wald->trait != spagxe_wald::TraitType::None;
 
     for (int e = 0; e < nEnv; ++e) {
-        const int base = 4 + 8 * e;
+        const int base = 5 + 8 * e;
         out[base + 7] = spamix_cgf::statusCode(spa::Status::NaNoTest);
 
         const EnvData &ed = m_envs[e];
         double z = 0.0, var = 0.0, score;
-        double pWald = kNaN;
+        double lWald = kNaN;
         spa::Result ts{kNaN, spa::Status::NaNoTest};
         if (!branchB) {
             // Branch A: variance-weighted λ (per marker) on the per-individual q̂.
@@ -643,9 +654,9 @@ void SPAGxEMethod::evalMarkerMix(
             ts = spaScorePvalMix(part, u, m_afVec, m_wVec, score, m_spaCutoff,
                                  m_afOutlier, z, var);
             if (waldEnabled)
-                pWald = spagxe_wald::waldInteractionPval(*m_wald, GVec, ed.E);
+                lWald = spagxe_wald::waldInteractionLog10P(*m_wald, GVec, ed.E);
         }
-        writeEnvBlock(out, base, ts, pWald, waldEnabled, z, var, score);
+        writeEnvBlock(out, base, ts, lWald, waldEnabled, z, var, score);
     }
 }
 
