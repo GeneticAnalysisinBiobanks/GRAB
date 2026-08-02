@@ -471,7 +471,8 @@ inline const FlagDef kSpasqrMode = {
           phenotype × τ; markers are streamed and tested via the score
           statistic S = Σ R_i G_i with M-estimation sandwich variance.
           Output (per marker): CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
-          LOG10P_CCT P_tau{val}... Z_tau{val}...
+          LOG10P_CCT LOG10P_tau{val}... Z_tau{val}... Z_Norm_tau{val}...
+          SPA_STATUS_tau{val}...
   wald  — full-model Wald test.  For every (marker, τ), the joint smoothed-QR
           model with [X | G] is refit by QMME and β̂_G + SE are computed from
           the (γ,γ) entry of the M-estimation sandwich V = A^{-1} B A^{-1}/n.
@@ -482,7 +483,7 @@ inline const FlagDef kSpasqrMode = {
           small marker sets — see --chunk-ksnp for details.  Output is
           plink2-style one-marker-per-line wide format:
           CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
-          LOG10P_CCT P_tau{val}... LOG10P_tau{val}... Z_tau{val}...
+          LOG10P_CCT LOG10P_tau{val}... Z_tau{val}...
           BETA_tau{val}... SE_tau{val}... SPA_STATUS_tau{val}...
           SPA_STATUS_tau is 1 (NORMAL) wherever the tau produced a test: the
           Wald leg is a plain z against the normal reference and never runs a
@@ -627,7 +628,7 @@ inline const FlagDef kEnvirName = {
 test.  Each name must match a numeric column of --pheno and must also appear
 in --covar-name.  Usage differs by method:
   SPAGxE / SPAGxEmix — multiple envs are comma-separated; each produces its
-    own 8-wide output block (P_Gx<E> LOG10P_Gx<E> LOG10P_Wald_Gx<E> Z_Gx<E>
+    own 7-wide output block (LOG10P_Gx<E> LOG10P_Wald_Gx<E> Z_Gx<E>
     Z_Norm_Gx<E> BETA_Gx<E> SE_Gx<E> SPA_STATUS_Gx<E>).
     E enters the genotype-independent null model  trait ~ X + E  (fixed
     effect); the model is fit once and reused across envs (only lambda differs).
@@ -649,6 +650,82 @@ effect is projected out of the residual).  Distinct from --spa-z-threshold,
 which is the |z| switch between the normal approximation and the saddlepoint
 inside a single p-value computation.)"
 };
+
+// ════════════════════════════════════════════════════════════════════
+//  Shared output-column documentation
+// ════════════════════════════════════════════════════════════════════
+
+// Nine method output blocks describe a saddlepoint status column, and the
+// nine-value encoding behind it is ONE thing, not nine.  The unification
+// principle governs documentation as much as code, so the table is written
+// once here and spliced into each block by adjacent string-literal
+// concatenation; the two blocks that do not carry it (SPAmixPlus,
+// SPAGxEmix) defer to the method whose output they reproduce exactly.
+// Both macros are #undef'd at the end of this header.
+//
+// The encoding itself is `spa::Status` in src/util/spa.hpp; that enum and
+// this text must be changed together.
+#define GRAB_SPA_STATUS_TABLE \
+R"(    SPA_STATUS* outcome of the test that produced the p-value beside it, as
+                the integer spa::Status.  The column is spelled to match that
+                p-value (SPA_STATUS, SPA_STATUS_EXT, SPA_STATUS_tau{val},
+                SPA_STATUS_Gx<E>, cl<i>_SPA_STATUS_NOEXT, ...).  Nine values,
+                ordered by what the LOG10P cell holds:
+                  0 SPA_OK          saddlepoint; both tails converged
+                  1 NORMAL          normal approximation, and that is the
+                                    DESIGNED behaviour: either |Z| is at or
+                                    below --spa-z-threshold so the saddlepoint
+                                    was never attempted, or the test does not
+                                    use a saddlepoint at all (Wald legs, GALLOP)
+                  2 SPA_W_SINGULAR  saddlepoint, degraded: |w| <= 1e-3 in at
+                                    least one tail, so Phi(+/-w) replaces the
+                                    r* correction -- the correct limit there
+                  3 FALLBACK_MAXITER     the root finder did not meet its
+                                         residual criterion
+                  4 FALLBACK_GUARD_TEMP  zeta*s - K(zeta) < 0, so w is not real
+                  5 FALLBACK_GUARD_CURV  K''(zeta) <= 0, so v is not real
+                  6 FALLBACK_NONFINITE   zeta, a cumulant or r* left the reals
+                  7 NA_POST_FAIL    a step DOWNSTREAM of the saddlepoint
+                                    failed: a (var, cov, var) triple that is
+                                    not a covariance matrix, a conditional
+                                    denominator that is not usable, a mixture
+                                    leg that is missing and not immaterial
+                  8 NA_NO_TEST      no statistic exists for this marker in
+                                    this stratum: no informative subject, a
+                                    monomorphic stratum, Var(S) <= 0, or a
+                                    non-finite Z
+                The ordering is a design property, and it is the filter rule:
+                  SPA_STATUS <= 2        LOG10P is trustworthy
+                  3 <= SPA_STATUS <= 6   LOG10P is a substituted normal tail
+                  SPA_STATUS >= 7        LOG10P is NA
+)"
+
+// The fallback warning.  Kept separate from the table so that the two can be
+// read, and revised, independently: the table states the encoding, this
+// states what is known about the substituted estimator.
+#define GRAB_SPA_FALLBACK_NOTE \
+R"(                Codes 3-6 report the two-sided normal tail
+                -log10(2*Phi(-|Z_Norm|)) in place of the saddlepoint value,
+                with the code naming why the saddlepoint could not be used.
+                The normal approximation is precisely what the saddlepoint
+                exists to correct, so those rows carry lower p-value accuracy
+                than the rest: filter with SPA_STATUS <= 2 before judging
+                significance.  On every null cohort measured in this
+                repository the substitution does not occur at all -- including
+                on one built specifically to provoke it, and with
+                --spa-z-threshold lowered to 0.05 so that nearly every marker
+                enters the saddlepoint branch.  Where it was observed earlier,
+                before the pairwise-IBD defect that caused it was repaired, it
+                fired only in a narrow band of |Z| just above
+                --spa-z-threshold; that bounded those rows at LOG10P <= 3.97
+                and made their enrichment at the genome-wide threshold 7.301
+                exactly zero.  The bound is EMPIRICAL, not a theorem: a
+                saddlepoint failure at large |Z| would still produce a large
+                substituted LOG10P.
+                Codes 7 and 8 substitute nothing.  There Z either does not
+                exist or says nothing about the quantity that failed, so a
+                p-value built from it would be fabricated rather than reported.
+)"
 
 // ════════════════════════════════════════════════════════════════════
 //  Method definitions
@@ -693,16 +770,16 @@ inline const MethodDef kSPACox = {
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPACox[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
-    LOG10P      -log10(P), computed in the log domain so it survives past the
-                point where the linear-scale tail underflows (p ~ 1e-316)
-    SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
-                3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
-                --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
-                are NA for every value other than 0, 4 and 6.  Status 4 is a
-                degraded success rather than a failure: the modified root's
-                correction was dropped as uncomputable and the tail fell back
-                to its leading term, which is accurate where it fires.)",
+  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P      -log10(P), the ONLY p-value column.  It is assembled in the
+                log domain throughout, so it stays a magnitude past the point
+                where a linear-scale p underflows to exactly zero (|Z| ~ 38.6).
+                A consumer that needs the linear p recovers it as 10^(-LOG10P).
+    Z           the two-sided normal deviate that reproduces LOG10P, inverted
+                in the log domain, so it does not saturate.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     nullptr,
 };
 
@@ -729,16 +806,16 @@ inline const MethodDef kSPAGRM = {
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAGRM[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
-    LOG10P      -log10(P), computed in the log domain so it survives past the
-                point where the linear-scale tail underflows (p ~ 1e-316)
-    SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
-                3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
-                --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
-                are NA for every value other than 0, 4 and 6.  Status 4 is a
-                degraded success rather than a failure: the modified root's
-                correction was dropped as uncomputable and the tail fell back
-                to its leading term, which is accurate where it fires.)",
+  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P      -log10(P), the ONLY p-value column.  It is assembled in the
+                log domain throughout, so it stays a magnitude past the point
+                where a linear-scale p underflows to exactly zero (|Z| ~ 38.6).
+                A consumer that needs the linear p recovers it as 10^(-LOG10P).
+    Z           the two-sided normal deviate that reproduces LOG10P, inverted
+                in the log domain, so it does not saturate.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     "Generate pairwise IBD file with: grab2 --cal-pairwise-ibd",
 };
 
@@ -767,25 +844,27 @@ inline const MethodDef kSAGELD = {
     R"(Residual mode: PREFIX.SAGELD[.gz|.zst]   single file
   Pheno mode:    PREFIX.<COL>.SAGELD[.gz|.zst]   one file per --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P_G  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
-  P_Gx<E1>  LOG10P_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>
-            SPA_STATUS_Gx<E1>   [... per env]
-  --sageld-method gallop replaces the G×E block with the exact Wald pair
-  P_Gx<E> LOG10P_Gx<E> Z_Gx<E> BETA_Gx<E> SE_Gx<E> SPA_STATUS_Gx<E> (no Z_Norm:
-  the GALLOP z is already p-consistent).
-    LOG10P_*      -log10 of the p beside it, computed in the log domain so it
-                  survives past the point where the linear-scale tail
-                  underflows (p ~ 1e-316).  P is 10^(-LOG10P).
-    SPA_STATUS_*  outcome of the test that produced the p-value, as the
-                  integer spa::Status.  SPA_STATUS_G is 1 (NORMAL) wherever
-                  Var(S_G) > 0 -- the G main effect is a plain two-sided
-                  normal test and never attempts a saddlepoint -- and 8
-                  (NA_NO_TEST) where it is not.  SPA_STATUS_Gx is the
-                  saddlepoint outcome of that environment's G×E score test,
-                  the same encoding --method spagrm reports, because SAGELD
-                  runs the same SPAGRMClass; under --sageld-method gallop it
-                  is 1 (NORMAL) on both blocks, GALLOP being a Wald test.
-                  Filter with SPA_STATUS <= 2 before judging significance.)",
+  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+  LOG10P_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>
+                 SPA_STATUS_Gx<E1>   [... per env]
+  --sageld-method gallop replaces the G×E block with the exact Wald quintet
+  LOG10P_Gx<E> Z_Gx<E> BETA_Gx<E> SE_Gx<E> SPA_STATUS_Gx<E> (no Z_Norm: the
+  GALLOP z is already p-consistent).
+    LOG10P_*      -log10 of the p for that block, the ONLY p-value columns.
+                  Both are assembled in the log domain, so they stay
+                  magnitudes past the point where a linear-scale p underflows
+                  to exactly zero.  Recover the linear p as 10^(-LOG10P).
+                  SPA_STATUS_G is 1 (NORMAL) wherever Var(S_G) > 0 -- the G
+                  main effect is a plain two-sided normal test and never
+                  attempts a saddlepoint -- and 8 (NA_NO_TEST) where it is
+                  not.  SPA_STATUS_Gx is the saddlepoint outcome of that
+                  environment's G×E score test, the same encoding --method
+                  spagrm reports, because SAGELD runs the same SPAGRMClass;
+                  under --sageld-method gallop it is 1 (NORMAL) on both
+                  blocks, GALLOP being a Wald test.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     R"(Two input modes (mutually exclusive):
   Residual mode — supply lme4::lmer() residuals directly via --resid-name.
                   Column layout: R_G followed by (R_<E>, R_Gx<E>) pairs.
@@ -819,38 +898,32 @@ inline const MethodDef kSPAGxE = {
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAGxE[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
-  P_Gx<E1>  LOG10P_Gx<E1>  LOG10P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
-            BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
-    LOG10P_*      -log10(P_Gx), computed in the log domain on every path, so
-                  it survives past the point where the linear-scale tail
-                  underflows (p ~ 1e-316).  In Branch B with a Wald leg the
-                  reported p is the Cauchy combination CCT(p_spa, p_wald),
-                  and that combination is taken over the two magnitudes as
-                  well: the Cauchy statistic's terms are 1/(pi*p) and so
-                  overflow for p <= 1e-308, which is why it is never formed.
-                  P_Gx is 10^(-LOG10P_Gx).  The Branch-B Wald leg is reported
-                  as a magnitude too (LOG10P_Wald_Gx, NA where no Wald ran),
-                  and enters the combination as one, so no leg of it has an
-                  underflow ceiling.
-    SPA_STATUS_*  per-environment saddlepoint outcome: 0 SPA_OK, 1 NORMAL
-                  (|Z| below --spa-z-threshold, saddlepoint not attempted, or
-                  the test does not use one), 2 SPA_W_SINGULAR (degraded
-                  success), 3-6 the saddlepoint failed and LOG10P_Gx is the
-                  substituted two-sided normal tail (3 MAXITER, 4 GUARD_TEMP,
-                  5 GUARD_CURV, 6 NONFINITE), 7 NA_POST_FAIL and 8 NA_NO_TEST
-                  with LOG10P_Gx = NA.  Filter with SPA_STATUS <= 2 before
-                  judging significance.  SPA_STATUS_Gx always describes the
-                  SADDLEPOINT leg: in Branch B a failed saddlepoint whose Wald
-                  refit succeeded still yields a finite P_Gx, and the status is
-                  the only record that the SPA leg dropped out of the
-                  combination.
+  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+  LOG10P_Gx<E1>  LOG10P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
+                 BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
+    LOG10P_*      -log10 of the p for that block, the ONLY p-value columns.
+                  Every path that produces one is evaluated in the log domain,
+                  so they stay magnitudes past the point where a linear-scale
+                  p underflows to exactly zero.  Recover the linear p as
+                  10^(-LOG10P).  In Branch B with a Wald leg the reported
+                  LOG10P_Gx is the Cauchy combination CCT(p_spa, p_wald),
+                  taken over the two magnitudes rather than over the two
+                  linear p-values: the Cauchy statistic's terms are 1/(pi*p)
+                  and overflow for p <= 1e-308, so that statistic is never
+                  formed.  The Branch-B Wald leg is reported as a magnitude of
+                  its own (LOG10P_Wald_Gx, NA where no Wald ran) and enters
+                  the combination as one, so no leg carries an underflow
+                  ceiling.
+    SPA_STATUS_Gx always describes the SADDLEPOINT leg: in Branch B a failed
+                  saddlepoint whose Wald refit succeeded still yields a finite
+                  LOG10P_Gx, and the status is the only record that the SPA
+                  leg dropped out of the combination.
   The marginal block is always the normal approximation, never a saddlepoint,
   so SPA_STATUS_G is 1 (NORMAL) wherever Var(S_G) > 0 and 8 (NA_NO_TEST) where
-  it is not.  Its p-value is still reported on the linear scale as P_G; until
-  that column moves to the -log10 scale like the rest, its magnitude is
-  recoverable from the exact Z_G, which the normal approximation makes
-  p-consistent by construction.)",
+  it is not.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     R"(Every --envir-name column must also appear in --covar-name (it enters the
 genotype-independent null model  trait ~ X + E).  Passing an optional sparse
 GRM (--sp-grm-grab / --sp-grm-plink2) engages the SPAGxE+ relatedness-corrected
@@ -880,14 +953,17 @@ inline const MethodDef kSPAGxEmix = {
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAGxEmix[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
-  P_Gx<E1>  LOG10P_Gx<E1>  LOG10P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
-            BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
+  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+  LOG10P_Gx<E1>  LOG10P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
+                 BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
     LOG10P_* and SPA_STATUS_* are as documented under --method spagxe.
-  A marker whose per-individual allele frequencies all saturate at 0 or 1
-  has Var(S_G) = 0 and no statistic at all: every p-value cell of the row is
-  NA and both status columns are 8 (NA_NO_TEST).  Three of the 3000 markers in the bundled
-  examples/1kg fixture are of that kind, all with ALT_FREQ > 0.99.)",
+  A marker whose per-individual allele frequencies all saturate at 0 or 1 has
+  Var(S_G) = 0 and no statistic at all.  Every p-value cell of the row is NA
+  and both status columns are 8 (NA_NO_TEST) -- NOT one of the fallback codes
+  3-6, because there is nothing to fall back to: Z_Norm does not exist either,
+  so any p-value reported there would be fabricated.  Three of the 3000
+  markers in the bundled examples/1kg fixture are of that kind, all with
+  ALT_FREQ > 0.99.)",
     R"(SPAGxEmix accounts for admixture by estimating a per-individual allele
 frequency q_i from the --pc-cols principal components (the same cascade as
 SPAmix), so the retrospective genotype law is Binomial(2, q_i).  The --pc-cols
@@ -920,16 +996,16 @@ inline const MethodDef kSPAmix = {
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAmix[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
-    LOG10P      -log10(P), computed in the log domain so it survives past the
-                point where the linear-scale tail underflows (p ~ 1e-316)
-    SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
-                3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
-                --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
-                are NA for every value other than 0, 4 and 6.  Status 4 is a
-                degraded success rather than a failure: the modified root's
-                correction was dropped as uncomputable and the tail fell back
-                to its leading term, which is accurate where it fires.)",
+  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P      -log10(P), the ONLY p-value column.  It is assembled in the
+                log domain throughout, so it stays a magnitude past the point
+                where a linear-scale p underflows to exactly zero (|Z| ~ 38.6).
+                A consumer that needs the linear p recovers it as 10^(-LOG10P).
+    Z           the two-sided normal deviate that reproduces LOG10P, inverted
+                in the log domain, so it does not saturate.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     R"(Pre-compute the AF model for speed: grab2 --cal-af-coef.
 
 AF coefficient scope.  With --ind-af-coef, every phenotype in this run
@@ -964,8 +1040,8 @@ inline const MethodDef kSPAmixPlus = {
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAmixP[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
-    LOG10P and SPA_STATUS are as documented under --method spamix.)",
+  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P, Z and SPA_STATUS are as documented under --method spamix.)",
     R"(AF coefficient scope.  With --ind-af-coef, every phenotype in this
 run shares the single pre-computed AF model per marker (fit at
 --cal-af-coef time on its full subject set).  Without --ind-af-coef,
@@ -1006,26 +1082,25 @@ inline const MethodDef kSPAsqr = {
     "                                          (SPAsqr fits smoothed QR per --spasqr-taus internally)",
     R"(PREFIX.<COL>.SPAsqr[.gz|.zst]   one file per --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  LOG10P_CCT  P_tau{val}...  LOG10P_tau{val}...  Z_tau{val}...
+  LOG10P_CCT  LOG10P_tau{val}...  Z_tau{val}...
          Z_Norm_tau{val}...  SPA_STATUS_tau{val}...
-    LOG10P_*      -log10(P_tau), computed in the log domain so it survives past
-                  the point where the linear-scale tail underflows (p ~ 1e-316)
-    SPA_STATUS_*  per-tau saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
-                  3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
-                  --spa-z-threshold, saddlepoint not attempted).  P_tau and
-                  LOG10P_tau are NA for every value other than 0, 4 and 6, and a
-                  NA tau drops out of the LOG10P_CCT combination.  Status 4
-                  is a degraded success rather than a failure: the modified
-                  root's correction was dropped as uncomputable and the tail
-                  fell back to its leading term.
+    LOG10P_tau    -log10 of that tau's p, the ONLY per-tau p-value column.  It
+                  is assembled in the log domain, so it stays a magnitude past
+                  the point where a linear-scale p underflows to exactly zero.
+                  Recover the linear p as 10^(-LOG10P_tau).  A tau whose
+                  LOG10P_tau is NA drops out of the LOG10P_CCT combination.
     LOG10P_CCT    the Cauchy combination of the per-tau tests, on the same
-                  -log10 scale.  It is computed FROM the LOG10P_tau group,
-                  not from the P_tau group: the Cauchy statistic's terms are
+                  -log10 scale.  It is computed FROM the LOG10P_tau group and
+                  never from linear p-values: the Cauchy statistic's terms are
                   1/(pi*p), so the statistic overflows as soon as any single
-                  tau reaches p ~ 1e-308 and a linear combination returned
-                  exactly 0 there.  In the tail the combination is dominated
-                  by the smallest p, LOG10P_CCT ~ max(LOG10P_tau) - log10(T)
-                  for T taus.)",
+                  tau reaches p ~ 1e-308, where a linear combination returned
+                  exactly 0.  In the tail the combination is dominated by the
+                  smallest p, LOG10P_CCT ~ max(LOG10P_tau) - log10(T) for T
+                  taus.  LOG10P_CCT has no SPA_STATUS of its own; read the
+                  per-tau statuses that fed it.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     nullptr,
 };
 
@@ -1055,7 +1130,35 @@ inline const MethodDef kWtCoxG = {
     "    --regression-model MODEL              auto | logistic | cox (default: auto)",
     R"(PREFIX.<COL>.WtCoxG[.gz|.zst]   one file per --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P_EXT  P_NOEXT  Z_EXT  Z_NOEXT  P_BAT  PI_BAT  VAR_BAT)",
+  LOG10P_EXT  LOG10P_NOEXT  Z_EXT  Z_NOEXT  Z_Norm_EXT  Z_Norm_NOEXT
+  LOG10P_BAT  PI_BAT  VAR_BAT  SPA_STATUS_EXT  SPA_STATUS_NOEXT
+    LOG10P_EXT    -log10 of the association p that USES the external reference
+                  allele frequency (--ref-af), i.e. the weighted Cox score test
+                  conditioned on the batch-effect test having passed.
+    LOG10P_NOEXT  -log10 of the same association p computed WITHOUT the
+                  external frequency.  Read LOG10P_EXT when the batch-effect
+                  test passes and LOG10P_NOEXT when it does not; the
+                  --batch-effect-p-threshold decision is reported by LOG10P_BAT.
+    LOG10P_BAT    -log10 of the batch-effect test p, comparing the cohort's
+                  allele frequency against the external reference.
+    All three are the ONLY p-value columns and are formed in the log domain
+    end to end -- including the conditional ratio behind LOG10P_EXT, which was
+    the last place in this method where a linear p could underflow to zero and
+    turn a magnitude into +Inf.  Recover a linear p as 10^(-LOG10P).
+    LOG10P_BAT has no SPA_STATUS: the batch-effect test is a plain two-sided
+    normal test, not a saddlepoint.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE
+R"(  One WtCoxG-specific reading of the table.  LOG10P_EXT is a CONDITIONAL
+  probability assembled from mixture legs, not a tail of one statistic, so a
+  code in 3-6 on SPA_STATUS_EXT does not mean LOG10P_EXT is itself a normal
+  tail; it means one of the variances entering that assembly was recovered
+  from a p-value the saddlepoint could not deliver.  The row is still a
+  substituted result and is still what SPA_STATUS <= 2 excludes.  Code 7 is
+  where the (var_S, cov, var_Sbat) triple that is not a covariance matrix is
+  reported: that triple is a modelling limitation of Branch B, is a known
+  remaining gap, and is named rather than laundered into a number.)",
     nullptr,
 };
 
@@ -1088,8 +1191,27 @@ inline const MethodDef kLEAF = {
     "                                          (--pc-cols drives the per-cluster K-means assignment)",
     R"(PREFIX.<COL>.LEAF[.gz|.zst]   one file per --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  meta_P_EXT  meta_P_NOEXT
-  cl1_MAC  cl1_P_EXT  cl1_P_NOEXT  cl1_P_BAT  cl1_PI_BAT  cl1_VAR_BAT  [cl2_... cl3_... ...])",
+  meta_LOG10P_EXT  meta_LOG10P_NOEXT  meta_SPA_STATUS_EXT  meta_SPA_STATUS_NOEXT
+  cl1_MAC  cl1_LOG10P_EXT  cl1_LOG10P_NOEXT  cl1_LOG10P_BAT  cl1_PI_BAT
+  cl1_VAR_BAT  cl1_SPA_STATUS_EXT  cl1_SPA_STATUS_NOEXT   [cl2_... cl3_... ...]
+    cl<i>_*       one WtCoxG analysis per ancestry cluster; the column meanings
+                  are exactly those documented under --method wtcoxg.
+    meta_LOG10P_* the inverse-variance score pooling of the per-cluster
+                  results, on the -log10 scale.  The per-cluster weights are
+                  recovered from the per-cluster magnitudes by an analytic
+                  df = 1 chi-squared inversion, so a cluster that is extremely
+                  significant no longer has its weight truncated the way an
+                  inversion through a clamped quantile function truncated it.
+    All LOG10P columns are the ONLY p-value columns and are formed in the log
+    domain end to end.  Recover a linear p as 10^(-LOG10P).  cl<i>_LOG10P_BAT
+    has no SPA_STATUS: the batch-effect test is a plain two-sided normal test.
+  A cluster with no informative subject for a marker is the common case, not
+  the exception, and it is reported as 8 (NA_NO_TEST) with that cluster's
+  p-value cells NA -- never as a fallback, because no statistic exists there.
+  The meta columns take 8 as well when the pooled variance is not positive.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     R"(--pheno path: auto K-means on --pc-cols.
 The number of clusters and reference populations are independent.
 Summix estimates per-cluster ancestry proportions from the reference populations.)",
@@ -1143,18 +1265,16 @@ inline const MethodDef kSPAmixLocalPlus = {
     R"(PREFIX.<COL>.LocalP[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT
   anc0_MISS_RATE  anc0_ALT_FREQ  anc0_MAC
-  anc0_P  anc0_LOG10P  anc0_BETA  anc0_SE  anc0_SPA_STATUS
-  anc1_MISS_RATE  ...  (the eight columns repeat for each ancestry k)
-    LOG10P      -log10(P), computed in the log domain so it survives past the
-                point where P itself underflows to zero.
-    SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
-                3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|z| within
-                --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
-                are NA for every value other than 0, 4 and 6.  Status 4 is a
-                degraded success rather than a failure: the modified root's
-                correction was dropped as uncomputable and the tail fell back
-                to its leading term, which is accurate where it fires.
-  An ancestry failing the --geno / --maf / --mac filters is NA in all five
+  anc0_LOG10P  anc0_BETA  anc0_SE  anc0_SPA_STATUS
+  anc1_MISS_RATE  ...  (the seven columns repeat for each ancestry k)
+    LOG10P      -log10(P), the ONLY p-value column.  It is assembled in the
+                log domain throughout, so it stays a magnitude past the point
+                where a linear-scale p underflows to exactly zero.  Recover
+                the linear p as 10^(-LOG10P).
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE
+R"(  An ancestry failing the --geno / --maf / --mac filters is NA in all four
   statistic columns.)",
     R"(Two-phase workflow:
   1. grab --cal-phi --lanc PREFIX --sp-grm-plink2 FILE --out OUTPUT_PREFIX
@@ -1384,3 +1504,10 @@ inline const FlagDef *const kFilterFlags[] = {
 };
 
 } // namespace cli
+
+// The two output-documentation macros have done their work at this point --
+// every string literal that splices them has already been formed -- so they
+// are retired rather than left in every translation unit that includes this
+// header.
+#undef GRAB_SPA_STATUS_TABLE
+#undef GRAB_SPA_FALLBACK_NOTE

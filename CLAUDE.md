@@ -43,15 +43,16 @@ fitting, Wald refits, QC thresholds, output-column contracts — whether or
 not that procedure has been unified yet.  A duplicate discovered during
 this work is a defect to be removed, not a parallel path to be maintained.
 
-The **currently active** instance of the rule is the p-value representation
-itself: `dev-notes/methods/log10p_unify/`.  It makes `LOG10P` (= −log10 P)
-the sole p-value column, deletes the linear `P` column and the parallel
-linear tail assembly that produces it, moves every p-value inversion,
-combination and pooling into the log domain, and re-partitions
-`SPA_STATUS`.  While that project is in flight, the "Saddlepoint output
-columns" section below describes the *outgoing* contract; the incoming one
-is `dev-notes/methods/log10p_unify/00_decisions.md`, and where the two
-disagree the plan wins.
+The second completed instance is the p-value representation itself:
+`dev-notes/methods/log10p_unify/`, landed in the `log10p:` commits.  It made
+`LOG10P` (= −log10 P) the sole p-value column across all ten method entry
+points, deleted the linear `P` column together with the parallel linear tail
+assembly that produced it, moved every p-value inversion, combination and
+pooling into the log domain, and re-partitioned `SPA_STATUS` into the
+nine-value classification documented below.  Its decision record
+(`00_decisions.md`), its rulings (`05_rulings.md`) and its per-stage,
+per-column ledger (`RESULTS.md`) are the authority on why any given column
+moved; this file states the resulting contract.
 
 Unification is also the performance strategy, not merely a tidiness
 argument.  One implementation is the only one that can afford a
@@ -112,21 +113,35 @@ each of them is checkable:
    repository has had to remove, and every unification stage must leave it
    removed.
 
-   What this rule forbids is the **silent** substitution.  Substituting a
-   different, well-defined, documented estimator and naming the
-   substitution in a status column is a different act and is permitted:
-   the `log10p_unify` project reports the normal-approximation tail when
-   the saddlepoint fails, under `SPA_STATUS` codes 3–6 which exist for no
-   other purpose, and the reader recovers the unsubstituted subset with
-   `SPA_STATUS <= 2`.  The boundary is that a fallback needs (a) a genuine
-   estimator behind it, (b) a status value that names it, and (c) a
-   documented warning where the substituted estimator is known to be
-   biased — for the normal fallback, that it is anti-conservative at low
-   MAC, which is exactly where the saddlepoint fails.  A fallback lacking
-   any of the three is fabrication.  Note also that "no statistic exists"
-   (no informative subject, monomorphic stratum, `Var(S) <= 0`) is never
-   eligible for a fallback: there is nothing to fall back *to*, and those
-   rows stay `NA`.
+   What this rule forbids is the **silent** substitution.  **A named,
+   documented substitution of one estimator for another is not
+   fabrication; only a silent one is.**  `log10p_unify` reports the
+   normal-approximation tail when the saddlepoint fails, under
+   `SPA_STATUS` codes 3–6 which exist for no other purpose, and the reader
+   recovers the unsubstituted subset with `SPA_STATUS <= 2`.  The boundary
+   is that a substitution needs (a) a genuine estimator behind it, (b) a
+   status value that names it, and (c) a documented statement of what is
+   known about its accuracy.  A substitution lacking any of the three is
+   fabrication.
+
+   For (c), state what was measured rather than what is folklore.  The
+   normal approximation is by construction the thing the saddlepoint
+   exists to correct, so codes 3–6 are less accurate than codes 0–2 —
+   that much is definitional.  What is **not** supported by measurement is
+   the further claim that the substitution concentrates at low MAC and can
+   therefore manufacture genome-wide false positives: on the cohort built
+   specifically to provoke it, the fallback rate across ten MAC bins ran
+   2.87e-2 – 4.39e-2 with no monotone trend and the highest-MAC fallback
+   marker sat at MAC = 1175, while the substitution fired only in a narrow
+   |Z| band just above `--spa-z-threshold`, bounding those rows at
+   `LOG10P <= 3.97` and giving them an enrichment of exactly zero at
+   7.301.  See `dev-notes/methods/log10p_unify/05_rulings.md` R1.  Both
+   halves of that reading are empirical, not theorems.
+
+   "No statistic exists" (no informative subject, monomorphic stratum,
+   `Var(S) <= 0`, non-finite `Z`) is never eligible for a substitution:
+   there is nothing to fall back *to*, and those rows stay `NA` under
+   codes 7–8.
 5. **Reproducibility.**  A given binary, given the same inputs and flags,
    produces the same outputs across runs, thread counts and chunk sizes.
 
@@ -290,10 +305,22 @@ kept it.
                    vectorized exp/log, logging, text scanners, and IQR
                    outlier detection (`outlier.hpp`, shared by spamix,
                    spagxe, wtcoxg/leaf and localplus).
+  - `src/util/math_helper.{hpp,cpp}` — the distribution tier.  Its
+    **log-domain half is the one the output columns go through**, and it is
+    the tier `log10p_unify` completed: `pnormLog` (unchanged, already
+    optimal), `normalTwoSidedLog`, `zFromNegLog10P` (the non-saturating
+    replacement for the deleted `zFromPval`), `chisq1FromNegLog10P` (the
+    analytic `df = 1` inversion replacing `qchisq(p, 1, upper)` on the
+    output side), `cauchyCombineLog10` (replacing the deleted
+    `cauchyCombine`), `ptLog` (the Student-t two-sided tail, natural log)
+    and `pmvnorm2dHalfRectLog`.  The linear `pnorm`, `qnorm`, `qchisq`,
+    `pt`, `pmvnorm2dHalfRect` and `bvnCdf` remain, but only for input-side
+    threshold conversion and as internals of the log-domain routines.
   - `src/util/spa.hpp` — the shared saddlepoint tier: the bracketed and
-    safeguarded root solver, the Barndorff-Nielsen tail kernel (linear and
-    log domain), the two-sided assembly, and the `Status`/`SPA_STATUS`
-    encoding (see "Saddlepoint output columns" below).
+    safeguarded root solver, the Barndorff-Nielsen tail kernel (log domain
+    only — the linear twin was deleted), the single two-sided assembly
+    entry point `spa::assemble`, and the `Status`/`SPA_STATUS` encoding
+    (see "Output p-value columns" below).
 
     **Every threshold in the solver is dimensionally sound, and this is a
     pinned property, not a stylistic preference.** Multiplying a phenotype —
@@ -309,10 +336,10 @@ kept it.
     \|init\|)` coarse probe were exactly that, and moved 44 % of SPA-branch
     p-values under a `x1e8` rescaling of a heavy-tailed phenotype.
     `scale_equivariance_*` in `tests/spa_solver_test.cpp` pins the property
-    as **bit-identity** of `P`, `LOG10P` and `SPA_STATUS` under a
-    power-of-two rescaling, which is exact in binary floating point. Do not
-    introduce a new absolute constant into the solver without checking it
-    against that test.
+    as **bit-identity** of `LOG10P` and `SPA_STATUS` under a power-of-two
+    rescaling, which is exact in binary floating point. Do not introduce a
+    new absolute constant into the solver without checking it against that
+    test.
   - `src/util/spa_cgf.{hpp,cpp}` — the three shared binomial CGF variants
     (`binomUniform`, `binomIndiv`, `binomHapcount`), each with the mandated
     scalar + AVX2 + AVX-512 triple and a `simdLevel()` dispatch site.
@@ -327,90 +354,132 @@ kept it.
     method's own adapter" — for four of the ten entry points that file is
     shared.
 
-## Saddlepoint output columns — `LOG10P` and `SPA_STATUS`
+## Output p-value columns — `LOG10P` and `SPA_STATUS`
 
-> **Under active revision.**  `dev-notes/methods/log10p_unify/` deletes the
-> `P` column described below, makes `LOG10P` the sole p-value column across
-> all ten method entry points, and replaces the seven-value `spa::Status`
-> with a nine-value partition that separates "the saddlepoint failed and
-> the normal tail was reported instead" (codes 3–6) from "no test exists"
-> (code 8) and "a step downstream of the saddlepoint failed" (code 7).
-> Read `00_decisions.md` and `02_inventory.md` there before touching any
-> output column.  Everything below this box describes the contract as it
-> stands *before* that project lands.
+**`LOG10P` is the only p-value column GRAB emits.  There is no `P` column
+anywhere in the tree, and there is no linear tail assembly left that could
+produce one.**  A consumer that needs a linear p recovers it as
+`P = 10^(-LOG10P)`; that is one exponentiation in any scripting language,
+and it is the reader's choice rather than a second column the repository
+has to keep consistent with the first.
 
-Every method that *reports a saddlepoint p-value* emits a matching
-`LOG10P` and `SPA_STATUS` beside it.  The plain spelling `P LOG10P Z
-Z_Norm BETA SE SPA_STATUS` is used by SPACox, SPAGRM and
-SPAmix/SPAmixPlus; the rest prefix or suffix the two names to match the
-p-value they qualify — `*_EXT` / `*_NOEXT` in WtCoxG, `meta_*` and
-`cl<N>_*` in LEAF, `*_tau<t>` in SPAsqr, `anc<K>_*` in the unpinned
-SPAmixLocalPlus, `*_Gx<E>` in SPAGxE/SPAGxEmix.  The two columns are:
+The plain spelling `LOG10P Z Z_Norm BETA SE SPA_STATUS` is used by SPACox,
+SPAGRM and SPAmix/SPAmixPlus; the rest prefix or suffix the names to match
+the p-value they qualify — `*_EXT` / `*_NOEXT` / `*_BAT` in WtCoxG,
+`meta_*` and `cl<N>_*` in LEAF, `*_tau<t>` and `*_CCT` in SPAsqr,
+`anc<K>_*` in the unpinned SPAmixLocalPlus, `*_G` and `*_Gx<E>` in
+SPAGxE/SPAGxEmix and SAGELD, and `LOG10P_HWE` in the shared META header.
+The columns are:
 
-- `LOG10P` — `-log10(P)`, carried through the tail assembly in the log
-  domain (`spa::bnTailLog` + `spa::combineTailsLog`, via `math::pnormLog`)
-  so it stays meaningful past the point where the linear-scale tail
-  underflows to exactly zero.
+- `LOG10P` — `-log10(P)`, formed in the log domain on every path that can
+  produce it: the Barndorff-Nielsen tail (`spa::bnTailLog` via
+  `math::pnormLog`), the two-sided assembly (`spa::assemble`), the Cauchy
+  combination (`math::cauchyCombineLog10`), the inverse-variance meta pool
+  (`math::metaPvalueScorePool`), the WtCoxG conditional ratio
+  (`wtcoxg_cond::conditionalP` over `math::pmvnorm2dHalfRectLog`), the Wald
+  legs (`math::ptLog`, `spa::normalTwoSidedLog`) and the HWE exact test
+  (`plink2::HweLnP`).  It therefore stays a magnitude past the point where
+  a linear-scale p underflows to exactly zero, which for a two-sided normal
+  tail is `|z| = 38.6`.
+- `Z` — the two-sided normal deviate that reproduces `LOG10P`, inverted in
+  the log domain by `math::zFromNegLog10P`.  It does not saturate; the
+  predecessor `math::zFromPval` did, at `|Z| = 37.047096`, because its
+  `math::qnorm` clamped the argument at `1e-300`.
 - `SPA_STATUS` — `static_cast<uint8_t>(spa::Status)` (`src/util/spa.hpp`),
-  naming the outcome of the saddlepoint that produced the row:
+  naming the outcome of the test that produced the p-value beside it.  Nine
+  values, **ordered by what the `LOG10P` cell holds**:
 
-  | Value | Token | Meaning |
-  | ----- | ----- | ------- |
-  | 0 | `OK` | Converged: the residual `\|K'(zeta) - s\|` met the solver's stated criterion at the returned root, re-verified there against the terminal cumulants; no guard fired. |
-  | 1 | `MAXITER` | The solver stopped without meeting that criterion — the iteration or bracket-expansion budget ran out, or the bracket closed to the last representable digits of its own endpoints with the residual still above tolerance. Both mean no root was located to the requested accuracy. |
-  | 2 | `GUARD_TEMP` | `zeta*s - K(zeta) < 0`, so `w` is not real. |
-  | 3 | `GUARD_CURV` | `K''(zeta) <= 0`, so `v` is not real. |
-  | 4 | `GUARD_W` | `\|w\|` at or below the removable-singularity threshold (`spa::kWSingularity`, `1e-3`) — a **degraded success**: `Phi(+/-w)` is returned in place of the `r*` correction, and `P` is a number. |
-  | 5 | `NONFINITE` | `zeta`, a cumulant, or `r*` left the reals. |
-  | 6 | `NORMAL` | `\|Z\| <= --spa-z-threshold`; the saddlepoint was never attempted and `P` is the plain normal-approximation tail. |
+  | Value | Token | `LOG10P` holds | Meaning |
+  | ----- | ----- | -------------- | ------- |
+  | 0 | `SPA_OK` | saddlepoint | Both tails converged: the residual `\|K'(zeta) - s\|` met the solver's stated criterion at the returned root, re-verified there against the terminal cumulants; no guard fired. |
+  | 1 | `NORMAL` | normal approximation | And that is the **designed** behaviour, not a failure. Two ways in: `\|Z\| <= --spa-z-threshold`, so the saddlepoint was never attempted; or the test does not use a saddlepoint at all (the Wald legs of SPAsqr-wald, SAGELD and SPAGxE; GALLOP; the marginal `_G` blocks). |
+  | 2 | `SPA_W_SINGULAR` | saddlepoint, degraded | `\|w\|` at or below the removable-singularity threshold (`spa::kWSingularity`, `1e-3`) in at least one tail: `Phi(+/-w)` replaces the `r*` correction, which is the correct limit there. A degraded success, not a failure. |
+  | 3 | `FALLBACK_MAXITER` | **substituted normal tail** | The solver stopped without meeting its residual criterion — the iteration or bracket-expansion budget ran out, or the bracket closed to the last representable digits of its own endpoints with the residual still above tolerance. |
+  | 4 | `FALLBACK_GUARD_TEMP` | **substituted normal tail** | `zeta*s - K(zeta) < 0`, so `w` is not real. |
+  | 5 | `FALLBACK_GUARD_CURV` | **substituted normal tail** | `K''(zeta) <= 0`, so `v` is not real. |
+  | 6 | `FALLBACK_NONFINITE` | **substituted normal tail** | `zeta`, a cumulant, or `r*` left the reals. |
+  | 7 | `NA_POST_FAIL` | `NA` | A step *downstream* of the saddlepoint failed: a `(var_S, cov, var_Sbat)` triple that is not a covariance matrix, a conditional denominator that is not usable, a mixture leg that is missing and not immaterial, a meta pool with `sum Var <= 0`. The saddlepoint may never have been attempted, so `Z` says nothing about the quantity that failed. |
+  | 8 | `NA_NO_TEST` | `NA` | No statistic exists for this marker in this stratum: no informative subject, a monomorphic stratum, `Var(S) <= 0`, a non-finite `Z`. There is nothing to fall back *to*. |
 
-  `P` and `LOG10P` are `NA` for every status other than 0, 4 and 6 — a
-  saddlepoint failure is reported as a named reason rather than silently
-  substituted with a fabricated p-value. `SPA_STATUS` is emitted as this
-  integer code rather than the string token `spa::statusName` produces,
-  because `MethodBase::getResultVec` / `getResultBatch` hand the marker
-  engine a `std::vector<double>` per row with no string channel
-  (`src/engine/marker_impl.hpp`'s `numToChars` formats every result cell),
-  so a non-numeric result column is structurally impossible rather than
-  merely unconventional.  Introducing one would be an `src/engine/`
-  redesign — permissible as a unification change with the full
-  re-validation that implies, never as a side effect of method work.
+  **The ordering is a design property, not a coincidence, and it is the
+  filter rule:**
 
-### The contract is not yet universal — known gaps
+  ```
+  SPA_STATUS <= 2         LOG10P is trustworthy (0/2 saddlepoint, 1 normal by design)
+  3 <= SPA_STATUS <= 6    LOG10P is a substituted normal tail
+  SPA_STATUS >= 7         LOG10P is NA
+  ```
 
-The rule above describes the columns the saddlepoint tier itself produces.
-Several p-values in the tree still escape it, and closing the gap is
-unification work, not an optional cleanup.  **All six gaps below are
-scheduled to close in `dev-notes/methods/log10p_unify/`** — see
-`04_validation.md` §6 for the stage that closes each, and for the two that
-project deliberately leaves open.  Do not open a separate effort against
-any of them.
+  Codes 3–6 report `-log10(2*Phi(-|Z_Norm|))` in place of the saddlepoint
+  value, with the code naming why the saddlepoint could not be used.  This
+  is a **named** substitution, permitted by invariant 4 above; what that
+  invariant forbids is doing it silently.  Codes 7–8 substitute nothing.
+  See the invariant-4 discussion above for what is and is not known about
+  the substituted estimator's accuracy — in particular, do **not** repeat
+  the claim that the substitution concentrates at low MAC, which
+  measurement refutes.
 
-- **SAGELD** emits `P_G Z_G BETA_G SE_G` and the matching `_Gx<E>` group
-  (`src/spagrm/sageld.cpp`) with **no** `LOG10P` and **no** `SPA_STATUS`,
-  even though its p-value comes from `SPAGRMClass::getMarkerPvalFromScore`,
-  which returns all three.  The two columns are discarded at the call site.
-- **`P_CCT`** (SPAsqr score and wald, SPAGxE, SPAGxEmix) has no `LOG10P`
-  companion, because `math::cauchyCombine` is evaluated entirely on the
-  linear scale.
-- **`cl<i>_P_BAT`** in LEAF (`src/wtcoxg/leaf.cpp`) has no `LOG10P`
-  companion.
-- **`LOG10P_EXT` / `LOG10P_NOEXT`** in WtCoxG are computed as
-  `-std::log10(p)` from the already-assembled linear ratio in
-  `wtcoxg_cond::conditionalP` (`src/wtcoxg/conditional_p.hpp`), not in the
-  log domain, so they become `+Inf` rather than a magnitude once the
-  conditional p underflows.
-- The **`Z` column** is derived from the linear `P` through
-  `math::zFromPval`, whose `math::qnorm` clamps its argument at `1e-300`.
-  It therefore saturates at `|Z| = 37.047096` for every marker at or below
-  that p, while the adjacent `LOG10P` keeps rising — the two columns
-  disagree in exactly the regime where the result matters most.
-  `math::qchisq` carries the same clamp and saturates at `1373.87`, which
-  bounds the per-cluster weight in `math::metaPvalueScorePool` and the
-  variance recovered from a p-value in WtCoxG's conditional branches.
+  `SPA_STATUS` is emitted as this integer code rather than the string token
+  `spa::statusName` produces, because `MethodBase::getResultVec` /
+  `getResultBatch` hand the marker engine a `std::vector<double>` per row
+  with no string channel (`src/engine/marker_impl.hpp`'s `numToChars`
+  formats every result cell), so a non-numeric result column is
+  structurally impossible rather than merely unconventional.  Introducing
+  one would be an `src/engine/` redesign — permissible as a unification
+  change with the full re-validation that implies, never as a side effect
+  of method work.
 
-Until these are unified, do not describe the `P` / `LOG10P` / `Z` /
-`SPA_STATUS` contract to a user as if it held everywhere.
+  Not every p-value column has a `SPA_STATUS` beside it, and the omissions
+  are deliberate: `LOG10P_HWE` (a QC statistic, not an association test),
+  `LOG10P_BAT` / `cl<i>_LOG10P_BAT` (a plain two-sided normal batch-effect
+  test), `LOG10P_CCT` (a combination — read the per-tau statuses that fed
+  it) and `LOG10P_Wald_Gx<E>` (the Wald leg, whose outcome is carried by
+  the `SPA_STATUS_Gx<E>` of the combination it enters).
+
+### Remaining gaps
+
+The six gaps this contract used to carry are **closed**: SAGELD no longer
+discards `LOG10P`/`SPA_STATUS` (Stage 7); `P_CCT` became `LOG10P_CCT` over
+a log-domain Cauchy combination (Stage 5); `cl<i>_P_BAT` became
+`cl<i>_LOG10P_BAT` produced in the log domain (Stage 8); WtCoxG's
+`LOG10P_EXT`/`LOG10P_NOEXT` come from a log-domain conditional assembly
+rather than `-log10` of a linear ratio (Stage 6); and the `Z` /
+chi-squared inversions no longer saturate at `37.047096` / `1373.87`
+(Stage 4).  What is left is a short list, each item deliberate:
+
+- **`math::bvnCdf` is still a linear-domain implementation.**
+  `math::pmvnorm2dHalfRectLog` reformulates branches (a) and (b) in the log
+  domain, but branch (c) (`|rho| >= 1 - 1e-12`) still evaluates `bvnCdf`
+  and can underflow.  Its disposition is `NA` + `SPA_STATUS = 7`, never
+  `+Inf`, so the C1 invariant holds; the gap is accuracy in a degenerate
+  corner, not a fabricated number.
+- **WtCoxG Branch B's `(var_S, cov, var_Sbat)` triple is not constrained to
+  be positive semi-definite**, so `|rho| > 1` occurs (177 times on the
+  bundled `1kg` fixture; 729 rows of one LEAF cluster on the 50 000 ×
+  20 000 synthetic cohort).  This is a **modelling** problem, not a
+  numerical one, and `log10p_unify` deliberately did not touch it: it only
+  changed the status code from the misleading `NONFINITE` to the accurate
+  `NA_POST_FAIL`.  Repairing the triple is a separate project.
+- **`math::qnorm` and `math::qchisq` keep their `1e-300` clamp.**  After
+  decision D8 they serve only *input-side* threshold conversion
+  (`--covar-p-threshold`, WtCoxG's `p_cut`, SAGELD's `PvalueCutoff`), where
+  the arguments are values like `5e-5` and there is no underflow risk.  The
+  output side no longer goes through either function.
+- **`--cal-pairwise-ibd` is not reproducible across thread counts.**  The
+  preprocessing pool in `src/spagrm/ibd.cpp` does not pin its reduction
+  order, so `PREFIX.ibd` differs at the 1e-13 level between `--threads 2`
+  and `--threads 16` on an *unmodified* tree.  Row order is stable and no
+  downstream p-value has been observed to move, but invariant 5 does not
+  hold for that one artifact.  See
+  `dev-notes/defects/ibd_thread_nondeterminism.md`; the reproducibility
+  gate of every `log10p_unify` stage excluded `baseline/fit.ibd.zst` for
+  this reason.
+- **SAGELD has no synthetic null cohort.**  `tests/make_synthetic.py` does
+  not emit a long-format longitudinal phenotype, so SAGELD's calibration
+  has only ever been checked on the bundled `1kg` fixture, which is far too
+  small to resolve it.  Its status distribution agreeing with SPAGRM's on
+  the same phenotypes (both run `SPAGRMClass`) is the strongest evidence
+  currently available.
 
 ## Conventions for new code
 
@@ -434,6 +503,15 @@ Until these are unified, do not describe the `P` / `LOG10P` / `Z` /
 ## Building, testing, packaging
 
 - `make -j$(nproc)` — builds `build/grab2`.
+
+  **Check what `nproc` actually returns before relying on it.**  GNU
+  `nproc` honours `OMP_NUM_THREADS`, so on a host that exports
+  `OMP_NUM_THREADS=1` — a common HPC-module default, and the setting on the
+  machine this branch was developed on — `nproc` returns `1` and
+  `make -j$(nproc)` degrades to a serial build.  On the 384-core
+  development host that turned a 34-second full rebuild into 48 minutes.
+  Use `nproc --all`, or simply a fixed count (`make -j96`), when the
+  distinction matters.
 - `make clean` — removes `build/`.
 - The binary is the deliverable. There is no install step, no shared library,
   no headers exposed to users. Users download or build the binary and run it.
@@ -447,16 +525,21 @@ Until these are unified, do not describe the `P` / `LOG10P` / `Z` /
   third-party test framework — `tests/tinytest.hpp` is a single
   self-contained assertion header — and tests build with the same
   `GRAB_CXXFLAGS` (`-march`, SIMD flags, optimization level) as `src/`, with
-  `-DNDEBUG` filtered back out so assertions fire. As of the saddlepoint
-  unification, `make test` runs ten binaries: seven SPA suites
+  `-DNDEBUG` filtered back out so assertions fire. As of the `log10p_unify`
+  project, `make test` runs **twelve** binaries: seven SPA suites
   (`spa_solver_test`, `spa_cgf_test`, `spacox_cgf_test`, `spagrm_cgf_test`,
-  `spamix_cgf_test`, `wtcoxg_cgf_test`, `spamixlocalp_cgf_test`) plus the
-  three `.lanc` suites (`lanc_simd_test`, `lanc_roundtrip_test`,
-  `lanc_convert_rfmix_smoke_test`); `make bench` currently builds one
-  (`bench_spa_cgf`).  Two coverage gaps are known rather than accidental:
-  `src/wtcoxg/conditional_p.hpp` is exercised only indirectly through
-  `wtcoxg_cgf_test`, and there is no SPAGxE suite at all even though
-  SPAGxE/SPAGxEmix are pinned in `examples/baseline.sh`.
+  `spamix_cgf_test`, `wtcoxg_cgf_test`, `spamixlocalp_cgf_test`), the
+  log-domain distribution suite (`log10p_test`), the SPAGRM relatedness
+  suite (`spagrm_ibd_test`), and the three `.lanc` suites
+  (`lanc_simd_test`, `lanc_roundtrip_test`,
+  `lanc_convert_rfmix_smoke_test`); `make bench` builds **three**
+  (`bench_spa_cgf`, `bench_spa_tail`, `bench_hwe`).  Two coverage gaps are
+  known rather than accidental: `src/wtcoxg/conditional_p.hpp` is exercised
+  only indirectly through `wtcoxg_cgf_test`, and there is no SPAGxE suite at
+  all even though SPAGxE/SPAGxEmix are pinned in `examples/baseline.sh`.
+  Note that `make test`'s list is derived by `wildcard tests/*_test.cpp`, so
+  the count above is a fact about the tree at a point in time — re-count it
+  from the target's own output rather than trusting this sentence.
 - `tests/make_synthetic.py` and `tests/make_lanc_null.py` generate the
   synthetic null cohorts the calibration gates use — pure-null-by-construction
   genotype/phenotype/GRM fixtures at a scale (50 000 subjects x 20 000
@@ -517,16 +600,42 @@ procedure each move p-values below `cmp`'s bit-for-bit bar, so `cmp`
 reports "different" for every file and tells you nothing about which
 change did it.
 
+Three things about `max dlog10P` in particular, since the `P` column it
+used to be computed from no longer exists:
+
+- For a `LOG10P`-family column the tool takes `|L_base - L_new|`
+  **directly**.  It does not take `log10` of anything, because the column
+  already is the magnitude.  The predecessor took `log10` of every p-value
+  column unconditionally, which on a `LOG10P` column is the wrong quantity
+  and reported a near-zero difference that looked clean.
+- `is_log10p_column` / `is_linear_pvalue_column` / `is_pvalue_column`
+  (`tests/regress.py`) split each header name on `_` and test the token
+  set, so `LOG10P`, `LOG10P_EXT`, `meta_LOG10P_NOEXT`, `cl2_LOG10P_BAT`,
+  `LOG10P_tau0.5`, `LOG10P_Gx<E>`, `LOG10P_CCT` and `LOG10P_HWE` are all
+  recognised.  Note that a bare `LOG10P` is a *single* token and therefore
+  does not match a `"P" in tokens` test — that is exactly the bug Stage 0
+  had to repair before any later stage's report could be trusted.
+- `--pair BASE:NEW` (via `paired_name`) compares two differently-named
+  columns as one quantity, e.g. `--pair P:LOG10P` to read a pre-deletion
+  tree against a post-deletion one, or `--pair HWE_P:LOG10P_HWE` for
+  decision D7.  That is the only way to get a before/after `max dlog10P`
+  across a column rename.
+
+`tests/regress.py` also enforces three invariants as hard failures, on
+every `LOG10P`-family column of every artifact: no `+Inf`/`-Inf` (C1), no
+negative values (C2), and `SPA_STATUS >= 7` if and only if the matching
+`LOG10P` is `NA` (C3).
+
 Know what the script actually gates on, because on this branch it will
 usually exit non-zero and that is not by itself a finding:
 
 - The **only** numeric gate is `max rel > --rtol`, with `--rtol`
-  defaulting to `1e-9` and applied uniformly to every numeric column — `P`,
+  defaulting to `1e-9` and applied uniformly to every numeric column —
   `LOG10P`, `Z`, `BETA` and `SE` alike.
 - `max dlog10P` is computed and printed but **never** compared to a
-  threshold; there is no flag to set one.  The per-stage budget it is read
-  against lives in `dev-notes/methods/spa_unify/03_stages.md`, not in the
-  script.
+  threshold; there is no flag to set one.  The per-stage budgets it is read
+  against live in `dev-notes/methods/spa_unify/03_stages.md` and
+  `dev-notes/methods/log10p_unify/04_validation.md`, not in the script.
 - **Structural findings always fail**: a file present on one side only, a
   differing row count, an added/removed/reordered column, or any change in
   a non-numeric column.  Every stage of this branch that introduces a
@@ -627,10 +736,11 @@ because SAGELD reaches the tier through `SPAGRMClass`, SPAGxE/SPAGxEmix
 through `spamix_cgf.hpp`, and LEAF through `wtcoxg_cgf.hpp`.  A
 method-specific saddlepoint bug is almost certainly in that method's
 tier-3 CGF adapter — the code supplying `K`, `K'` and `K''` — not in the
-shared solver, tail kernel, or CGF variants.  Note that **SAGELD discards
-`LOG10P` and `SPA_STATUS`** at the call site (`src/spagrm/sageld.cpp`), so
-a tier change can move SAGELD p-values with no status column present to
-diagnose it with.
+shared solver, tail kernel, or CGF variants.  SAGELD now reports
+`LOG10P` and `SPA_STATUS` on both its blocks (`src/spagrm/sageld.cpp`
+stopped discarding them in `log10p_unify` Stage 7), so a tier change that
+moves SAGELD p-values is diagnosable from its own status column; before
+that stage it was not.
 
 The methods currently under active development are **SPAmixPlus** and
 **SPAmixLocalPlus**.  Both remain callable via `--method spamixplus` /
@@ -661,18 +771,23 @@ almost certainly in the method-specific code:
 - `src/util/spa.hpp` — the shared saddlepoint tier: `solveSaddlepoint` (the
   bracketed-and-safeguarded Newton solver), `bnTailLog` (the
   Barndorff-Nielsen modified-signed-root tail, log domain), `combineTailsLog`
-  and `assemble` (the two-sided assembly and the decision-D5 fallback), and
-  the `Status`/`SPA_STATUS` encoding described above.  The linear twins
-  `bnTail`, `combineTails` and `normalTwoSided` were deleted by
-  `log10p_unify` Stage 3; a method that still emits a `P` column derives it
-  as `spa::pFromNegLog10P` of the assembled `-log10(P)`, and that helper goes
-  with the column in Stage 8.
+  and `assemble` (the two-sided assembly and the normal substitution), and
+  the `Status`/`SPA_STATUS` encoding described above.  There is **one** tail
+  path and **one** assembly entry point: the linear twins `bnTail`,
+  `combineTails`, `normalTwoSided` and `detail::phiTail` were deleted by
+  `log10p_unify` Stage 3, and the transitional `spa::pFromNegLog10P` went
+  with the `P` column in Stage 8.  `spa::Result` carries `negLog10p` and
+  `status`, and nothing else.
 - `src/util/spa_cgf.{hpp,cpp}` — the three shared binomial CGF variants
   (`binomUniform`, `binomIndiv`, `binomHapcount`), each with the mandated
   scalar + AVX2 + AVX-512 triple and a `simdLevel()` dispatch site.
 - `src/util/math_helper.{hpp,cpp}` — the distribution tier every method
-  inverts or evaluates through: `pnorm`, `pnormLog`, `qnorm`, `qchisq`,
-  `pt`, `zFromPval`, `cauchyCombine`, `pmvnorm2dHalfRect`.
+  inverts or evaluates through.  Output side (log domain): `pnormLog`,
+  `normalTwoSidedLog`, `zFromNegLog10P`, `chisq1FromNegLog10P`,
+  `cauchyCombineLog10`, `ptLog`, `pmvnorm2dHalfRectLog`.  Input side and
+  internals (linear): `pnorm`, `qnorm`, `qchisq`, `pt`,
+  `pmvnorm2dHalfRect`, `bvnCdf`.  `zFromPval` and `cauchyCombine` no longer
+  exist.
 - `src/util/meta_pvalue.hpp` — `metaPvalueScorePool`, the inverse-variance
   score pooling LEAF combines its per-cluster results with.
 - `src/util/wald.{hpp,cpp}` — the shared Wald refit fitters used by
