@@ -7,7 +7,7 @@
 //   § 3  Brent root-finding       findRootBrent
 //   § 4  Diploid genotype MGF     mG0/mG1/mG2, kG0/kG1/kG2 (scalar)
 //   § 5  Logistic regression      logisticRegressionBeta, logisticRegression (IRLS, Eigen)
-//   § 7b Cauchy combination       cauchyCombine / cauchyCombineLog10
+//   § 7b Cauchy combination       cauchyCombineLog10
 #pragma once
 
 // Some standard library headers transitively pull in <cmath> before we
@@ -220,10 +220,10 @@ inline double pt(
 // meaning past P ≈ 1e-308 where the linear representation stops existing.
 //
 // Stage 1 added them; Stage 4 switched the `Z` column and the df = 1
-// chi-squared weight over, deleting the linear `zFromPval` outright.  The
-// linear spellings that survive above (qnorm, qchisq, pt) serve the input side
-// only — decision D8 keeps user-supplied p-value thresholds linear — and
-// `cauchyCombine` awaits Stage 5.
+// chi-squared weight over, deleting the linear `zFromPval` outright, and
+// Stage 5 did the same for the Cauchy combination, deleting `cauchyCombine`.
+// The linear spellings that survive above (qnorm, qchisq, pt) serve the input
+// side only — decision D8 keeps user-supplied p-value thresholds linear.
 // ──────────────────────────────────────────────────────────────────────
 
 // ln 10 and ln 2.  One spelling for the tier: `spa::detail::kLn10` and
@@ -659,58 +659,29 @@ OptimResult bfgs(
 );
 
 // ──────────────────────────────────────────────────────────────────────
-// § 7b  Cauchy combination test (CCT)
+// § 7b  Cauchy combination test (CCT), on the −log10 scale
 //
 // Combines n independent or dependent p-values into a single p-value via
 //   T = (1/n) Σ tan( (0.5 − pᵢ) · π )
 // and returns the upper-tail probability of the standard Cauchy at T.
-// NaN entries in pvals[] are skipped; if all entries are NaN the result
-// is NaN.  Any pᵢ ≤ 0 short-circuits the combined p-value to 0; pᵢ ≥ 1
-// is clamped to 0.999.  The tail formulas use 1/(πT) for |T| > 1e15 and
-// 1/(πpᵢ) for pᵢ < 1e−15 to avoid overflow in tan().
 //
 // Reference: Liu & Xie (2020), "Cauchy combination test: a powerful test
 // with analytic p-value calculation under arbitrary dependency
 // structures", J. Amer. Statist. Assoc. 115 (529), 393–402.
 // ──────────────────────────────────────────────────────────────────────
 
-inline double cauchyCombine(
-    const double *pvals,
-    int n
-) {
-    if (n <= 0) return std::numeric_limits<double>::quiet_NaN();
-
-    int nValid = 0;
-    bool hasZero = false;
-    double tStat = 0.0;
-    for (int i = 0; i < n; ++i) {
-        const double p = pvals[i];
-        if (std::isnan(p)) continue;
-        ++nValid;
-        if (p <= 0.0) { hasZero = true; break; }
-        const double pc = (p >= 1.0) ? 0.999 : p;
-        tStat += (pc < 1e-15) ? (1.0 / (pc * M_PI))
-                              : std::tan((0.5 - pc) * M_PI);
-    }
-
-    if (nValid == 0) return std::numeric_limits<double>::quiet_NaN();
-    if (hasZero) return 0.0;
-
-    tStat /= static_cast<double>(nValid);
-    return (tStat > 1e15) ? (1.0 / tStat) / M_PI
-                          : 0.5 - std::atan(tStat) / M_PI;
-}
-
-// The same test carried entirely on the −log10 scale: the inputs are
-// Lᵢ = −log10(pᵢ) and the result is L_CCT = −log10(p_CCT).
+// The inputs are Lᵢ = −log10(pᵢ) and the result is L_CCT = −log10(p_CCT).
+// There is no linear twin: log10p_unify Stage 5 deleted `cauchyCombine`.
 //
-// This is not a cosmetic change of units.  The Cauchy statistic's own terms
-// are cot(π pᵢ) → 1/(π pᵢ) = 10^Lᵢ/π, so the STATISTIC overflows as soon as
-// any pᵢ falls below about 1e-308 — `cauchyCombine` above returns exactly 0
+// The scale is not a cosmetic choice.  The Cauchy statistic's own terms are
+// cot(π pᵢ) → 1/(π pᵢ) = 10^Lᵢ/π, so the STATISTIC overflows as soon as any
+// pᵢ falls below about 1e-308 — the deleted linear routine returned exactly 0
 // from `tStat = +Inf` for an input of 1e-320, and 0 is not a p-value.  The
 // statistic is therefore never formed: it is carried as T = 10^M·A with
 // M = max_i Lᵢ, and the upper tail is inverted from ln T
-// (01_numerics §2.2).
+// (01_numerics §2.2).  The linear routine additionally finished with
+// `0.5 − atan(T)/π`, a cancelling subtraction that had already lost the answer
+// to 1.8e-11 relative at L_max = 6.6 and to 2.2e-4 at L_max = 13.8.
 //
 // Structure worth stating, because it is easy to get backwards: in the tail
 //
@@ -721,11 +692,18 @@ inline double cauchyCombine(
 // −log10(Σ wᵢ·10^(−Lᵢ)), which is the log of the mean p and is dominated by
 // the largest p (01_numerics §2.4).
 //
-// Semantics carried over from `cauchyCombine` unchanged: NaN entries are
-// skipped and n is the count of the survivors; all-NaN returns NaN; a
-// non-positive p (here L = +∞) short-circuits to L_CCT = +∞.  The clamp
-// p ≥ 1 → 0.999 becomes Lᵢ ← max(Lᵢ, −log10(0.999)), which additionally
-// regularizes p ∈ (0.999, 1) where cot(π p) diverges.
+// Semantics carried over from the deleted linear routine unchanged: NaN
+// entries are skipped and n is the count of the survivors; all-NaN returns
+// NaN.  The clamp p ≥ 1 → 0.999 becomes Lᵢ ← max(Lᵢ, −log10(0.999)), which
+// additionally regularizes p ∈ (0.999, 1), where cot(π p) diverges and the
+// linear rule (which clamped only at p ≥ 1) let it.
+//
+// One caller obligation: L = +∞ short-circuits to L_CCT = +∞, which is the
+// image of the linear routine's "some p is 0 → the combination is 0".  A
+// caller that assembles its Lᵢ in the log domain never produces +∞ and so
+// never sees it; a caller that still recovers an Lᵢ as −log10 of a linear
+// p-value can, and must not write the result into a LOG10P column (invariant
+// C1).  SPAGxE's Wald leg is the last such caller and Stage 7 closes it.
 double cauchyCombineLog10(
     const double *negLog10p,
     int n

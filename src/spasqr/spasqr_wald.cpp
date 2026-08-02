@@ -11,7 +11,7 @@
 // Threading model: per-marker QR refit is driven through MethodBase /
 // multiPhenoEngine (no-LOCO) or locoEngine (LOCO) — identical to the
 // score-mode dispatch.  Output is plink2-style one-marker-per-line wide
-// format with P_CCT + P_tau* + Z_tau* + BETA_tau* + SE_tau* columns,
+// format with LOG10P_CCT + P_tau* + Z_tau* + BETA_tau* + SE_tau* columns,
 // written via TextWriter honoring --compression {gz, zst}.
 
 #include "spasqr/spasqr.hpp"
@@ -23,6 +23,7 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/spa.hpp"       // spa::normalTwoSidedLog, spa::pFromNegLog10P
 
 #include <Eigen/Dense>
 
@@ -215,7 +216,7 @@ class SPAsqrWaldMethod : public MethodBase {
     std::string getHeaderColumns() const override {
         std::ostringstream oss;
         const auto &labels = m_shared->tauLabels;
-        oss << "\tP_CCT";
+        oss << "\tLOG10P_CCT";
         for (const auto &lab : labels) oss << "\tP_"    << lab;
         for (const auto &lab : labels) oss << "\tZ_"    << lab;
         for (const auto &lab : labels) oss << "\tBETA_" << lab;
@@ -236,6 +237,7 @@ class SPAsqrWaldMethod : public MethodBase {
         std::vector<double> ses  (ntaus, std::numeric_limits<double>::quiet_NaN());
         std::vector<double> zs   (ntaus, std::numeric_limits<double>::quiet_NaN());
         std::vector<double> ps   (ntaus, std::numeric_limits<double>::quiet_NaN());
+        std::vector<double> Ls   (ntaus, std::numeric_limits<double>::quiet_NaN());
 
         // GVec is pheno-dense, NaN-imputed by the engine.
         const Eigen::VectorXd G = GVec;
@@ -255,17 +257,29 @@ class SPAsqrWaldMethod : public MethodBase {
                 betas[t] = wr.beta;
                 ses[t]   = wr.se;
                 zs[t]    = z;
-                // Through Boost's complement, not 1 - Phi(|z|), which floors
-                // at zero for |z| > 8.3 (spa_unify 01_findings.md).
-                ps[t]    = 2.0 * math::pnorm(std::fabs(z), 0.0, 1.0, false);
+                // The magnitude first, the linear p from it.  This leg is a
+                // plain normal tail, so 2*pnorm(|z|, upper) through Boost's
+                // complement was already accurate wherever it was representable
+                // — but it stops being representable at |z| = 38.6, and it is
+                // what the Cauchy combination is taken over.  Carrying L and
+                // deriving P from it (log10p_unify Stage 5, the pattern Stage 3
+                // established for the tier's own P column) removes that ceiling
+                // from LOG10P_CCT.  The P_tau group is derived through
+                // spa::pFromNegLog10P until Stage 8 deletes it, and Stage 7
+                // replaces it with LOG10P_tau and adds SPA_STATUS_tau.
+                Ls[t]    = -spa::normalTwoSidedLog(z) / math::kLn10;
+                ps[t]    = spa::pFromNegLog10P(Ls[t]);
             }
         }
 
-        const double pCCT = math::cauchyCombine(ps.data(), static_cast<int>(ps.size()));
+        // Over the magnitudes, not the linear p-values: the Cauchy statistic
+        // 1/(pi*p) overflows for p <= 1e-308 and the linear routine returned
+        // P_CCT = 0 there (01_numerics §2.1).
+        const double lCCT = math::cauchyCombineLog10(Ls.data(), static_cast<int>(Ls.size()));
 
         result.clear();
         result.reserve(resultSize());
-        result.push_back(pCCT);
+        result.push_back(lCCT);
         for (double p : ps)    result.push_back(p);
         for (double z : zs)    result.push_back(z);
         for (double b : betas) result.push_back(b);

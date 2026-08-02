@@ -28,7 +28,7 @@
 #include "spamix/indiv_af.hpp"        // AFContext, computeAFVec (SPAGxEmix)
 #include "util/outlier.hpp"           // OutlierData, detectOutliers
 #include "util/logging.hpp"           // infoMsg, warnMsg
-#include "util/math_helper.hpp"       // math::pnorm, zFromNegLog10P, cauchyCombine
+#include "util/math_helper.hpp"       // math::pnorm, zFromNegLog10P, cauchyCombineLog10
 #include "util/null_model.hpp"        // nullmodel::fitAll and friends
 
 #include <algorithm>
@@ -373,13 +373,25 @@ namespace {
 //
 // `ts` is the saddlepoint (or normal-branch) result for the score test; `pWald`
 // is the Branch-B prospective Wald p, NaN where no Wald leg ran.  When a Wald p
-// is present the reported p is the Cauchy combination of the two, and the
-// log-domain magnitude does not survive it: math::cauchyCombine works on the
-// linear scale, so LOG10P falls back to −log10 of the combined value.  SPA_STATUS
-// always describes the SADDLEPOINT, independently of what reached the P column —
-// which matters precisely because cauchyCombine skips a NaN, so a failed
-// saddlepoint with a successful Wald refit still yields a finite P_Gx and the
-// status is the only record that the SPA leg dropped out.
+// is present the reported p is the Cauchy combination of the two, and since
+// log10p_unify Stage 5 that combination is taken in the log domain
+// (math::cauchyCombineLog10) rather than on the linear scale.  LOG10P_Gx is
+// therefore the magnitude the CCT itself produces, NOT −log10 of a linear
+// combination: the saddlepoint leg enters as its own L and is no longer
+// truncated at the point where the linear p underflows, and P_Gx is recovered
+// from the magnitude by spa::pFromNegLog10P until Stage 8 removes it.
+//
+// One limitation remains and belongs to Stage 7: the Wald leg still arrives as
+// a linear p from wald::lastCoef*Pval, so its L is recovered as −log10(pWald)
+// and is +∞ if that p underflowed to exactly zero, which would carry into
+// LOG10P_Gx.  That is the behaviour the linear routine already had (it returned
+// P_CCT = 0 there, whose −log10 is the same +∞); Stage 7 converts the four Wald
+// fitters to return L and closes it.
+//
+// SPA_STATUS always describes the SADDLEPOINT, independently of what reached
+// the p-value columns — which matters precisely because the combination skips a
+// NaN, so a failed saddlepoint with a successful Wald refit still yields a
+// finite P_Gx and the status is the only record that the SPA leg dropped out.
 void writeEnvBlock(
     std::vector<double> &out,
     int base,
@@ -393,24 +405,27 @@ void writeEnvBlock(
     out[base + 7] = spamix_cgf::statusCode(ts.status);
     if (!(var > 0.0)) return;
 
-    // P from LOG10P (log10p_unify Stage 3); the CCT below is still evaluated
-    // on the linear scale, which Stage 5 changes.
-    double finalP = spa::pFromNegLog10P(ts.negLog10p);
     double negLog = ts.negLog10p;
     if (waldEnabled) {
-        const double ps[2] = {finalP, pWald};
-        finalP = math::cauchyCombine(ps, 2);
-        negLog = -std::log10(finalP);
-        if (negLog == 0.0) negLog = 0.0;   // normalize -0.0
+        // The CCT in the log domain (Stage 5).  The saddlepoint leg is already
+        // a magnitude; the Wald leg is inverted from its linear p, which is
+        // exact wherever that p is representable.  The -0.0 normalization the
+        // linear form needed goes with it: the combination of n copies of one p
+        // is that p, so with the L >= -log10(0.999) clamp on every input the
+        // result is bounded below by 4.34e-4 and cannot come back as a zero.
+        const double Ls[2] = {ts.negLog10p, -std::log10(pWald)};
+        negLog = math::cauchyCombineLog10(Ls, 2);
     }
+    // P from LOG10P (log10p_unify Stage 3); the column goes in Stage 8.
+    const double finalP = spa::pFromNegLog10P(negLog);
 
     out[base + 0] = finalP;                      // P_Gx<E> (final)
     out[base + 1] = negLog;                      // LOG10P_Gx<E>
     out[base + 2] = pWald;                       // P_Wald_Gx<E> (NaN if none)
     // Z from LOG10P_Gx, not from P_Gx (Stage 4): the linear inversion
-    // saturated at |Z| = 37.0470962993612 for every L >= 299.698970.  Where
-    // the CCT ran, `negLog` is still -log10 of a linear combination, so the
-    // saturation is merely displaced to that step until Stage 5 moves it.
+    // saturated at |Z| = 37.0470962993612 for every L >= 299.698970.  Since
+    // Stage 5, `negLog` is the CCT's own magnitude, so the saturation is gone
+    // from the combined branch as well rather than merely displaced onto it.
     out[base + 3] = math::zFromNegLog10P(negLog, z);  // Z_Gx<E> (p-consistent)
     out[base + 4] = z;                           // Z_Norm_Gx<E> (raw score z)
     out[base + 5] = score / var;                 // BETA_Gx<E>

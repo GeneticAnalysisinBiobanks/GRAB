@@ -471,7 +471,7 @@ inline const FlagDef kSpasqrMode = {
           phenotype × τ; markers are streamed and tested via the score
           statistic S = Σ R_i G_i with M-estimation sandwich variance.
           Output (per marker): CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
-          P_CCT P_tau{val}... Z_tau{val}...
+          LOG10P_CCT P_tau{val}... Z_tau{val}...
   wald  — full-model Wald test.  For every (marker, τ), the joint smoothed-QR
           model with [X | G] is refit by QMME and β̂_G + SE are computed from
           the (γ,γ) entry of the M-estimation sandwich V = A^{-1} B A^{-1}/n.
@@ -482,7 +482,7 @@ inline const FlagDef kSpasqrMode = {
           small marker sets — see --chunk-ksnp for details.  Output is
           plink2-style one-marker-per-line wide format:
           CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
-          P_CCT P_tau{val}... Z_tau{val}... BETA_tau{val}... SE_tau{val}...
+          LOG10P_CCT P_tau{val}... Z_tau{val}... BETA_tau{val}... SE_tau{val}...
           (--pred-list gives y_resp = Y − loco_chr; --compression honored.))"
 };
 
@@ -796,13 +796,17 @@ inline const MethodDef kSPAGxE = {
   P_G  Z_G  BETA_G  SE_G
   P_Gx<E1>  LOG10P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
             BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
-    LOG10P_*      -log10(P_Gx).  Computed in the log domain wherever the
-                  reported p IS the saddlepoint p, so it survives past the
-                  point where the linear-scale tail underflows (p ~ 1e-316).
-                  In Branch B with a Wald leg the reported p is the Cauchy
-                  combination CCT(p_spa, p_wald) and math::cauchyCombine has
-                  no log-domain form, so there it is only -log10 of the
-                  linear combination.
+    LOG10P_*      -log10(P_Gx), computed in the log domain on every path, so
+                  it survives past the point where the linear-scale tail
+                  underflows (p ~ 1e-316).  In Branch B with a Wald leg the
+                  reported p is the Cauchy combination CCT(p_spa, p_wald),
+                  and that combination is taken over the two magnitudes as
+                  well: the Cauchy statistic's terms are 1/(pi*p) and so
+                  overflow for p <= 1e-308, which is why it is never formed.
+                  P_Gx is 10^(-LOG10P_Gx).  One ceiling is left, on the Wald
+                  leg alone: it is still produced as a linear p, so a Wald p
+                  that underflowed to exactly zero enters the combination as
+                  an infinite magnitude.
     SPA_STATUS_*  per-environment saddlepoint outcome: 0 OK, 1 MAXITER,
                   2 GUARD_TEMP, 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE,
                   6 NORMAL (|Z| below --spa-z-threshold, saddlepoint not
@@ -968,7 +972,7 @@ inline const MethodDef kSPAsqr = {
     "                                          (SPAsqr fits smoothed QR per --spasqr-taus internally)",
     R"(PREFIX.<COL>.SPAsqr[.gz|.zst]   one file per --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
-  P_CCT  P_tau{val}...  LOG10P_tau{val}...  Z_tau{val}...
+  LOG10P_CCT  P_tau{val}...  LOG10P_tau{val}...  Z_tau{val}...
          Z_Norm_tau{val}...  SPA_STATUS_tau{val}...
     LOG10P_*      -log10(P_tau), computed in the log domain so it survives past
                   the point where the linear-scale tail underflows (p ~ 1e-316)
@@ -976,12 +980,18 @@ inline const MethodDef kSPAsqr = {
                   3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
                   --spa-z-threshold, saddlepoint not attempted).  P_tau and
                   LOG10P_tau are NA for every value other than 0, 4 and 6, and a
-                  NA tau drops out of the P_CCT Cauchy combination.  Status 4
+                  NA tau drops out of the LOG10P_CCT combination.  Status 4
                   is a degraded success rather than a failure: the modified
                   root's correction was dropped as uncomputable and the tail
                   fell back to its leading term.
-  No LOG10P_CCT: math::cauchyCombine has no log-domain form, so it could only
-  be -log10 of the linear P_CCT.)",
+    LOG10P_CCT    the Cauchy combination of the per-tau tests, on the same
+                  -log10 scale.  It is computed FROM the LOG10P_tau group,
+                  not from the P_tau group: the Cauchy statistic's terms are
+                  1/(pi*p), so the statistic overflows as soon as any single
+                  tau reaches p ~ 1e-308 and a linear combination returned
+                  exactly 0 there.  In the tail the combination is dominated
+                  by the smallest p, LOG10P_CCT ~ max(LOG10P_tau) - log10(T)
+                  for T taus.)",
     nullptr,
 };
 

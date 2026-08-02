@@ -7,7 +7,8 @@
 //
 //     trait ~ [covar] + g + g:E          (model doc §4.2, R/SPAGxECCT.R:620)
 //
-// and reports  P = CCT(p_spa, p_wald)  (Cauchy combination; math::cauchyCombine).
+// and reports  P = CCT(p_spa, p_wald)  (Cauchy combination; the log-domain
+// math::cauchyCombineLog10, over the two magnitudes).
 //
 // No GRAB2 residual fitter exposes coefficient covariance, so the per-marker
 // Wald refit is net-new for every trait type.  The standard-model fitters that

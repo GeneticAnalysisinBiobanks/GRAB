@@ -271,7 +271,7 @@ class SPAsqrMethod : public MethodBase {
         return 5 * m_ntaus + 1;
     }
 
-// P_CCT, then five per-tau groups: P, LOG10P, Z, Z_Norm, SPA_STATUS.
+// LOG10P_CCT, then five per-tau groups: P, LOG10P, Z, Z_Norm, SPA_STATUS.
 //
 // The saddlepoint is per tau, so both new columns are per tau as well: a marker
 // can converge at one quantile level and fail at another, and a single
@@ -280,12 +280,13 @@ class SPAsqrMethod : public MethodBase {
 // order of the pre-existing columns is unchanged and tests/regress.py reports
 // exactly one structural line per file.
 //
-// There is deliberately no LOG10P_CCT.  P_CCT comes from math::cauchyCombine,
-// which has no log-domain form — its statistic is a mean of tan((0.5-p)*pi)
-// evaluated on the linear scale — so a LOG10P_CCT column could only ever be
-// -log10 of the linear P_CCT and would carry no information the P_CCT column
-// does not already carry.  Giving CCT a genuine log-domain path is a separate
-// change to math_helper.hpp, not part of this migration.
+// The combination column is LOG10P_CCT, not P_CCT (log10p_unify Stage 5).  The
+// Cauchy statistic's terms are cot(pi*p) -> 1/(pi*p), so the statistic itself
+// overflows once any tau's p reaches 1e-308; the log-domain routine carries it
+// as T = 10^M * A and never forms it (math::cauchyCombineLog10).  The
+// combination is therefore taken over the LOG10P group rather than the P group,
+// which is also why the P group can leave in Stage 8 without taking the
+// combination with it.
 //
 // SPA_STATUS is static_cast<uint8_t>(spa::Status): 0 SPA_OK, 1 NORMAL,
 // 2 SPA_W_SINGULAR, 3..6 the FALLBACK_* codes, 7 NA_POST_FAIL, 8 NA_NO_TEST.
@@ -300,7 +301,7 @@ class SPAsqrMethod : public MethodBase {
 // SPACox, kept identical so all methods agree.
     std::string getHeaderColumns() const override {
         std::ostringstream oss;
-        oss << "\tP_CCT";
+        oss << "\tLOG10P_CCT";
         static const char *const kGroups[] = {"P_", "LOG10P_", "Z_", "Z_Norm_",
                                               "SPA_STATUS_"};
         for (const char *g : kGroups) {
@@ -488,10 +489,15 @@ class SPAsqrMethod : public MethodBase {
         result.clear();
         result.reserve(5 * m_ntaus + 1);
 
-        // math::cauchyCombine skips NaN entries, so a tau whose saddlepoint
-        // failed drops out of the combination rather than poisoning it; that
-        // behaviour is unchanged by this stage.
-        result.push_back(math::cauchyCombine(pvals, m_ntaus));
+        // math::cauchyCombineLog10 skips NaN entries, so a tau whose
+        // saddlepoint failed drops out of the combination rather than poisoning
+        // it; that rule is the linear routine's, carried over unchanged.  The
+        // inputs are the magnitudes, which is what makes the column meaningful
+        // past L = 308: the tail is L_CCT ~ L_max - log10(ntaus), so the
+        // combination is dominated by the SMALLEST p and inherits its
+        // magnitude, where the linear statistic overflowed and returned
+        // P_CCT = 0 (log10p_unify Stage 5, 01_numerics §2.4).
+        result.push_back(math::cauchyCombineLog10(lgs, m_ntaus));
 
         for (int i = 0; i < m_ntaus; ++i) result.push_back(pvals[i]);
         for (int i = 0; i < m_ntaus; ++i) result.push_back(lgs[i]);

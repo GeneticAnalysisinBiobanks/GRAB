@@ -426,15 +426,16 @@ build/grab2 \
 ## ── SPAsqr (score mode, fit path) ─────────────────────────────────────
 # Consumes the INT-transformed phenotype file produced above.
 #
-# Output columns (spa_unify Stage 4): the nine meta columns, then P_CCT and
-# five per-tau groups —
-#   P_CCT  P_tau*  LOG10P_tau*  Z_tau*  Z_Norm_tau*  SPA_STATUS_tau*
+# Output columns: the nine meta columns, then LOG10P_CCT and five per-tau
+# groups —
+#   LOG10P_CCT  P_tau*  LOG10P_tau*  Z_tau*  Z_Norm_tau*  SPA_STATUS_tau*
 # The saddlepoint is per tau, so both new columns are per tau too: a marker
 # can converge at one quantile level and fail at another.  SPA_STATUS_tau*
-# uses the same integer encoding as the SPACox and SPAGRM blocks.  There is
-# no LOG10P_CCT because math::cauchyCombine has no log-domain form, so such
-# a column could only be -log10 of the linear P_CCT.  A tau whose P is NA
-# drops out of the Cauchy combination rather than poisoning P_CCT.
+# uses the same integer encoding as the SPACox and SPAGRM blocks.  The Cauchy
+# combination is taken over the LOG10P_tau group (log10p_unify Stage 5): its
+# statistic's terms are 1/(pi*p), so a linear combination overflowed and
+# returned exactly 0 as soon as one tau reached p ~ 1e-308.  A tau whose test
+# produced no answer is NA and drops out rather than poisoning the rest.
 
 build/grab2 \
   --method SPAsqr \
@@ -594,7 +595,7 @@ build/grab2 \
 # marker-engine thread pool; chunk size auto-shrinks when --chunk-ksnp
 # is left at its 8-ksnp default (8192 SNPs) so the worker pool stays fed even on
 # small --extract subsets.  Output is plink2-style one-marker-per-line
-# wide format (P_CCT + P_tau* + Z_tau* + BETA_tau* + SE_tau* columns),
+# wide format (LOG10P_CCT + P_tau* + Z_tau* + BETA_tau* + SE_tau* columns),
 # written through TextWriter honoring --compression.  A distinct --out
 # prefix keeps the per-phenotype .SPAsqr.zst files from colliding with
 # the score-mode artifacts produced above.
@@ -745,10 +746,11 @@ build/grab2 \
 # blocks above and always describes the saddlepoint leg, so a Branch-B
 # marker whose SPA failed but whose Wald refit succeeded still shows a
 # finite P_Gx together with the status that says the SPA dropped out of the
-# Cauchy combination.  LOG10P_Gx is log-domain wherever the reported p is
-# the saddlepoint p; in Branch B with a Wald leg it is -log10 of the linear
-# CCT, math::cauchyCombine having no log-domain form.  The marginal block
-# is always the normal approximation and gains neither column.
+# Cauchy combination.  LOG10P_Gx is log-domain on every path: where the
+# reported p is the saddlepoint p it comes from the tail assembly, and where
+# Branch B adds a Wald leg the combination itself is taken over the two
+# magnitudes (log10p_unify Stage 5).  The marginal block is always the normal
+# approximation and gains neither column.
 #
 # A distinct --out prefix keeps the fitted residual and per-marker tables from
 # colliding with the SPACox/SAGELD ${OUT}.* artifacts.

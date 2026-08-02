@@ -76,7 +76,9 @@ struct AFData {
 //                                     SPAGxE+ GRM / residual-mode paths): the
 //                                     SPA/normal score p.  Branch B, base path:
 //                                     CCT(p_spa, p_wald).
-//   col 4 + 8·e+1   :  LOG10P_Gx<Ee>  −log10(P_Gx<Ee>)
+//   col 4 + 8·e+1   :  LOG10P_Gx<Ee>  the magnitude −log10(P_Gx<Ee>), carried
+//                                     in the log domain end to end (P_Gx is
+//                                     derived from it, not the other way round)
 //   col 4 + 8·e+2   :  P_Wald_Gx<Ee>  Branch-B Wald p of the G:E coefficient
 //                                     (NaN in Branch A, the GRM path, and
 //                                     residual mode — no Wald there).
@@ -88,13 +90,19 @@ struct AFData {
 //                                     static_cast<uint8_t>(spa::Status)
 // resultSize() = 4 + 8·nEnv.
 //
-// spa_unify L2 / L3 (Stage 5).  LOG10P_Gx comes from the log-domain tail
-// assembly wherever the reported p IS the saddlepoint p, so it survives past
-// the point at which the linear-scale sum of the two tails underflows to zero.
-// In Branch B with a Wald leg the reported p is CCT(p_spa, p_wald) and
-// math::cauchyCombine has no log-domain form, so there LOG10P_Gx is only
-// −log10 of the linear combination — the same limitation SPAsqr records for
-// its P_CCT column.
+// LOG10P_Gx is a magnitude on every path, never −log10 of a linear p.  Where
+// the reported p IS the saddlepoint p it comes from the log-domain tail
+// assembly (spa_unify L2/L3), so it survives past the point at which the
+// linear-scale sum of the two tails underflows to zero.  Where Branch B adds a
+// Wald leg and the reported p is CCT(p_spa, p_wald), the combination is taken
+// by math::cauchyCombineLog10 over the two magnitudes (log10p_unify Stage 5),
+// so the saddlepoint leg enters exactly and the Cauchy statistic — whose terms
+// are 1/(π p) and which therefore overflows for p ≤ 1e-308 — is never formed.
+// P_Gx is 10^(−LOG10P_Gx) until Stage 8 deletes it.
+//
+// The one remaining limitation is the Wald leg's own representation:
+// wald::lastCoef*Pval still returns a linear p, so its L is recovered as
+// −log10(p_wald).  Stage 7 converts those fitters to return L.
 //
 // The marginal block deliberately gains neither column.  It is always the
 // normal approximation, never a saddlepoint, so SPA_STATUS_G would be a

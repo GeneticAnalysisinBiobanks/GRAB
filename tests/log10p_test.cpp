@@ -20,6 +20,7 @@
 //   § 1  zFromNegLog10P
 //   § 2  chisq1FromNegLog10P
 //   § 3  cauchyCombineLog10
+//   § 3b the Stage 5 call sites   (Stage 5)
 //   § 4  ptLog
 //   § 5  pmvnorm2dHalfRectLog
 //   § 7  metaPvalueScorePool     (Stage 4)
@@ -71,6 +72,34 @@ long double cauchyUpperNegLog10L(long double T) {
     const long double tail = (T > 0.0L) ? std::atan(1.0L / T) / pi
                                         : 0.5L - std::atan(T) / pi;
     return -std::log10(tail);
+}
+
+// `math::cauchyCombine` as Stage 5 deleted it, transcribed verbatim.  It stays
+// here and not in src/ because the tests below are the only remaining consumer:
+// their subject is the difference between it and the log-domain routine, and
+// the measurements they pin (exactly 0 at p = 1e-320, 2e-4 relative loss at
+// L_max = 13.8) are only reproducible against the actual predecessor.
+double cauchyCombineLinearDeleted(const double *pvals, int n) {
+    const double pi = 3.14159265358979323846;
+    if (n <= 0) return std::numeric_limits<double>::quiet_NaN();
+
+    int nValid = 0;
+    bool hasZero = false;
+    double tStat = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double p = pvals[i];
+        if (std::isnan(p)) continue;
+        ++nValid;
+        if (p <= 0.0) { hasZero = true; break; }
+        const double pc = (p >= 1.0) ? 0.999 : p;
+        tStat += (pc < 1e-15) ? (1.0 / (pc * pi)) : std::tan((0.5 - pc) * pi);
+    }
+
+    if (nValid == 0) return std::numeric_limits<double>::quiet_NaN();
+    if (hasZero) return 0.0;
+
+    tStat /= static_cast<double>(nValid);
+    return (tStat > 1e15) ? (1.0 / tStat) / pi : 0.5 - std::atan(tStat) / pi;
 }
 
 // The whole Cauchy combination in long double, formed the direct way: the
@@ -310,7 +339,7 @@ TEST(chisq1FromNegLog10P_removes_the_1373_ceiling) {
 // ══════════════════════════════════════════════════════════════════════
 
 // The eight cases measured in 01_numerics §2.3.  Cases 4-6 are the point of
-// the exercise: the linear cauchyCombine returns exactly 0 there, so its
+// the exercise: the deleted linear routine returns exactly 0 there, so its
 // -log10 is +Inf, which is invariant C1's forbidden value.
 TEST(cauchyCombineLog10_the_eight_reference_cases) {
     const double c1[] = {0.3, 1.0, 2.0};
@@ -334,8 +363,8 @@ TEST(cauchyCombineLog10_the_eight_reference_cases) {
     // What the linear form does with the same inputs.
     const double p3[] = {1e-300, 0.1, std::pow(10.0, -0.5)};
     const double p4[] = {1e-320, 0.1, std::pow(10.0, -0.5)};
-    CHECK_REL(-std::log10(math::cauchyCombine(p3, 3)), 299.522879, 1e-6);
-    CHECK(math::cauchyCombine(p4, 3) == 0.0);              // and -log10 is +Inf
+    CHECK_REL(-std::log10(cauchyCombineLinearDeleted(p3, 3)), 299.522879, 1e-6);
+    CHECK(cauchyCombineLinearDeleted(p4, 3) == 0.0);       // and -log10 is +Inf
     CHECK(std::isfinite(math::cauchyCombineLog10(c4, 3))); // whereas this is not
 }
 
@@ -352,7 +381,7 @@ TEST(cauchyCombineLog10_single_input_is_the_identity) {
         CHECK_CLOSE(got, L, 1e-14, 2e-16);
     }
     // Below the clamp everything collapses onto -log10(0.999), which is the
-    // L-scale spelling of cauchyCombine's own p >= 1 -> 0.999 rule.
+    // L-scale spelling of the deleted routine's own p >= 1 -> 0.999 rule.
     const double tiny = 1e-9;
     CHECK_REL(math::cauchyCombineLog10(&tiny, 1), clampL, 1e-13);
     double zero = 0.0;
@@ -381,8 +410,8 @@ TEST(cauchyCombineLog10_atan_inversion_against_long_double) {
 // three-term family, and against the linear implementation over the narrow
 // range where the linear implementation is itself accurate.
 //
-// The linear form's accuracy is the point worth recording.  `cauchyCombine`
-// finishes with `0.5 - atan(T)/pi`, and for small p the statistic T grows like
+// The linear form's accuracy is the point worth recording.  It finished with
+// `0.5 - atan(T)/pi`, and for small p the statistic T grows like
 // 10^L, so that subtraction cancels: at L_max = 6.6 it has already lost
 // relative accuracy to 2e-11, at 13.8 to 2e-4, and by 1e15 it is replaced by a
 // reciprocal asymptote.  The log-domain form inverts atan(1/T) instead and
@@ -396,7 +425,7 @@ TEST(cauchyCombineLog10_matches_long_double_and_uncancelled_linear) {
         if (Lmax < 3.0) {
             const double ps[] = {std::pow(10.0, -Lmax), 0.1, std::pow(10.0, -0.5)};
             CHECK_REL(math::cauchyCombineLog10(Ls, 3),
-                      -std::log10(math::cauchyCombine(ps, 3)), 1e-11);
+                      -std::log10(cauchyCombineLinearDeleted(ps, 3)), 1e-11);
         }
     }
     {
@@ -405,7 +434,7 @@ TEST(cauchyCombineLog10_matches_long_double_and_uncancelled_linear) {
         const double ps[] = {std::pow(10.0, -13.8354668408), 0.1, std::pow(10.0, -0.5)};
         const double ref = static_cast<double>(cauchyCombineNegLog10RefL(Ls, 3));
         CHECK_REL(math::cauchyCombineLog10(Ls, 3), ref, 1e-13);
-        CHECK(std::fabs(-std::log10(math::cauchyCombine(ps, 3)) - ref) / ref > 1e-5);
+        CHECK(std::fabs(-std::log10(cauchyCombineLinearDeleted(ps, 3)) - ref) / ref > 1e-5);
     }
     // 01_numerics §2.4: with equal weights the tail is L_max - log10(n), and
     // it is dominated by the LARGEST L (smallest p).  The opposite spelling,
@@ -434,6 +463,108 @@ TEST(cauchyCombineLog10_edge_cases) {
     const double mixed[] = {0.0, 0.0, 0.0, 700.0};
     CHECK(math::cauchyCombineLog10(mixed, 4) >= 0.0);
     CHECK(std::isfinite(math::cauchyCombineLog10(mixed, 4)));
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 3b  The Stage 5 call sites
+// ══════════════════════════════════════════════════════════════════════
+//
+// Three sites switched to cauchyCombineLog10: SPAsqr score (over the LOG10P
+// group), SPAsqr wald (over the per-tau normal tails) and SPAGxE Branch B
+// (over the saddlepoint and Wald legs).  What follows exercises each site's
+// input pattern rather than the function in isolation, because the failure the
+// stage exists to remove is a property of the pattern: the linear routine's
+// statistic overflows at the FIRST leg below 1e-308, so a single extreme tau
+// destroyed the whole combination.
+
+// SPAsqr score mode.  The combination is taken over the LOG10P group, in which
+// a tau whose saddlepoint produced no answer is NaN and drops out.
+TEST(stage5_spasqr_score_combination_over_magnitudes) {
+    // One tau at L = 350, past the linear representation; one ordinary; one
+    // with no answer at all.
+    const double Ls[] = {350.0, 4.2, kNaN, 0.8};
+    const double got = math::cauchyCombineLog10(Ls, 4);
+    CHECK(std::isfinite(got));            // the column's reason for existing
+    CHECK(got > 0.0);
+    // Three survivors, so the Bonferroni form is L_max - log10(3).
+    CHECK_NEAR(got, 350.0 - std::log10(3.0), 5e-7);
+
+    // The same four taus as the predecessor saw them.  10^-350 is exactly zero
+    // in double, so the linear routine took its `hasZero` branch and returned
+    // P_CCT = 0 -- a marker with the strongest evidence in the file reported as
+    // the one value -log10 cannot represent.
+    const double ps[] = {std::pow(10.0, -350.0), std::pow(10.0, -4.2), kNaN,
+                         std::pow(10.0, -0.8)};
+    CHECK(ps[0] == 0.0);
+    CHECK(cauchyCombineLinearDeleted(ps, 4) == 0.0);
+
+    // And at L = 320, where 10^-320 is subnormal rather than zero, the linear
+    // routine survived the input and lost it at the statistic instead:
+    // 1/(pi*p) overflows, tStat = +Inf, and the tail 1/tStat/pi is again 0.
+    const double Ls320[] = {320.0, 1.0, 0.5};
+    const double ps320[] = {std::pow(10.0, -320.0), 0.1, std::pow(10.0, -0.5)};
+    CHECK(ps320[0] > 0.0);
+    CHECK(cauchyCombineLinearDeleted(ps320, 3) == 0.0);
+    CHECK_REL(math::cauchyCombineLog10(Ls320, 3), 319.522879, 1e-8);
+}
+
+// SPAsqr wald mode.  Each tau's leg is a plain two-sided normal tail, and
+// Stage 5 forms it as a magnitude (spa::normalTwoSidedLog) with the linear
+// P_tau derived from that, rather than the other way round.
+TEST(stage5_spasqr_wald_leg_is_a_magnitude) {
+    // Where the linear tail is representable the two spellings agree to the
+    // round-trip of exp(log(.)), which is what P_tau moves by in this stage.
+    for (double z : {0.5, 1.0, 2.5, 6.0, 15.0, 30.0, 37.0}) {
+        const double L = -spa::normalTwoSidedLog(z) / kLn10;
+        const double pLin = 2.0 * math::pnorm(std::fabs(z), 0.0, 1.0, false);
+        CHECK_REL(spa::pFromNegLog10P(L), pLin, 1e-13);
+    }
+    // Past |z| = 38.6 the linear tail is exactly zero and the magnitude is not.
+    const double zBig = 60.0;
+    CHECK(2.0 * math::pnorm(zBig, 0.0, 1.0, false) == 0.0);
+    const double Lbig = -spa::normalTwoSidedLog(zBig) / kLn10;
+    // -log10(2*Phi(-60)), from the Mills expansion carried in 60-digit decimal
+    // (the 6-term truncation error at z = 60 is O(z^-14), far below the last
+    // bit): 783.606399168446728712234...
+    CHECK_REL(Lbig, 783.60639916844673, 1e-15);
+
+    // A four-tau row in which two taus are past the linear tail.  The
+    // combination is finite and Bonferroni-like; the predecessor returned 0.
+    const double zs[] = {60.0, 45.0, 3.0, 1.2};
+    double Ls[4], ps[4];
+    for (int i = 0; i < 4; ++i) {
+        Ls[i] = -spa::normalTwoSidedLog(zs[i]) / kLn10;
+        ps[i] = 2.0 * math::pnorm(zs[i], 0.0, 1.0, false);
+    }
+    const double got = math::cauchyCombineLog10(Ls, 4);
+    CHECK(std::isfinite(got));
+    CHECK_NEAR(got, Ls[0] - std::log10(4.0), 5e-7);
+    CHECK(cauchyCombineLinearDeleted(ps, 4) == 0.0);
+}
+
+// SPAGxE Branch B.  Two legs, the saddlepoint one already a magnitude, the
+// Wald one still recovered as -log10 of a linear p (Stage 7 closes that).
+TEST(stage5_spagxe_branch_b_two_legs) {
+    // Both legs present, the saddlepoint one past the linear representation.
+    const double both[] = {412.5, -std::log10(3e-4)};
+    const double gotBoth = math::cauchyCombineLog10(both, 2);
+    CHECK(std::isfinite(gotBoth));
+    CHECK_NEAR(gotBoth, 412.5 - std::log10(2.0), 5e-7);
+
+    // A failed saddlepoint leaves the Wald leg alone, and n is 1, so the
+    // combination is the identity -- the status column, not this one, is what
+    // records that the SPA leg dropped out.
+    const double waldOnly[] = {kNaN, -std::log10(3e-4)};
+    CHECK_REL(math::cauchyCombineLog10(waldOnly, 2), -std::log10(3e-4), 1e-13);
+
+    // The Wald leg's remaining ceiling, stated as a test so that Stage 7 has a
+    // failing assertion to delete: a Wald p that underflowed to exactly zero
+    // gives L = +Inf, which the combination propagates.  This is the linear
+    // routine's own behaviour (it returned 0 there, whose -log10 is the same
+    // +Inf), not something Stage 5 introduced.
+    const double underflowed[] = {12.0, -std::log10(0.0)};
+    CHECK(std::isinf(underflowed[1]));
+    CHECK(std::isinf(math::cauchyCombineLog10(underflowed, 2)));
 }
 
 // ══════════════════════════════════════════════════════════════════════

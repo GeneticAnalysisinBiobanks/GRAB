@@ -4,7 +4,8 @@
 // variants with a significant marginal genetic effect (Branch B, p_marg ≤ ε), a
 // retrospective saddlepoint G×E p-value with a prospective Wald p-value of the
 // interaction coefficient in the FULL model  trait ~ [covar] + g + g:E , then
-// reports  P = CCT(p_spa, p_wald)  (Cauchy combination; math::cauchyCombine).
+// reports  P = CCT(p_spa, p_wald)  (Cauchy combination; the log-domain
+// math::cauchyCombineLog10, over the two magnitudes).
 //
 // This file assembles the full-interaction design  M = [covar | g | g∘E]  per
 // marker (the interaction g∘E is the appended last column), drops incomplete-
