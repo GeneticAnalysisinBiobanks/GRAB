@@ -1440,14 +1440,19 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         // under the sigma2-inflated law.  Their TPR-mixture is p_deno.
         const double c_val = math::pnormLog(lb / std::sqrt(var_ratio_w1), 0.0,
                                             std::sqrt(var_Sbat + sigma2), true);
-        // p_deno keeps its original spelling to the letter: `TPR * 2.0 * e`
-        // associates as `(TPR * 2.0) * e`, which is not bit-identical to
-        // `TPR * (2.0 * e)`, and this quantity divides every reported
-        // Branch-A p-value.  m1_loc feeds only the materiality threshold,
-        // where a one-ULP difference cannot matter.
-        const double m1_loc = 2.0 * std::exp(c_val);
-        const double m0_loc = p_cut;
-        const double p_deno = TPR * 2.0 * std::exp(c_val) + (1.0 - TPR) * p_cut;
+        // Stage 6: the weights, the two conditioning masses and their mixture
+        // stay in the log domain from here to the reported LOG10P.  m1 is the
+        // complement mass 2*Phi(lb) under the sigma2-inflated law, which is
+        // what c_val already holds the logarithm of, so exp/log round trips
+        // disappear rather than being rearranged.  p_deno had been spelled
+        // `TPR * 2.0 * exp(c_val) + ...` to the letter to keep a fixed
+        // association; that pin is gone with the linear quantity itself, and
+        // the resulting shift is one ULP of a denominator, ~1e-16 relative.
+        const double lnW1   = std::log(TPR);
+        const double lnW0   = std::log1p(-TPR);
+        const double lnM1   = math::kLn2 + c_val;
+        const double lnM0   = std::log(p_cut);
+        const double lnDeno = math::logAddExp(lnW1 + lnM1, lnW0 + lnM0);
 
         SpaResult spa_s0 = spaGOneSnpHomoFromScalars(
             R_dot_g, gSum, Nint, *m_shared,
@@ -1492,11 +1497,21 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         const double posInf =  std::numeric_limits<double>::infinity();
 
         // sigma² = 0: integrate over {S' ≤ -|s|} × ({S_bat ≤ lb_r0} ∪ {S_bat ≥ ub_r0}).
+        // The two half-infinite pieces are disjoint, so their sum is a
+        // logaddexp.  Branch A is where the switch to the log-domain integral
+        // changes the most: the linear routine sends a half-infinite Y range
+        // through math::bvnCdf, whose |r| < 0.925 arm is Genz's 6-point
+        // Plackett rule with ~1e-7 ABSOLUTE accuracy — no statement at all
+        // about a probability below 1e-7.  Measured against a long double
+        // Simpson reference it is wrong by twelve orders of magnitude at
+        // (h, rho, k) = (-8, -0.4, -6); pmvnorm2dHalfRectLog integrates the
+        // same conditional tail directly (RESULTS.md, Stage 1).
         const double s_bound  = -std::abs(S_loc / std::sqrt(var_ratio0));
         const double sb_lo    = lb / std::sqrt(var_ratio_w0);
         const double sb_hi    = ub / std::sqrt(var_ratio_w0);
-        const double p0 = math::pmvnorm2dHalfRect(s_bound, negInf, sb_lo, var_S, cov_val, var_Sbat)
-                       + math::pmvnorm2dHalfRect(s_bound, sb_hi, posInf, var_S, cov_val, var_Sbat);
+        const double lnP0 = math::logAddExp(
+            math::pmvnorm2dHalfRectLog(s_bound, negInf, sb_lo, var_S, cov_val, var_Sbat),
+            math::pmvnorm2dHalfRectLog(s_bound, sb_hi, posInf, var_S, cov_val, var_Sbat));
 
         // sigma² ≠ 0: inflate batch-test variance only; var_S and cov_val unchanged
         // (R LEAF.R branch 1 reuses var_S1 = var_S, cov_Sbat_S1 = cov_Sbat_S).
@@ -1504,18 +1519,20 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         const double s_bound1  = -std::abs(S_loc / std::sqrt(var_ratio1));
         const double sb_lo1    = lb / std::sqrt(var_ratio_w1);
         const double sb_hi1    = ub / std::sqrt(var_ratio_w1);
-        const double p1 = math::pmvnorm2dHalfRect(s_bound1, negInf, sb_lo1, var_S, cov_val, var_Sbat1)
-                       + math::pmvnorm2dHalfRect(s_bound1, sb_hi1, posInf, var_S, cov_val, var_Sbat1);
+        const double lnP1 = math::logAddExp(
+            math::pmvnorm2dHalfRectLog(s_bound1, negInf, sb_lo1, var_S, cov_val, var_Sbat1),
+            math::pmvnorm2dHalfRectLog(s_bound1, sb_hi1, posInf, var_S, cov_val, var_Sbat1));
 
         // Both legs of Branch A are built from the same var_S and cov_val, so
         // spa_s0 failing takes both (intercepted above) and the immaterial-leg
-        // rule can only ever fire here for a leg that math::pmvnorm2dHalfRect
-        // itself declined to integrate.
+        // rule can only ever fire here for a leg that
+        // math::pmvnorm2dHalfRectLog itself declined to integrate.
         const ConditionalP con = conditionalP(
-            TPR, m1_loc, p1, spa_s0.status,
-            1.0 - TPR, m0_loc, p0, spa_s0.status,
-            p_deno);
-        return {con.p, con.negLog10p, S_loc, z_loc, con.status};
+            lnW1, lnM1, lnP1, spa_s0.status,
+            lnW0, lnM0, lnP0, spa_s0.status,
+            lnDeno);
+        return {spa::pFromNegLog10P(con.negLog10p), con.negLog10p, S_loc, z_loc,
+                con.status};
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -1538,14 +1555,21 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     // m1 / m0: the conditioning mass P(S_bat in [lb, ub] | component) each
     // mixture component carries.  m0 is 1 - p_cut exactly, because lb and ub
     // ARE the +/-(1 - p_cut/2) quantiles of the sigma2 = 0 batch law; m1 is
-    // the same interval under the sigma2-inflated law, which the two pnormLog
-    // calls above already deliver.  p_deno is their TPR-mixture and keeps the
-    // original spelling to the letter — it divides every reported Branch-B
-    // p-value, so it must not be re-associated.  m1 feeds only the
-    // materiality threshold, where a one-ULP difference cannot matter.
-    const double m1 = std::exp(d_val) * (std::exp(c_val - d_val) - 1.0);
-    const double m0 = 1.0 - p_cut;
-    double p_deno = TPR * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) * (1.0 - p_cut);
+    // the same interval under the sigma2-inflated law, i.e. Phi(ub') - Phi(lb'),
+    // which the two pnormLog calls above already deliver as logarithms.
+    //
+    // Stage 6: they stop being exponentiated.  ln m1 = logSubExp(c_val, d_val)
+    // is the same difference of two CDFs, taken where the two are held; the
+    // linear spelling `exp(d)*(exp(c-d)-1)` had to reassociate around expm1
+    // for exactly the same reason and could still overflow for a wide enough
+    // acceptance interval.  p_deno follows as one logaddexp, and the pin that
+    // fixed its multiplication order goes with the linear quantity it was
+    // protecting; the shift is ~1e-16 relative on a denominator.
+    const double lnW1   = std::log(TPR);
+    const double lnW0   = std::log1p(-TPR);
+    const double lnM1   = math::logSubExp(c_val, d_val);
+    const double lnM0   = std::log1p(-p_cut);
+    const double lnDeno = math::logAddExp(lnW1 + lnM1, lnW0 + lnM0);
 
     // Internal SPA (no sigma2)
     SpaResult spa_s0 = spaGOneSnpHomoFromScalars(
@@ -1580,7 +1604,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     cov_val *= std::sqrt(var_S / var_int_denom);
     double z = S / std::sqrt(var_S);
 
-    double p0 = math::pmvnorm2dHalfRect(
+    const double lnP0 = math::pmvnorm2dHalfRectLog(
         -std::abs(S / std::sqrt(var_ratio0)),
         lb / std::sqrt(var_ratio_w0),
         ub / std::sqrt(var_ratio_w0),
@@ -1607,10 +1631,10 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     // This is the call that loses the sigma2 > 0 leg on a degenerate batch
     // fit.  cov_val1 carries sigma2 linearly while sd(S_bat1) carries it as a
     // square root, so rho1 grows like sigma and passes 1: the triple is not a
-    // covariance matrix, math::pmvnorm2dHalfRect returns NaN, and the leg has
-    // no joint probability — with the saddlepoint that produced var_S1 having
-    // converged perfectly well.  See the note on kImmaterialLeg.
-    double p1 = math::pmvnorm2dHalfRect(
+    // covariance matrix, math::pmvnorm2dHalfRectLog returns NaN, and the leg
+    // has no joint probability — with the saddlepoint that produced var_S1
+    // having converged perfectly well.  See the note on kImmaterialLeg.
+    const double lnP1 = math::pmvnorm2dHalfRectLog(
         -std::abs(S / std::sqrt(var_ratio1)),
         lb / std::sqrt(var_ratio_w1),
         ub / std::sqrt(var_ratio_w1),
@@ -1620,13 +1644,13 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     );
 
     const ConditionalP con = conditionalP(
-        TPR, m1, p1, spa_s1.status,
-        1.0 - TPR, m0, p0, spa_s0.status,
-        p_deno);
+        lnW1, lnM1, lnP1, spa_s1.status,
+        lnW0, lnM0, lnP0, spa_s0.status,
+        lnDeno);
     // z is the plain normal statistic S/sd(S); it is not a saddlepoint output
     // and is reported whether or not the conditional assembly succeeded, as
     // the predecessor did.
-    return {con.p, con.negLog10p, S, z, con.status};
+    return {spa::pFromNegLog10P(con.negLog10p), con.negLog10p, S, z, con.status};
 }
 
 // ======================================================================

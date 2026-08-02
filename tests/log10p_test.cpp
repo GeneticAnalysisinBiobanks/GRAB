@@ -22,6 +22,8 @@
 //   § 3  cauchyCombineLog10
 //   § 4  ptLog
 //   § 5  pmvnorm2dHalfRectLog
+//   § 7  metaPvalueScorePool     (Stage 4)
+//   § 8  logAddExp / logSubExp   (Stage 6)
 //
 // Stage 9 appends its HweLnP cross-check as a new section immediately before
 // TINYTEST_MAIN at the end of the file; nothing here has to move for it.
@@ -1157,6 +1159,122 @@ TEST(metaPool_carries_the_fallback_status_up) {
         s, L, {spa::Status::SpaOk, spa::Status::FallbackGuardCurv});
     CHECK(std::isfinite(m.negLog10p));
     CHECK(m.status == spa::Status::FallbackGuardCurv);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// § 8  logAddExp / logSubExp  (added by Stage 6)
+//
+// The two combiners every log-domain assembly in the tree now goes through:
+// spa::combineTailsLog for the two saddlepoint tails, wtcoxg_cond::conditionalP
+// for the mixture numerator, its denominator and Branch A's two disjoint
+// half-planes.  Their reference is the linear expression wherever the linear
+// expression exists, and long double past that point.
+// ──────────────────────────────────────────────────────────────────────
+
+TEST(logAddExp_matches_the_linear_sum_where_the_linear_sum_exists) {
+    // The linear reference is only a reference where it is well conditioned.
+    // ln(1 + e^-d) is about e^-d, and forming 1 + e^-d in long double costs an
+    // absolute 5e-20, so the reference's own relative error is 5e-20·e^d — it
+    // passes 1e-15 at about d = 10 and reports a flat 0 by d = 44.  The band
+    // below stops well short of that, and it is where two saddlepoint tails of
+    // the same marker actually sit.
+    for (double a : {-700.0, -30.0, -1.5, 0.0, 2.0, 300.0}) {
+        for (double d : {0.0, 0.3, 1.0, 5.0}) {
+            const double b = a - d;
+            const double got = math::logAddExp(a, b);
+            const long double ref =
+                std::log(std::exp(static_cast<long double>(a)) +
+                         std::exp(static_cast<long double>(b)));
+            CHECK_REL(got, static_cast<double>(ref), 1e-15);
+            CHECK_REL(math::logAddExp(b, a), got, 0.0);       // symmetric
+        }
+    }
+    // Outside it, identities.  ln(2e^a) = a + ln2 is the case the tail
+    // assembly hits when the two tails are equal.
+    for (double a : {-700.0, -1.5, 0.0, 300.0})
+        CHECK_REL(math::logAddExp(a, a), a + math::kLn2, 1e-16);
+
+    // The bracket max <= r <= max + ln2 holds for every input, and it is the
+    // statement that no log-sum-exp can be off by an order of magnitude.
+    for (double a : {-700.0, -30.0, 0.0, 300.0})
+        for (double d : {0.0, 1e-16, 1e-8, 0.3, 40.0, 400.0, 700.0}) {
+            const double r = math::logAddExp(a, a - d);
+            CHECK(r >= a && r <= a + math::kLn2);
+        }
+
+    // Deep in the perturbation regime ln(1 + e^-d) IS e^-d: the next term of
+    // the series is e^-2d, below the last bit for every d >= 40.  This is the
+    // regime the reference above cannot reach.
+    for (double d : {40.0, 100.0, 400.0, 700.0})
+        CHECK_REL(math::logAddExp(0.0, -d), std::exp(-d), 1e-15);
+}
+
+TEST(logAddExp_treats_minus_infinity_as_a_probability_of_zero) {
+    const double inf = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    CHECK(math::logAddExp(-inf, -inf) == -inf);
+    CHECK(math::logAddExp(-inf, -3.0) == -3.0);
+    CHECK(math::logAddExp(-3.0, -inf) == -3.0);
+    CHECK(math::logAddExp(inf, -3.0) == inf);
+    // NaN propagates.  std::fmax would have dropped it, which is exactly how a
+    // failed leg could have become a number.
+    CHECK(std::isnan(math::logAddExp(nan, -3.0)));
+    CHECK(std::isnan(math::logAddExp(-3.0, nan)));
+    CHECK(std::isnan(math::logAddExp(nan, -inf)));
+}
+
+TEST(logSubExp_matches_the_linear_difference_and_keeps_both_limits) {
+    // As above, the linear difference is a reference only in a band.  Below
+    // d ~ 0.1 the subtraction cancels (at d = 1e-14 the two long doubles agree
+    // to 14 digits and the reference keeps 5); above d ~ 10 the answer is the
+    // perturbation ln(1 - e^-d) itself and forming 1 - e^-d costs more than it
+    // is worth.  Identities cover both sides.
+    for (double a : {-700.0, -30.0, -1.5, 0.0, 2.0, 300.0}) {
+        for (double d : {0.1, 0.6931471805599453, 1.0, 5.0}) {
+            const double b = a - d;
+            const double got = math::logSubExp(a, b);
+            const long double ref =
+                std::log(std::exp(static_cast<long double>(a)) -
+                         std::exp(static_cast<long double>(b)));
+            CHECK_REL(got, static_cast<double>(ref), 1e-14);
+        }
+    }
+    // The small-difference branch, against an identity instead of a
+    // subtraction: e^0 - e^ln(1-x) = x exactly, for every x in (0, 1).  This is
+    // the regime where the linear difference has nothing left, and where the
+    // log1p form of this routine would have nothing left either.
+    for (double x : {1e-17, 1e-14, 1e-8, 1e-3, 0.3, 0.9, 0.999999})
+        CHECK_REL(math::logSubExp(0.0, std::log1p(-x)), std::log(x), 1e-14);
+
+    // The far side: ln(1 - e^-d) IS -e^-d once the next term e^-2d is below the
+    // last bit, i.e. for every d >= 40.
+    for (double d : {40.0, 100.0, 400.0, 700.0})
+        CHECK_REL(math::logSubExp(0.0, -d), -std::exp(-d), 1e-15);
+
+    // Both branches must be right ACROSS the switch at d = ln 2; a single
+    // formula loses all significance at one end or the other.
+    for (double d : {0.69314718055994520, 0.69314718055994540}) {
+        const double got = math::logSubExp(0.0, -d);
+        CHECK_REL(got, std::log(1.0 - std::exp(-d)), 1e-14);
+    }
+    // Branch B's m1 = Phi(t) - Phi(-t) as it is actually formed: c_val and
+    // d_val are the two pnormLog values, and the answer must equal erf(t/√2).
+    for (double t : {0.05, 0.5, 1.959963984540054, 5.0}) {
+        const double c = math::pnormLog(t, 0.0, 1.0, true);
+        const double d = math::pnormLog(-t, 0.0, 1.0, true);
+        CHECK_REL(std::exp(math::logSubExp(c, d)), std::erf(t * 0.7071067811865476), 1e-14);
+    }
+}
+
+TEST(logSubExp_reports_a_negative_difference_rather_than_returning_one) {
+    const double inf = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    CHECK(math::logSubExp(-3.0, -3.0) == -inf);        // exactly zero
+    CHECK(math::logSubExp(-3.0, -inf) == -3.0);
+    CHECK(math::logSubExp(-inf, -inf) == -inf);
+    CHECK(std::isnan(math::logSubExp(-3.0, -2.0)));    // would be negative
+    CHECK(std::isnan(math::logSubExp(nan, -2.0)));
+    CHECK(std::isnan(math::logSubExp(-2.0, nan)));
 }
 
 TINYTEST_MAIN

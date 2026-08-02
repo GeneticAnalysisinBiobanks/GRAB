@@ -1362,18 +1362,15 @@ inline Result combineTailsLog(
     Status sLower
 ) noexcept {
     const double nan = detail::quietNaN();
-    const double inf = std::numeric_limits<double>::infinity();
     const Status st = worseStatus(sUpper, sLower);
     if (!statusIsUsable(st)) return Result{nan, st};
     if (std::isnan(logPUpper) || std::isnan(logPLower))
         return Result{nan, Status::FallbackNonFinite};
 
-    const double hi = std::fmax(logPUpper, logPLower);
-    const double lo = std::fmin(logPUpper, logPLower);
-    double lse;
-    if (hi == -inf)      lse = -inf;               // both tails exactly zero
-    else if (hi == inf)  lse = inf;
-    else                 lse = hi + std::log1p(std::exp(lo - hi));
+    // The log-sum-exp itself is `math::logAddExp`, shared with WtCoxG's
+    // conditional mixture since log10p_unify Stage 6; it was written out here
+    // until then, which made two copies of one three-line rule.
+    double lse = math::logAddExp(logPUpper, logPLower);
 
     if (lse > 0.0) lse = 0.0;                      // p clamped at 1
     // -log10(1.0) is -0.0, which prints as "-0"; normalize the sign of zero.

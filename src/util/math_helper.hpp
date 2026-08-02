@@ -232,6 +232,49 @@ inline double pt(
 inline constexpr double kLn10 = 2.30258509299404568402;
 inline constexpr double kLn2  = 0.69314718055994530942;
 
+// ── The two log-domain combiners ──────────────────────────────────────
+//
+// ln(e^a + e^b) and ln(e^a − e^b): addition and subtraction of two
+// probabilities that are held as logarithms.  One implementation of each for
+// the whole tier.  `spa::combineTailsLog` carried an inlined copy of the first
+// until log10p_unify Stage 6, and Stage 6 needed a second copy for WtCoxG's
+// conditional mixture; the copies are collapsed here instead.
+//
+// Both are written so that the larger operand is factored out, which is what
+// makes them useful: the exponential that remains has a non-positive argument,
+// so nothing overflows and the terms that underflow are exactly the ones that
+// cannot change the answer.  ±∞ operands are ordinary inputs — a probability
+// of exactly zero is ln = −∞ — and NaN propagates rather than being silently
+// dropped, which `std::fmax` would do.
+inline double logAddExp(double a, double b) {
+    if (std::isnan(a) || std::isnan(b))
+        return std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    const double hi = (a > b) ? a : b;
+    const double lo = (a > b) ? b : a;
+    if (hi == -inf) return -inf;          // both terms exactly zero
+    if (hi ==  inf) return  inf;
+    return hi + std::log1p(std::exp(lo - hi));
+}
+
+// ln(e^a − e^b), requiring a ≥ b since the difference must be non-negative;
+// b > a returns NaN rather than the logarithm of a negative number.
+//
+// The branch at a − b = ln 2 is the standard one and it is not cosmetic: for a
+// difference tending to zero the accurate form is log(−expm1(b−a)), whose
+// argument keeps full relative precision there, while for a large difference
+// it is log1p(−exp(b−a)), which tends to zero without cancelling.  Using
+// either alone loses all significance at one end.
+inline double logSubExp(double a, double b) {
+    if (std::isnan(a) || std::isnan(b))
+        return std::numeric_limits<double>::quiet_NaN();
+    if (b > a) return std::numeric_limits<double>::quiet_NaN();
+    if (b == a) return -std::numeric_limits<double>::infinity();
+    if (a == std::numeric_limits<double>::infinity()) return a;
+    const double d = b - a;               // < 0
+    return a + ((d > -kLn2) ? std::log(-std::expm1(d)) : std::log1p(-std::exp(d)));
+}
+
 // Natural logarithm of the two-sided normal tail, ln(2·Φ(−|z|)).
 //
 // The one implementation of that quantity in the tree.  It is the p-value of

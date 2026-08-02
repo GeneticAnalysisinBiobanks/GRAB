@@ -60,6 +60,17 @@
 //      threshold, that the surviving leg's status is what gets reported, and
 //      that a leg which does matter still produces NaN rather than the 1.0
 //      that `std::min(1.0, ...)` used to manufacture.
+//
+//  10. THE CONDITIONAL p-VALUE NEVER REPORTS +Inf (log10p_unify Stage 6, gate
+//      C1).  conditionalP takes and returns logarithms, so a conditional
+//      probability below DBL_MIN keeps its magnitude instead of flushing to
+//      zero and reappearing as -log10(0).  The witness is the probe of
+//      RESULTS.md Stage 0b: with only the sigma2 = 0 leg in play, p0 = 1e-300,
+//      1e-320, DBL_TRUE_MIN and 0 returned L = 299.653, 319.653, 323.005 and
+//      then +Inf with status 0 SPA_OK.  The first three are pinned to the same
+//      values here, the fourth is now NA with 7 NA_POST_FAIL, and a fifth at
+//      ln p0 = -800 -- which the linear interface could not express at all --
+//      is pinned as an ordinary finite number.
 
 #include <cmath>
 #include <cstdio>
@@ -462,15 +473,27 @@ using wtcoxg_cond::conditionalP;
 using wtcoxg_cond::kImmaterialLeg;
 using spa::Status;
 
+// Every argument of conditionalP is a natural logarithm since Stage 6.  The
+// tests below state their inputs as the probabilities they are about and pass
+// them through this, so that the quantity each one pins stays readable.
+double ln(double x) { return std::log(x); }
+
+// The reported magnitude, back on the scale the tests' references are written
+// on.  Never used to CHECK a value against +Inf: an infinite negLog10p is a C1
+// violation and is asserted against directly.
+double asP(const ConditionalP &c) { return std::pow(10.0, -c.negLog10p); }
+
 // Both legs present: the assembly is the original ratio, unchanged.
 TEST(conditionalp_keeps_the_two_leg_formula_when_both_legs_are_present) {
     const double w1 = 0.3, m1 = 0.42, p1 = 0.11;
     const double w0 = 0.7, m0 = 0.9,  p0 = 0.25;
     const double pd = w1 * m1 + w0 * m0;
-    const ConditionalP c = conditionalP(w1, m1, p1, Status::SpaOk,
-                                        w0, m0, p0, Status::Normal, pd);
-    CHECK_NEAR(c.p, 2.0 * (w1 * p1 + w0 * p0) / pd, 0.0);
-    CHECK_NEAR(c.negLog10p, -std::log10(c.p), 0.0);
+    const ConditionalP c = conditionalP(ln(w1), ln(m1), ln(p1), Status::SpaOk,
+                                        ln(w0), ln(m0), ln(p0), Status::Normal, ln(pd));
+    // 1e-15 and not bit-identity: the log-domain assembly is a different
+    // sequence of roundings from the linear ratio it replaces, and the whole
+    // point of Stage 6 is that it is the one that keeps working.
+    CHECK_REL(asP(c), 2.0 * (w1 * p1 + w0 * p0) / pd, 1e-15);
     // Converged outranks NormalBranch at equal severity, per spa::worseStatus.
     CHECK(c.status == Status::SpaOk);
 }
@@ -487,19 +510,19 @@ TEST(conditionalp_keeps_a_marker_whose_missing_leg_cannot_move_the_answer) {
     const double w0 = 1.0 - w1,   m0 = 0.9, p0 = 0.25;
     const double pd = w1 * m1 + w0 * m0;
 
-    const ConditionalP c = conditionalP(w1, m1, nan, Status::Normal,
-                                        w0, m0, p0, Status::SpaOk, pd);
-    CHECK(std::isfinite(c.p));
-    CHECK_NEAR(c.p, 2.0 * w0 * p0 / pd, 0.0);
-    // The status reported is the SURVIVING leg's, so the invariant that P is a
-    // number exactly for statuses 0, 4 and 6 is preserved.
+    const ConditionalP c = conditionalP(ln(w1), ln(m1), nan, Status::Normal,
+                                        ln(w0), ln(m0), ln(p0), Status::SpaOk, ln(pd));
+    CHECK(std::isfinite(c.negLog10p));
+    CHECK_REL(asP(c), 2.0 * w0 * p0 / pd, 1e-15);
+    // The status reported is the SURVIVING leg's, so the invariant that LOG10P
+    // is a number exactly for statuses 0-6 is preserved.
     CHECK(c.status == Status::SpaOk);
     CHECK(spa::statusIsUsable(c.status));
 
     // And the interval really is below the printed resolution: six significant
     // digits cannot separate the two ends.
     const double width = w1 * m1 / pd;
-    CHECK(width / c.p < 1e-30);
+    CHECK(width / asP(c) < 1e-30);
 }
 
 // The same rule must refuse a leg that does carry weight.  These numbers are
@@ -512,12 +535,12 @@ TEST(conditionalp_reports_na_when_the_missing_leg_does_move_the_answer) {
     const double w0 = 1.0 - w1,   m0 = 0.9, p0 = 0.25;
     const double pd = w1 * m1 + w0 * m0;
 
-    const ConditionalP c = conditionalP(w1, m1, nan, Status::Normal,
-                                        w0, m0, p0, Status::SpaOk, pd);
-    CHECK(std::isnan(c.p));
+    const ConditionalP c = conditionalP(ln(w1), ln(m1), nan, Status::Normal,
+                                        ln(w0), ln(m0), ln(p0), Status::SpaOk, ln(pd));
     CHECK(std::isnan(c.negLog10p));
-    // D2: the answer is NaN, never the 1.0 that std::min(1.0, NaN) returned.
-    CHECK(c.p != 1.0);
+    // D2: the answer is NaN, never the 1.0 that std::min(1.0, NaN) returned —
+    // which on this column would have printed as LOG10P = 0.
+    CHECK(c.negLog10p != 0.0);
     // The leg's own saddlepoint succeeded (NORMAL), so the loss happened in
     // the bivariate integral — downstream of the saddlepoint.  That is
     // NA_POST_FAIL: the substituted normal tail would answer a question about
@@ -538,16 +561,16 @@ TEST(conditionalp_threshold_is_relative_not_absolute) {
     const double pd = w1 * m1 + w0 * m0;
 
     // p = 0.5: an interval of width 1e-12 is 2e-12 of it, well inside 1e-8.
-    const ConditionalP big = conditionalP(w1, m1, nan, Status::SpaOk,
-                                          w0, m0, 0.25, Status::SpaOk, pd);
-    CHECK(std::isfinite(big.p));
-    CHECK(w1 * m1 / pd <= kImmaterialLeg * big.p);
+    const ConditionalP big = conditionalP(ln(w1), ln(m1), nan, Status::SpaOk,
+                                          ln(w0), ln(m0), ln(0.25), Status::SpaOk, ln(pd));
+    CHECK(std::isfinite(big.negLog10p));
+    CHECK(w1 * m1 / pd <= kImmaterialLeg * asP(big));
 
     // p = 2e-8: the same 1e-12 interval is now 5e-5 of the answer, and moves
     // -log10(P) in its fifth decimal.  The marker has no determined value.
-    const ConditionalP tail = conditionalP(w1, m1, nan, Status::SpaOk,
-                                           w0, m0, 1e-8, Status::SpaOk, pd);
-    CHECK(std::isnan(tail.p));
+    const ConditionalP tail = conditionalP(ln(w1), ln(m1), nan, Status::SpaOk,
+                                           ln(w0), ln(m0), ln(1e-8), Status::SpaOk, ln(pd));
+    CHECK(std::isnan(tail.negLog10p));
 }
 
 // Straddle the threshold from both sides with everything else held fixed.
@@ -557,22 +580,24 @@ TEST(conditionalp_threshold_fires_where_it_says_it_does) {
     // relative interval width of exactly eps.
     for (double eps : {0.9 * kImmaterialLeg, 1.1 * kImmaterialLeg}) {
         const double pd = eps + 1.0;
-        const ConditionalP c = conditionalP(eps, 1.0, nan, Status::SpaOk,
-                                            1.0, 1.0, 0.5, Status::SpaOk, pd);
+        const ConditionalP c = conditionalP(ln(eps), 0.0, nan, Status::SpaOk,
+                                            0.0, 0.0, ln(0.5), Status::SpaOk, ln(pd));
         const bool immaterial = eps < kImmaterialLeg;
-        CHECK(std::isfinite(c.p) == immaterial);
-        if (immaterial) CHECK_NEAR(c.p, 1.0 / pd, 1e-15);
+        CHECK(std::isfinite(c.negLog10p) == immaterial);
+        if (immaterial) CHECK_REL(asP(c), 1.0 / pd, 1e-15);
     }
 }
 
 // A leg of weight exactly zero contributes exactly zero: no threshold is
-// consulted, and the marker is reported from the other leg alone.
+// consulted, and the marker is reported from the other leg alone.  ln 0 is
+// -infinity, which is an ordinary input here and not a failure.
 TEST(conditionalp_drops_a_zero_weight_leg_without_a_test) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
-    const ConditionalP c = conditionalP(0.0, 0.5, nan, Status::FallbackNonFinite,
-                                        1.0, 0.9, 0.25, Status::SpaOk, 0.9);
-    CHECK(std::isfinite(c.p));
-    CHECK_NEAR(c.p, 2.0 * 0.25 / 0.9, 0.0);
+    const double negInf = -std::numeric_limits<double>::infinity();
+    const ConditionalP c = conditionalP(negInf, ln(0.5), nan, Status::FallbackNonFinite,
+                                        0.0, ln(0.9), ln(0.25), Status::SpaOk, ln(0.9));
+    CHECK(std::isfinite(c.negLog10p));
+    CHECK_REL(asP(c), 2.0 * 0.25 / 0.9, 1e-15);
     CHECK(c.status == Status::SpaOk);
 }
 
@@ -580,17 +605,17 @@ TEST(conditionalp_drops_a_zero_weight_leg_without_a_test) {
 // come out even when both legs' saddlepoints had succeeded.
 TEST(conditionalp_reports_na_when_neither_leg_is_available) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
-    const ConditionalP c = conditionalP(0.3, 0.5, nan, Status::Normal,
-                                        0.7, 0.9, nan, Status::SpaOk, 0.78);
-    CHECK(std::isnan(c.p));
+    const ConditionalP c = conditionalP(ln(0.3), ln(0.5), nan, Status::Normal,
+                                        ln(0.7), ln(0.9), nan, Status::SpaOk, ln(0.78));
+    CHECK(std::isnan(c.negLog10p));
     CHECK(c.status == Status::NaPostFail);
 
     // A leg whose OWN saddlepoint had already left it without an answer keeps
     // that reason.  A fallback code does not: the saddlepoint there produced a
     // number, so the loss is downstream and NA_POST_FAIL is the accurate one.
-    const ConditionalP g = conditionalP(0.3, 0.5, nan, Status::NaNoTest,
-                                        0.7, 0.9, nan, Status::SpaOk, 0.78);
-    CHECK(std::isnan(g.p));
+    const ConditionalP g = conditionalP(ln(0.3), ln(0.5), nan, Status::NaNoTest,
+                                        ln(0.7), ln(0.9), nan, Status::SpaOk, ln(0.78));
+    CHECK(std::isnan(g.negLog10p));
     CHECK(g.status == Status::NaNoTest);            // a named reason survives
 }
 
@@ -609,22 +634,22 @@ TEST(conditionalp_never_manufactures_one_from_a_nan_leg) {
                 const double pd = w1 * m1 + w0 * m0;
                 if (!(pd > 0.0)) continue;
                 const ConditionalP c =
-                    conditionalP(w1, m1, nan, Status::Normal,
-                                 w0, m0, p0, Status::SpaOk, pd);
-                CHECK(c.p != 1.0);
-                if (std::isnan(c.p)) {
+                    conditionalP(ln(w1), ln(m1), nan, Status::Normal,
+                                 ln(w0), ln(m0), ln(p0), Status::SpaOk, ln(pd));
+                CHECK(c.negLog10p != 0.0);
+                if (std::isnan(c.negLog10p)) {
                     ++na;
                     CHECK(!spa::statusIsUsable(c.status));
                 } else {
                     ++finite;
                     // The reported value is the mixture with the missing leg's
-                    // joint probability set to zero, exactly.
-                    CHECK_NEAR(c.p, 2.0 * w0 * p0 / pd, 0.0);
+                    // joint probability set to zero.
+                    CHECK_REL(asP(c), 2.0 * w0 * p0 / pd, 1e-14);
                     // Certified: the dropped leg's whole interval is below the
                     // reported value times the threshold.
-                    CHECK(w1 * m1 / pd <= kImmaterialLeg * c.p);
+                    CHECK(w1 * m1 / pd <= kImmaterialLeg * asP(c) * (1.0 + 1e-12));
                     CHECK(spa::statusIsUsable(c.status));
-                    CHECK(c.p >= 0.0 && c.p <= 1.0);
+                    CHECK(c.negLog10p >= 0.0 && std::isfinite(c.negLog10p));
                 }
             }
         }
@@ -632,6 +657,88 @@ TEST(conditionalp_never_manufactures_one_from_a_nan_leg) {
     std::printf("    %d certified-immaterial, %d NA, 0 fabricated 1.0\n", finite, na);
     CHECK(finite > 0);
     CHECK(na > 0);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// 10  The C1 witness: a conditional p below DBL_MIN is a number, not +Inf
+// ──────────────────────────────────────────────────────────────────────
+
+// The probe of RESULTS.md Stage 0b, verbatim in its configuration: p_cut = 0.1
+// so m0 = 0.9, TPR = 0 so the sigma2 > 0 leg carries no weight and its joint
+// probability is absent, and p_deno = 0.9.  The reported value is then
+// p_con = 2*p0/0.9 exactly, which makes the expected L available in closed
+// form and independent of anything this file computes.
+//
+// Before Stage 6 the last row returned LOG10P = +Inf with status 0 SPA_OK: an
+// infinite p-value advertised as a converged saddlepoint.  There was no
+// transition into it — 323.005 and then +Inf — because it was the linear ratio
+// underflowing, not the probability vanishing.
+TEST(conditionalp_reports_a_magnitude_where_the_linear_ratio_underflowed) {
+    const double nan    = std::numeric_limits<double>::quiet_NaN();
+    const double negInf = -std::numeric_limits<double>::infinity();
+    const double lnDeno = ln(0.9);
+
+    // The third row is worth reading twice.  The linear probe reported
+    // L = 323.005 there, and 323.005 is wrong: 2*DBL_TRUE_MIN/0.9 is
+    // 1.0979e-323, but the denormals are spaced 4.94e-324 apart, so the
+    // division rounded it back to 9.88e-324 and lost the fourth digit.  The
+    // linear route was already inaccurate one representable value before it
+    // stopped existing.
+    struct Row { double lnP0; double expectL; };
+    const Row rows[] = {
+        {ln(1e-300),                  299.65321251377530},   // Stage 0b: 299.653
+        {ln(1e-320),                  319.65321734872340},   // Stage 0b: 319.653
+        {ln(4.9406564584124654e-324), 322.95942785689110},   // Stage 0b: 323.005
+        {-800.0,                      347.08879803637680},   // beyond DBL_MIN
+        {-1.0e300,                    4.342944819032518e+299},
+    };
+    for (const Row &r : rows) {
+        const ConditionalP c = conditionalP(negInf, ln(0.5), nan, Status::SpaOk,
+                                            0.0, ln(0.9), r.lnP0, Status::SpaOk, lnDeno);
+        CHECK(std::isfinite(c.negLog10p));
+        CHECK(c.status == Status::SpaOk);
+        // Reference: L = -(ln2 + lnP0 - ln p_deno)/ln10, formed independently
+        // of the routine and pinned to the digits printed above.
+        const double ref = -(std::log(2.0) + r.lnP0 - lnDeno) / std::log(10.0);
+        CHECK_REL(c.negLog10p, ref, 1e-15);
+        CHECK_REL(c.negLog10p, r.expectL, 1e-14);
+    }
+
+    // The fourth row of the Stage 0b probe.  A probability that is exactly
+    // zero is not a p-value of zero: it is an integral that was not evaluated,
+    // and the marker is NA with the code that says the loss happened after the
+    // saddlepoint.  What it is NOT is +Inf.
+    const ConditionalP z = conditionalP(negInf, ln(0.5), nan, Status::SpaOk,
+                                        0.0, ln(0.9), negInf, Status::SpaOk, lnDeno);
+    CHECK(std::isnan(z.negLog10p));
+    CHECK(z.status == Status::NaPostFail);
+}
+
+// An underflowed leg (ln p = -infinity, which is what the degenerate
+// |rho| >= 1 - 1e-12 branch of pmvnorm2dHalfRectLog returns) is a MISSING leg,
+// not a leg of probability zero.  Treating it as zero would understate the
+// mixture by up to that leg's whole share; the interval rule decides instead,
+// on the same bound it uses for a NaN leg.
+TEST(conditionalp_treats_an_underflowed_leg_as_missing_not_as_zero) {
+    const double negInf = -std::numeric_limits<double>::infinity();
+
+    // Immaterial share: the marker survives on the other leg alone.
+    const double w1 = 1e-20, m1 = 1e-6, w0 = 1.0 - w1, m0 = 0.9, p0 = 0.25;
+    const double pd = w1 * m1 + w0 * m0;
+    const ConditionalP keep = conditionalP(ln(w1), ln(m1), negInf, Status::SpaOk,
+                                           ln(w0), ln(m0), ln(p0), Status::Normal, ln(pd));
+    CHECK(std::isfinite(keep.negLog10p));
+    CHECK_REL(asP(keep), 2.0 * w0 * p0 / pd, 1e-15);
+    CHECK(keep.status == Status::Normal);
+
+    // Material share: NA_POST_FAIL, exactly as for a NaN leg, because the
+    // reason is the same one — the integral was not evaluated.
+    const double w1b = 0.3, m1b = 0.5, w0b = 0.7, m0b = 0.9, p0b = 1e-40;
+    const double pdb = w1b * m1b + w0b * m0b;
+    const ConditionalP drop = conditionalP(ln(w1b), ln(m1b), negInf, Status::SpaOk,
+                                           ln(w0b), ln(m0b), ln(p0b), Status::SpaOk, ln(pdb));
+    CHECK(std::isnan(drop.negLog10p));
+    CHECK(drop.status == Status::NaPostFail);
 }
 
 }  // namespace
