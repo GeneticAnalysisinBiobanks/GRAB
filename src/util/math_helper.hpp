@@ -139,6 +139,15 @@ inline double pnormLog(
 }
 
 // Normal quantile (inverse CDF).
+//
+// Since log10p_unify Stage 4 this serves the INPUT side only — the conversion
+// of a user-supplied linear threshold (WtCoxG's `--batch-effect-p-threshold`,
+// SAGELD's `PvalueCutoff`) into the z it corresponds to, which decision D8
+// keeps on the linear scale.  No output column is derived through it any more:
+// the `Z` column now comes from `zFromNegLog10P` below.  That is what makes the
+// argument clamp at 1e-300 harmless here — the thresholds it sees are 0.05 or
+// 1e-3, hundreds of orders of magnitude short of it — whereas on an output
+// p-value the same clamp saturated `Z` at 37.0470962993612 (01_numerics §3.1).
 inline double qnorm(
     double p,
     double mean = 0.0,
@@ -155,20 +164,25 @@ inline double qnorm(
     return boost::math::quantile(boost::math::complement(dist, p));
 }
 
-// Two-sided p-value → signed z such that 2*pnorm(-|z|) == p, with the sign
-// taken from zNormForSign.  Used to emit the "Z" column that is consistent
-// with the (possibly SPA-recalibrated) p-value, alongside the raw normal
-// score z "Z_Norm".  qnorm(p/2, lower_tail=false) routes through Boost's
-// complement, so a tiny p (e.g. 1e-300) keeps full precision instead of
-// collapsing via 1 - p/2.  Degenerate markers propagate NaN from either arg.
-inline double zFromPval(double p, double zNormForSign) {
-    if (std::isnan(p) || std::isnan(zNormForSign))
-        return std::numeric_limits<double>::quiet_NaN();
-    const double sign = (zNormForSign >= 0.0) ? 1.0 : -1.0;
-    return sign * qnorm(0.5 * p, 0.0, 1.0, /*lower_tail=*/false);
-}
+// `zFromPval(p, zNormForSign)` stood here until log10p_unify Stage 4.  It was
+// `sign · qnorm(0.5·p, upper)`, and it inherited qnorm's 1e-300 argument clamp:
+// every marker with L = −log10(P) ≥ 299.698970 came back as
+// |Z| = 37.0470962993612 while the adjacent LOG10P column kept rising, so the
+// two columns contradicted each other in exactly the regime a GWAS is read in.
+// `zFromNegLog10P` below is its replacement and takes L rather than P; there is
+// no linear spelling left, because L is the sole p-value representation
+// (decision D1).
 
 // Chi-squared quantile.
+//
+// log10p_unify Stage 4 moved the three df = 1 inversions that fed output
+// columns — `metaPvalueScorePool`'s per-cluster weight and WtCoxG's two
+// recovered variances — onto the analytic `chisq1FromNegLog10P` below, whose
+// value is the square of the two-sided normal quantile.  This function
+// consequently has NO caller left in src/; it is kept because 02_inventory.md
+// §2.1 rules that this project does not delete it, and because it is the
+// reference `tests/log10p_test.cpp` measures the analytic form against below
+// the clamp.  Its own 1e-300 argument clamp saturated at q = 1373.87.
 inline double qchisq(
     double p,
     double df,
@@ -205,9 +219,11 @@ inline double pt(
 // Student-t tail — is derived from L here instead, so that it keeps
 // meaning past P ≈ 1e-308 where the linear representation stops existing.
 //
-// These functions are ADDED by Stage 1 and are not yet called; the linear
-// spellings above (qnorm, qchisq, pt, cauchyCombine) remain in place until
-// Stages 4, 5 and 7 switch their call sites over.
+// Stage 1 added them; Stage 4 switched the `Z` column and the df = 1
+// chi-squared weight over, deleting the linear `zFromPval` outright.  The
+// linear spellings that survive above (qnorm, qchisq, pt) serve the input side
+// only — decision D8 keeps user-supplied p-value thresholds linear — and
+// `cauchyCombine` awaits Stage 5.
 // ──────────────────────────────────────────────────────────────────────
 
 // ln 10 and ln 2.  One spelling for the tier: `spa::detail::kLn10` and

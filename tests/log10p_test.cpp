@@ -165,26 +165,39 @@ TEST(log10p_is_minus_log10_of_p) {
 // § 1  zFromNegLog10P
 // ══════════════════════════════════════════════════════════════════════
 
+// The linear inversion `math::zFromPval` that Stage 4 deleted, kept here as
+// the reference the replacement is measured against.  It was
+// `sign * qnorm(0.5*p, upper)` verbatim, and `math::qnorm` — which survives,
+// serving input-side thresholds only — still carries the 1e-300 argument clamp
+// that made it saturate.
+double zFromPvalDeleted(double p, double zNormForSign) {
+    if (std::isnan(p) || std::isnan(zNormForSign))
+        return std::numeric_limits<double>::quiet_NaN();
+    const double sign = (zNormForSign >= 0.0) ? 1.0 : -1.0;
+    return sign * math::qnorm(0.5 * p, 0.0, 1.0, /*lower_tail=*/false);
+}
+
 // The acceptance point of the whole project on the Z column.  01_numerics §3.1
-// tabulates the correct z against what math::zFromPval returns today: the two
-// agree up to L = 299.698970 = -log10(2e-300), which is where qnorm's argument
-// clamp engages, and from there on zFromPval is frozen at 37.0470962993612
-// while the true z keeps rising.  L = 300 is already past the clamp, so this
-// is not an exotic corner: any marker a GWAS would call the top hit is in it.
+// tabulates the correct z against what the deleted linear route returned: the
+// two agree up to L = 299.698970 = -log10(2e-300), which is where qnorm's
+// argument clamp engages, and from there on the linear route is frozen at
+// 37.0470962993612 while the true z keeps rising.  L = 300 is already past the
+// clamp, so this is not an exotic corner: any marker a GWAS would call the top
+// hit is in it.
 TEST(zFromNegLog10P_absolute_pins) {
     CHECK_REL(math::zFromNegLog10P(299.69897, 1.0), 37.0470962990919, 1e-14);
     CHECK_REL(math::zFromNegLog10P(300.0,     1.0), 37.0657878807721, 1e-14);
     CHECK_REL(math::zFromNegLog10P(400.0,     1.0), 42.8264064911712, 1e-14);
 
-    // ... and the same three, showing that the linear route is stuck.
-    CHECK_REL(math::zFromPval(std::pow(10.0, -299.69897), 1.0), 37.0470962990919, 1e-14);
-    CHECK_REL(math::zFromPval(std::pow(10.0, -300.0),     1.0), 37.0470962993612, 1e-14);
-    CHECK_REL(math::zFromPval(std::pow(10.0, -400.0),     1.0), 37.0470962993612, 1e-14);
+    // ... and the same three, showing that the linear route was stuck.
+    CHECK_REL(zFromPvalDeleted(std::pow(10.0, -299.69897), 1.0), 37.0470962990919, 1e-14);
+    CHECK_REL(zFromPvalDeleted(std::pow(10.0, -300.0),     1.0), 37.0470962993612, 1e-14);
+    CHECK_REL(zFromPvalDeleted(std::pow(10.0, -400.0),     1.0), 37.0470962993612, 1e-14);
     // The clamp is a plateau, not a rounding: the two saturated values above
     // are bit-identical to each other although the p-values differ by 100
     // orders of magnitude.
-    CHECK(math::zFromPval(std::pow(10.0, -300.0), 1.0) ==
-          math::zFromPval(std::pow(10.0, -400.0), 1.0));
+    CHECK(zFromPvalDeleted(std::pow(10.0, -300.0), 1.0) ==
+          zFromPvalDeleted(std::pow(10.0, -400.0), 1.0));
     // The replacement is strictly increasing across the same span.
     CHECK(math::zFromNegLog10P(300.0, 1.0) < math::zFromNegLog10P(301.0, 1.0));
     CHECK(math::zFromNegLog10P(301.0, 1.0) < math::zFromNegLog10P(400.0, 1.0));
@@ -216,21 +229,28 @@ TEST(zFromNegLog10P_round_trip_against_normalTwoSidedLog) {
 TEST(zFromNegLog10P_matches_zFromPval_below_the_clamp) {
     for (double L = 0.005; L < 299.6; L *= 1.03) {
         const double p = std::pow(10.0, -L);
-        CHECK_REL(math::zFromNegLog10P(L, 1.0), math::zFromPval(p, 1.0), 1e-13);
+        CHECK_REL(math::zFromNegLog10P(L, 1.0), zFromPvalDeleted(p, 1.0), 1e-13);
     }
     // The Boost-quantile / Newton seam at L = 1 is continuous: both sides are
     // accurate there, which is the same overlap argument that fixes pnormLog's
     // own branch at |t| = 37.
     for (double L = 0.90; L <= 1.1001; L += 0.005) {
         const double p = std::pow(10.0, -L);
-        CHECK_REL(math::zFromNegLog10P(L, 1.0), math::zFromPval(p, 1.0), 1e-14);
+        CHECK_REL(math::zFromNegLog10P(L, 1.0), zFromPvalDeleted(p, 1.0), 1e-14);
     }
+    // Below the seam the replacement IS the deleted route, evaluated on
+    // P = 10^(-L) = spa::pFromNegLog10P(L): same Boost quantile, same argument.
+    // The Z column is therefore bit-identical wherever P > 0.1, which is where
+    // the overwhelming majority of markers sit and why Stage 4 moves so little
+    // of it.
+    for (double L = 0.005; L < 0.999; L *= 1.07)
+        CHECK(math::zFromNegLog10P(L, 1.0) == zFromPvalDeleted(spa::pFromNegLog10P(L), 1.0));
 }
 
 TEST(zFromNegLog10P_edge_cases) {
     CHECK(std::isnan(math::zFromNegLog10P(kNaN, 1.0)));
     CHECK(std::isnan(math::zFromNegLog10P(5.0, kNaN)));
-    // P >= 1 is z = 0, with the sign carried through exactly as zFromPval did.
+    // P >= 1 is z = 0, with the sign carried through as the deleted route did.
     CHECK(math::zFromNegLog10P(0.0, 1.0) == 0.0);
     CHECK(math::zFromNegLog10P(-1.0, 1.0) == 0.0);
     CHECK(math::zFromNegLog10P(0.0, -1.0) == 0.0);
@@ -995,6 +1015,148 @@ TEST(hwe_log10p_is_never_negative) {
                 }
             }
     CHECK(nChecked > 10000);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 7  metaPvalueScorePool  (added by Stage 4)
+//
+// LEAF's fixed-effects pool recovers each cluster's variance by inverting that
+// cluster's p-value at df = 1.  Stage 4 replaced `math::qchisq` of a linear p,
+// clamped from below at META_P_FLOOR = 1e-300, with the analytic
+// `chisq1FromNegLog10P` of the magnitude.  What follows pins the two
+// consequences: the pooled value is still exactly the formula, and the
+// per-cluster weight is no longer capped at q = 1373.87.
+// ══════════════════════════════════════════════════════════════════════
+
+#include "util/meta_pvalue.hpp"
+
+namespace {
+
+// The pooling formula written out, with the weight supplied by the caller so
+// the same reference serves both the current code and the deleted floored one.
+double metaRefNegLog10P(
+    const std::vector<double> &scores,
+    const std::vector<double> &chisq
+) {
+    double sumScore = 0.0, sumVar = 0.0;
+    for (size_t c = 0; c < scores.size(); ++c) {
+        sumScore += scores[c];
+        sumVar   += scores[c] * scores[c] / chisq[c];
+    }
+    return -spa::normalTwoSidedLog(sumScore / std::sqrt(sumVar)) / kLn10;
+}
+
+const std::vector<spa::Status> kThreeOk(3, spa::Status::SpaOk);
+
+}  // namespace
+
+// The pool is the formula and nothing else: with the weight spelled as z²
+// there is no arithmetic left to disagree about, so this is a bit-identity.
+TEST(metaPool_is_the_inverse_variance_formula) {
+    const std::vector<double> s = {12.0, -3.5, 40.0};
+    const std::vector<double> L = {4.0, 0.7, 120.0};
+    std::vector<double> chisq(3);
+    for (int c = 0; c < 3; ++c) {
+        const double z = math::zFromNegLog10P(L[c], 1.0);
+        chisq[c] = z * z;
+    }
+    const math::MetaPooled m = math::metaPvalueScorePool(s, L, kThreeOk);
+    CHECK_REL(m.negLog10p, metaRefNegLog10P(s, chisq), 0.0);
+    CHECK(m.status == spa::Status::SpaOk);
+}
+
+// The ceiling this stage removes.  A cluster at L = 400 had its weight held at
+// q = 1373.87 by qchisq's own 1e-300 argument clamp; the analytic inversion
+// gives q = 1834.10, a 33 % larger weight, hence a SMALLER recovered variance
+// for that cluster, a smaller sum of variances, and therefore a LARGER pooled
+// |Z|.  The direction is monotone and does not depend on the configuration:
+// Z_meta = ΣS/√(ΣVar) has the scores in the numerator only, so relieving any
+// cluster's variance can only raise the pooled magnitude.
+TEST(metaPool_no_longer_caps_the_weight_at_1373) {
+    const std::vector<double> s = {30.0, 6.0, 4.0};
+    const std::vector<double> L = {400.0, 2.0, 1.0};
+
+    std::vector<double> chisqNew(3), chisqOld(3);
+    for (int c = 0; c < 3; ++c) {
+        chisqNew[c] = math::chisq1FromNegLog10P(L[c]);
+        // What the deleted code computed: qchisq of a p floored at 1e-300.
+        double p = std::pow(10.0, -L[c]);
+        if (p < 1e-300) p = 1e-300;
+        chisqOld[c] = math::qchisq(p, 1.0, false, false);
+    }
+    CHECK_REL(chisqOld[0], 1373.87, 1e-4);
+    CHECK_REL(chisqNew[0], 1834.10, 1e-5);
+    // The two clusters that were never near the clamp are untouched to 1e-12,
+    // so the whole of the move belongs to the truncated one.
+    CHECK_REL(chisqNew[1], chisqOld[1], 1e-12);
+    CHECK_REL(chisqNew[2], chisqOld[2], 1e-12);
+
+    const math::MetaPooled m = math::metaPvalueScorePool(s, L, kThreeOk);
+    CHECK_REL(m.negLog10p, metaRefNegLog10P(s, chisqNew), 0.0);
+    CHECK(m.negLog10p > metaRefNegLog10P(s, chisqOld));
+}
+
+// The bound that survives is at p → 1 and is not a p-value floor: it stops a
+// cluster reporting |z| ≈ 0 from contributing an infinite variance.  Its
+// L-scale spelling must be the exact image of the former META_P_CEIL — of the
+// DOUBLE the predecessor clamped to, not of the real number 1 − 1e-15, which
+// is not representable (the two differ by 8e-4 relative in L).
+TEST(metaPool_L_floor_is_the_image_of_the_old_p_ceiling) {
+    CHECK_REL(math::META_L_FLOOR, -std::log10(1.0 - 1e-15), 0.0);
+    CHECK_REL(math::chisq1FromNegLog10P(math::META_L_FLOOR), 1.57e-30, 1e-2);
+    // And the round trip closes: the L bound maps back to the p bound.
+    CHECK_REL(spa::pFromNegLog10P(math::META_L_FLOOR), 1.0 - 1e-15, 1e-15);
+
+    // L = 0 exactly (p = 1) would give q = 0 and an infinite variance; the
+    // bound keeps the pool finite and the cluster's influence negligible.
+    const std::vector<double> s = {5.0, 0.01};
+    const std::vector<double> L = {6.0, 0.0};
+    const math::MetaPooled m = math::metaPvalueScorePool(
+        s, L, {spa::Status::SpaOk, spa::Status::Normal});
+    CHECK(std::isfinite(m.negLog10p));
+    CHECK(m.negLog10p >= 0.0);
+    // The near-null cluster's variance dwarfs the other's, so the pooled
+    // magnitude collapses towards zero rather than towards the L = 6 cluster.
+    CHECK(m.negLog10p < 1e-3);
+}
+
+// A cluster with no test at all carries a NaN magnitude and is skipped; when
+// none contributes there is no pooled statistic, and the status says so.
+TEST(metaPool_skips_absent_clusters_and_names_the_empty_pool) {
+    const std::vector<double> s = {kNaN, 8.0};
+    const std::vector<double> L = {kNaN, 3.0};
+    const std::vector<spa::Status> st = {spa::Status::NaNoTest, spa::Status::SpaOk};
+    const math::MetaPooled m = math::metaPvalueScorePool(s, L, st);
+    // The absent cluster leaves no trace: neither in the value nor the status.
+    const std::vector<double> s1 = {8.0}, L1 = {3.0};
+    const math::MetaPooled m1 = math::metaPvalueScorePool(s1, L1, {spa::Status::SpaOk});
+    CHECK_REL(m.negLog10p, m1.negLog10p, 0.0);
+    CHECK(m.status == spa::Status::SpaOk);
+
+    const std::vector<double> sN = {kNaN, kNaN}, LN = {kNaN, kNaN};
+    const math::MetaPooled mN = math::metaPvalueScorePool(
+        sN, LN, {spa::Status::NaNoTest, spa::Status::NaNoTest});
+    CHECK(std::isnan(mN.negLog10p));
+    CHECK(mN.status == spa::Status::NaNoTest);
+
+    // A single contributing cluster with a zero score has no variance either,
+    // so the pool has nothing to report.
+    const std::vector<double> s0 = {0.0}, L0 = {3.0};
+    const math::MetaPooled m0 = math::metaPvalueScorePool(s0, L0, {spa::Status::SpaOk});
+    CHECK(std::isnan(m0.negLog10p));
+    CHECK(m0.status == spa::Status::NaNoTest);
+}
+
+// D5: a cluster whose saddlepoint failed has a magnitude again — the
+// substituted normal tail — so it contributes, and its 3..6 code reaches the
+// meta row instead of being laundered by pooling.
+TEST(metaPool_carries_the_fallback_status_up) {
+    const std::vector<double> s = {4.0, 9.0};
+    const std::vector<double> L = {2.0, 5.0};
+    const math::MetaPooled m = math::metaPvalueScorePool(
+        s, L, {spa::Status::SpaOk, spa::Status::FallbackGuardCurv});
+    CHECK(std::isfinite(m.negLog10p));
+    CHECK(m.status == spa::Status::FallbackGuardCurv);
 }
 
 TINYTEST_MAIN

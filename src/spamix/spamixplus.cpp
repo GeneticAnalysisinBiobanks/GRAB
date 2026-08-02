@@ -464,7 +464,9 @@ void SPAmixPlusMethod::pushResult(
     const double p = spa::pFromNegLog10P(ts.negLog10p);
     r.push_back(p);
     r.push_back(ts.negLog10p);
-    r.push_back(math::zFromPval(p, zOut));
+    // Z from L, not from P: the linear inversion saturated at
+    // |Z| = 37.0470962993612 for every L >= 299.698970 (Stage 4).
+    r.push_back(math::zFromNegLog10P(ts.negLog10p, zOut));
     r.push_back(zOut);
     r.push_back(beta);
     r.push_back(se);

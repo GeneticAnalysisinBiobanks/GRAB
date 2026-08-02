@@ -100,7 +100,7 @@ struct AFData {
 // normal approximation, never a saddlepoint, so SPA_STATUS_G would be a
 // constant; and Z_G is exact, so −log10(P_G) is recoverable from it to full
 // precision without a stored column, which is not true of the G×E block (Z_Gx
-// is derived FROM P_Gx through math::zFromPval).
+// is derived FROM the reported p-value, through math::zFromNegLog10P).
 class SPAGxEMethod : public MethodBase {
   public:
     // resid    — the null-model residual R (per-phenotype dense, length N).

@@ -26,7 +26,7 @@
 #include "engine/marker.hpp"          // MethodBase
 #include "geno_factory/geno_data.hpp" // GenoSpec
 #include "spagrm/spagrm_cgf.hpp"      // tier-3 CGF + ThreeSubjTable
-#include "util/math_helper.hpp"       // math::zFromPval
+#include "util/math_helper.hpp"       // math::zFromNegLog10P
 #include "util/spa.hpp"               // spa::Result, spa::Status
 
 namespace nsSPAGRM {
@@ -341,7 +341,9 @@ class SPAGRMMethod : public MethodBase {
         if (scoreVar > 0.0) {
             const double sd = std::sqrt(scoreVar);
             const double zNorm = score / sd;
-            out.push_back(math::zFromPval(p, zNorm));    // Z (p-consistent)
+            // Z from L, not from P: the linear inversion saturated at
+            // |Z| = 37.0470962993612 for every L >= 299.698970 (Stage 4).
+            out.push_back(math::zFromNegLog10P(ts.negLog10p, zNorm));  // Z
             out.push_back(zNorm);                        // Z_Norm (raw score z)
             out.push_back(score / scoreVar);             // BETA
             out.push_back(1.0 / sd);                     // SE

@@ -933,13 +933,19 @@ void LEAFMethod::pushResult(
     const std::vector<spa::Status> &stNoext,
     int chunkIdx
 ) const {
-    // Fixed-effects meta-analysis: pool scores across clusters.
-    // See src/util/meta_pvalue.hpp for the symmetric p-value clamp.
-    const math::MetaPooled mExt   = math::metaPvalueScorePool(sExt,   pExt,   stExt);
-    const math::MetaPooled mNoext = math::metaPvalueScorePool(sNoext, pNoext, stNoext);
-    out.push_back(mExt.p);
+    // Fixed-effects meta-analysis: pool scores across clusters.  Since
+    // log10p_unify Stage 4 the pool is fed the per-cluster MAGNITUDES rather
+    // than the linear p-values: the df = 1 chi-squared weight it recovers from
+    // each cluster is now the analytic `chisq1FromNegLog10P`, which does not
+    // saturate at 1373.87 as `qchisq` did, and the p-value floor that existed
+    // only to keep that saturation reachable is gone.  See
+    // src/util/meta_pvalue.hpp.
+    const math::MetaPooled mExt   = math::metaPvalueScorePool(sExt,   lExt,   stExt);
+    const math::MetaPooled mNoext = math::metaPvalueScorePool(sNoext, lNoext, stNoext);
+    // P from LOG10P, the one spelling the tree uses while the column survives.
+    out.push_back(spa::pFromNegLog10P(mExt.negLog10p));
     out.push_back(mExt.negLog10p);
-    out.push_back(mNoext.p);
+    out.push_back(spa::pFromNegLog10P(mNoext.negLog10p));
     out.push_back(mNoext.negLog10p);
     out.push_back(wtcoxg_cgf::statusCode(mExt.status));
     out.push_back(wtcoxg_cgf::statusCode(mNoext.status));

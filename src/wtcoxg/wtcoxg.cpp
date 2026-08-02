@@ -389,10 +389,10 @@ SpaResult spaGOneSnpHomoFromScalars(
 
     const spa::Result ts = wtcoxg_cgf::twoSidedSpa(ctx, std::abs(S), S_var, z);
     // P from LOG10P: log10p_unify Stage 3 deleted the parallel linear tail, so
-    // -log10(P) is the only quantity the saddlepoint tier assembles.  The
-    // `pval` field itself survives until Stage 8, because the conditional
-    // branches below still invert it through qchisq (Stage 4) and LEAF still
-    // pools it through metaPvalueScorePool (Stage 4).
+    // -log10(P) is the only quantity the saddlepoint tier assembles.  Since
+    // Stage 4 nothing reads the `pval` field except the P column it feeds —
+    // the conditional branches invert `negLog10p` and LEAF pools it — so the
+    // field goes with that column in Stage 8.
     return {spa::pFromNegLog10P(ts.negLog10p), ts.negLog10p,
             pval_norm, S_raw, z, ts.status};
 }
@@ -1122,8 +1122,12 @@ void WtCoxGMethod::pushResult(
     out.push_back(ext.negLog10p);     // LOG10P_EXT
     out.push_back(noext.pval);        // P_NOEXT
     out.push_back(noext.negLog10p);   // LOG10P_NOEXT
-    out.push_back(math::zFromPval(ext.pval, ext.zscore));     // Z_EXT (p-consistent)
-    out.push_back(math::zFromPval(noext.pval, noext.zscore)); // Z_NOEXT (p-consistent)
+    // Z from LOG10P, not from P (Stage 4): the linear inversion saturated at
+    // |Z| = 37.0470962993612 for every L >= 299.698970.  LOG10P_EXT is still
+    // -log10 of a linear conditional ratio, so on the EXT leg the saturation is
+    // displaced to that step rather than removed, until Stage 6 moves it.
+    out.push_back(math::zFromNegLog10P(ext.negLog10p, ext.zscore));     // Z_EXT
+    out.push_back(math::zFromNegLog10P(noext.negLog10p, noext.zscore)); // Z_NOEXT
     out.push_back(ext.zscore);                                // Z_Norm_EXT
     out.push_back(noext.zscore);                              // Z_Norm_NOEXT
     out.push_back(info.pvalue_bat);
@@ -1451,14 +1455,20 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
             NaN::quiet_NaN(), 0.0, 0.0, 0.0, var_ratio0, m_shared->SPA_Cutoff);
         // D2.  The conditional branches recover a variance by inverting the
         // SPA p-value; when the saddlepoint failed, that p is now NaN with a
-        // status rather than a masked 1.0, and math::qchisq has no NaN guard
-        // and constructs its Boost distribution under the default
-        // throw_on_error policy — so the failure must be intercepted here,
-        // before qchisq sees it, and reported.
-        if (!std::isfinite(spa_s0.pval))
+        // status rather than a masked 1.0, so the failure must be intercepted
+        // here and reported rather than inverted.
+        //
+        // Stage 4: the inversion is `math::chisq1FromNegLog10P` of the
+        // magnitude, not `math::qchisq` of the linear p.  The df = 1 upper-tail
+        // quantile is analytic (it is the square of the two-sided normal
+        // quantile), so the recovered variance no longer bottoms out at the
+        // q = 1373.87 that qchisq's own 1e-300 argument clamp imposed on it.
+        // The guard now tests the magnitude, which is the quantity being
+        // inverted; it is NaN on exactly the markers whose p was NaN.
+        if (!std::isfinite(spa_s0.negLog10p))
             return {NaN::quiet_NaN(), NaN::quiet_NaN(), S_loc,
                     NaN::quiet_NaN(), spa_s0.status};
-        const double qchi0 = math::qchisq(spa_s0.pval, 1.0, false, false);
+        const double qchi0 = math::chisq1FromNegLog10P(spa_s0.negLog10p);
         const double var_S = (qchi0 > 0.0)
             ? S_loc * S_loc / var_ratio0 / qchi0
             : std::numeric_limits<double>::quiet_NaN();
@@ -1543,15 +1553,16 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
         mu_ext, obs_ct, b, 0.0, var_ratio0, m_shared->SPA_Cutoff);
     // D2, as in Branch A: the conditional branches recover a variance by
-    // inverting the SPA p-value, math::qchisq has no NaN guard and builds its
-    // Boost distribution under the default throw_on_error policy, so a failed
-    // saddlepoint must be intercepted before qchisq sees it.  Unlike Branch A
-    // it does not abort the marker: leaving var_S non-finite makes this leg's
-    // joint probability non-finite, and conditionalP decides from the interval
-    // that leg spans whether the marker still has an answer.
+    // inverting the SPA p-value, so a failed saddlepoint must be intercepted
+    // before the inversion.  Unlike Branch A it does not abort the marker:
+    // leaving var_S non-finite makes this leg's joint probability non-finite,
+    // and conditionalP decides from the interval that leg spans whether the
+    // marker still has an answer.  Stage 4 inverts the magnitude analytically
+    // (`chisq1FromNegLog10P`) instead of the linear p through `qchisq`, whose
+    // 1e-300 argument clamp capped the recovered variance at q = 1373.87.
     double var_S = NaN::quiet_NaN();
-    if (std::isfinite(spa_s0.pval)) {
-        const double qchi = math::qchisq(spa_s0.pval, 1.0, false, false);
+    if (std::isfinite(spa_s0.negLog10p)) {
+        const double qchi = math::chisq1FromNegLog10P(spa_s0.negLog10p);
         if (qchi > 0.0) var_S = S * S / var_ratio0 / qchi;
     }
 
@@ -1584,10 +1595,11 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
         mu_ext, obs_ct, b, sigma2, var_ratio1, m_shared->SPA_Cutoff);
     // As for spa_s0: a failed saddlepoint leaves var_S1 non-finite rather than
-    // aborting the marker.
+    // aborting the marker, and the inversion is the analytic df = 1 quantile of
+    // the magnitude (Stage 4).
     double var_S1 = NaN::quiet_NaN();
-    if (std::isfinite(spa_s1.pval))
-        var_S1 = S * S / var_ratio1 / math::qchisq(spa_s1.pval, 1.0, false, false);
+    if (std::isfinite(spa_s1.negLog10p))
+        var_S1 = S * S / var_ratio1 / math::chisq1FromNegLog10P(spa_s1.negLog10p);
     double cov_val1 = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_shared->sumR * (var_mu_ext + sigma2);
     cov_val1 *= std::sqrt(var_S1 / var_int_denom);
     double var_Sbat1 = var_Sbat + sigma2;

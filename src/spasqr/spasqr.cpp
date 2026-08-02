@@ -498,17 +498,20 @@ class SPAsqrMethod : public MethodBase {
         for (int i = 0; i < m_ntaus; ++i) {
             const double zr = zScores[i];
             // D3: on the fast path (|z| ≤ SPA_Cutoff) the p-value is exactly
-            // 2·Φ(−|z|), so zFromPval inverts back to the raw z; emit it
-            // directly and skip the long-double qnorm round-trip (which also
-            // removes the spurious round-trip ULP gap that made Z_τ differ from
-            // Z_Norm_τ on fast-path entries).  NaN p (degenerate marker or a
-            // saddlepoint failure) propagates as NaN, matching zFromPval.
-            if (std::isnan(pvals[i]))
+            // 2·Φ(−|z|), so the inversion returns the raw z; emit it directly
+            // and skip the quantile round-trip (which also removes the spurious
+            // round-trip ULP gap that made Z_τ differ from Z_Norm_τ on fast-path
+            // entries).  A marker with no p-value (degenerate, or a saddlepoint
+            // failure that D5 does not fall back from) has L = NaN and
+            // propagates as NaN, exactly as the inversion itself would.
+            // Stage 4: inverted from L rather than from the linear p, so Z_τ no
+            // longer saturates at 37.0470962993612 once LOG10P_τ passes 299.7.
+            if (std::isnan(lgs[i]))
                 result.push_back(std::numeric_limits<double>::quiet_NaN());
             else if (std::abs(zr) <= m_spaShared->SPA_Cutoff)
                 result.push_back(zr);                                 // Z_τ == Z_Norm_τ
             else
-                result.push_back(math::zFromPval(pvals[i], zr));      // SPA-recalibrated
+                result.push_back(math::zFromNegLog10P(lgs[i], zr));   // SPA-recalibrated
         }
         for (int i = 0; i < m_ntaus; ++i) result.push_back(zScores[i]);  // Z_Norm_τ
         for (int i = 0; i < m_ntaus; ++i) result.push_back(stats[i]);    // SPA_STATUS

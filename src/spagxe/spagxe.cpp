@@ -28,7 +28,7 @@
 #include "spamix/indiv_af.hpp"        // AFContext, computeAFVec (SPAGxEmix)
 #include "util/outlier.hpp"           // OutlierData, detectOutliers
 #include "util/logging.hpp"           // infoMsg, warnMsg
-#include "util/math_helper.hpp"       // math::pnorm, zFromPval, cauchyCombine
+#include "util/math_helper.hpp"       // math::pnorm, zFromNegLog10P, cauchyCombine
 #include "util/null_model.hpp"        // nullmodel::fitAll and friends
 
 #include <algorithm>
@@ -407,7 +407,11 @@ void writeEnvBlock(
     out[base + 0] = finalP;                      // P_Gx<E> (final)
     out[base + 1] = negLog;                      // LOG10P_Gx<E>
     out[base + 2] = pWald;                       // P_Wald_Gx<E> (NaN if none)
-    out[base + 3] = math::zFromPval(finalP, z);  // Z_Gx<E> (p-consistent)
+    // Z from LOG10P_Gx, not from P_Gx (Stage 4): the linear inversion
+    // saturated at |Z| = 37.0470962993612 for every L >= 299.698970.  Where
+    // the CCT ran, `negLog` is still -log10 of a linear combination, so the
+    // saturation is merely displaced to that step until Stage 5 moves it.
+    out[base + 3] = math::zFromNegLog10P(negLog, z);  // Z_Gx<E> (p-consistent)
     out[base + 4] = z;                           // Z_Norm_Gx<E> (raw score z)
     out[base + 5] = score / var;                 // BETA_Gx<E>
     out[base + 6] = 1.0 / std::sqrt(var);        // SE_Gx<E>

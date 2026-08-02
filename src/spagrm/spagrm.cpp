@@ -56,8 +56,9 @@ namespace nsSPAGRM {
 //       Nor is the damage merely "a conservative p = 2.0" as D6 states.  With
 //       CGF2 == 0 exactly, v = 0, log(v/w) = −inf and u = ∓inf, math::pnorm's
 //       non-finite branch returns 1.0 on BOTH tails, and the sum 2.0 reached
-//       the P column unclamped.  math::zFromPval(2.0, ·) then clamps inside
-//       qnorm and reports |Z| ≈ 8.2, so the row was internally inconsistent —
+//       the P column unclamped.  The linear Z inversion of the day
+//       (`qnorm(0.5·P, upper)`) then clamped its own argument and reported
+//       |Z| ≈ 8.2 for it, so the row was internally inconsistent —
 //       P = 2 alongside a genome-wide-significant Z — rather than conservative.
 //       spa::combineTailsLog clamps at p = 1 and, more to the point, reports NA
 //       with a named status instead.

@@ -203,7 +203,8 @@ double computeRGRMR(
 //     linear   X_i = X_GxE − λ·X_G
 //     bilinear X_i = X_GxE + λ²·X_G − λ·X_G_GxE       (X_G_GxE folds the 2)
 //   so the exact getMarkerPvalFromScore SPA can run per marker without
-//   re-detecting outliers or rebuilding families.  See sageldMarkerLambdaPval.
+//   re-detecting outliers or rebuilding families.  See
+//   sageldMarkerLambdaNegLog10P.
 // ══════════════════════════════════════════════════════════════════════
 struct SAGELDSplitLedgers {
     // Full residual vectors — for the centered Score_i and the ctor's resid.
@@ -331,7 +332,13 @@ SAGELDSplitLedgers buildSAGELDSplitLedgers(
 // per-marker SPAGRMClass, and run the validated getMarkerPvalFromScore.  The
 // score keeps GRAB2's genotype-mean centering (SG-1 unchanged); outScore
 // returns the centered score so the caller forms BETA = Score / Var(S).
-double sageldMarkerLambdaPval(
+//
+// Returns L = −log10(P), the sole representation the saddlepoint tier
+// assembles (decision D1).  It returned the linear p until log10p_unify
+// Stage 4, which needed the magnitude at the call site in order to invert the
+// `Z_Gx<E>` column out of it without the 1e-300 clamp; the P column SAGELD
+// still emits is `spa::pFromNegLog10P` of this value.
+double sageldMarkerLambdaNegLog10P(
     const SAGELDSplitLedgers &L,
     double lambda_i,
     const Eigen::Ref<const Eigen::VectorXd> &GVec,
@@ -376,15 +383,13 @@ double sageldMarkerLambdaPval(
     SPAGRMClass sg(std::move(resid_i), sum_R_nonOut_i, R_GRM_R_nonOut_i,
                    R_GRM_R_TwoSubj_i, R_GRM_R_i, L.MAF_interval, std::move(fd),
                    L.SPA_Cutoff, L.tol);
-    // spa_unify Stage 4: getMarkerPvalFromScore now returns P, -log10(P) and
-    // the saddlepoint Status.  SAGELD's output surface is unchanged by this
-    // stage (it gains no LOG10P / SPA_STATUS columns of its own), so only P is
-    // consumed here; a saddlepoint failure still reports NA in P, now for a
-    // reason the SPAGRM output would name.  log10p_unify Stage 7 stops
-    // discarding the other two; Stage 3 only changes where the P comes from,
-    // since -log10(P) is now the sole quantity the tier assembles.
-    return spa::pFromNegLog10P(
-        sg.getMarkerPvalFromScore(Score_i, altFreq, zScore, outScoreVar).negLog10p);
+    // spa_unify Stage 4: getMarkerPvalFromScore returns -log10(P) and the
+    // saddlepoint Status.  SAGELD's output surface is unchanged by this stage
+    // (it gains no LOG10P / SPA_STATUS columns of its own), so only the
+    // magnitude is consumed here; a saddlepoint failure still reports NA,
+    // now for a reason the SPAGRM output would name.  log10p_unify Stage 7
+    // stops discarding the status.
+    return sg.getMarkerPvalFromScore(Score_i, altFreq, zScore, outScoreVar).negLog10p;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -476,7 +481,10 @@ class SAGELDMethod : public MethodBase {
             double zGxE = 0.0;
             double scoreVar = 0.0;
             double score = 0.0;
-            double pGxE = std::numeric_limits<double>::quiet_NaN();
+            // The magnitude L = −log10(P) is what both branches below produce
+            // and what the Z inversion consumes; the P column is derived from
+            // it (Stage 4).
+            double lGxE = std::numeric_limits<double>::quiet_NaN();
 
             // ── SG-3 screen: per-marker environment z-score ──
             // zScoreE = (Resid_E · G) / sqrt(2·MAF·(1−MAF)·R_GRM_R_E), matching
@@ -494,8 +502,8 @@ class SAGELDMethod : public MethodBase {
             if (useMarkerLambda) {
                 const double lambda_i = nsSAGELDFit::markerLambda(GVec, *env.cache);
                 if (std::isfinite(lambda_i)) {
-                    pGxE = sageldMarkerLambdaPval(*env.splitLedgers, lambda_i, GVec,
-                                                  altFreq, zGxE, score, &scoreVar);
+                    lGxE = sageldMarkerLambdaNegLog10P(*env.splitLedgers, lambda_i, GVec,
+                                                       altFreq, zGxE, score, &scoreVar);
                 } else {
                     useMarkerLambda = false; // degenerate V → mean-λ fallback
                 }
@@ -504,14 +512,17 @@ class SAGELDMethod : public MethodBase {
                 // Mean-λ path (SG-1 centering unchanged).
                 score = GVec.dot(env.spagrm_combined.resid()) -
                         gMean * env.spagrm_combined.residSum();
-                pGxE = spa::pFromNegLog10P(
-                    env.spagrm_combined.getMarkerPvalFromScore(
-                        score, altFreq, zGxE, &scoreVar).negLog10p);
+                lGxE = env.spagrm_combined.getMarkerPvalFromScore(
+                    score, altFreq, zGxE, &scoreVar).negLog10p;
             }
 
+            const double pGxE = spa::pFromNegLog10P(lGxE);
             if (scoreVar > 0.0) {
                 const double sdE = std::sqrt(scoreVar);
-                writePZZnormBetaSe(result, 4 + 5 * i, pGxE, math::zFromPval(pGxE, zGxE), zGxE,
+                // Z from L (Stage 4): the linear inversion saturated at
+                // |Z| = 37.0470962993612 for every L >= 299.698970.
+                writePZZnormBetaSe(result, 4 + 5 * i, pGxE,
+                                   math::zFromNegLog10P(lGxE, zGxE), zGxE,
                                    score / scoreVar, 1.0 / sdE);
             } else {
                 result[4 + 5 * i + 0] = pGxE; // P even when var=0 (SPA may still return finite p)
