@@ -16,8 +16,8 @@
 // decision D1) and the linear form is exactly zero for every association
 // stronger than p ~ 1e-308.  A parallel linear tail and a parallel linear
 // two-sided assembly existed alongside these until log10p_unify Stage 3;
-// they are gone, and a method that still emits a P column derives it as
-// `spa::pFromNegLog10P` of the assembled result.
+// they are gone, and since Stage 8 so is the P column itself.  A consumer
+// that needs a linear p-value recovers it as 10^(-LOG10P).
 //
 // — but none computed it the same way.  What differed was the guard set (two
 // sites had none), the root finder (three incompatible families), the
@@ -1264,8 +1264,9 @@ inline double tailAbscissa(
 // division and the whole guard set — to produce the same quantity in two
 // representations, of which the linear one is exactly zero for every
 // association past p ≈ 1e-308.  Decision D1 makes -log10(P) the sole
-// representation, so this is the only tail there is; the P column, while it
-// still exists, is `pFromNegLog10P` of the assembled result.
+// representation, so this is the only tail there is, and since Stage 8 the
+// only column: the derived P column and the `pFromNegLog10P` helper that
+// produced it in all ten method entry points are gone with it.
 //
 // Scalars rather than a struct by deliberate choice: under the SysV AMD64 ABI
 // four doubles pass in xmm0-xmm3 and the bool in edi, so the call is
@@ -1311,29 +1312,6 @@ struct Result {
     double negLog10p;
     Status status;
 };
-
-// TRANSITIONAL — deleted with the P column in log10p_unify Stage 8.
-//
-// The linear p-value, recovered from the sole representation: p = 10^(-L).
-// One spelling for all ten method entry points, so that the column they still
-// emit cannot be assembled ten different ways on its way out.
-//
-// `std::pow(10, -L)` and not `std::exp(-L*ln10)`: the latter rounds the
-// product L*ln10 first, and an error of 1 ulp in an exponent of magnitude
-// L*ln10 is a RELATIVE error of that size in the result, so at L = 300 it
-// would cost ~7e-14 where pow costs ~1e-16.  The unavoidable part of the
-// round trip is the representation of L itself: L carries a relative error of
-// about 2^-53, hence an absolute error of L*2^-53, and P inherits a relative
-// error of ln10*L*2^-53 ≈ 2.6e-16*L.  That, and nothing else, is why the P
-// column moves at all in Stage 3.
-//
-// NaN propagates — a p-value that does not exist must not become a number —
-// and L <= 0 returns exactly 1 rather than a pow() of a negative zero.
-inline double pFromNegLog10P(double negLog10p) noexcept {
-    if (std::isnan(negLog10p)) return detail::quietNaN();
-    if (!(negLog10p > 0.0)) return 1.0;
-    return std::pow(10.0, -negLog10p);
-}
 
 // Log-domain assembly, via log-sum-exp so that the sum of two underflowed
 // tails does not re-underflow.  Inputs are natural logarithms, as returned by

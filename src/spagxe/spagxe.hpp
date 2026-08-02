@@ -70,26 +70,24 @@ struct AFData {
 // ══════════════════════════════════════════════════════════════════════
 //
 // Output schema (mirrors SAGELD's multi-env layout, src/spagrm/sageld.cpp):
-//   col 0..4        :  P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+//   col 0..4        :  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
 //                                                    marginal genetic block
 //                                                    (always normal-approx)
-//   col 5 + 8·e+0   :  P_Gx<Ee>       final G×E p-value.  Branch A (and the
-//                                     SPAGxE+ GRM / residual-mode paths): the
+//   col 5 + 7·e+0   :  LOG10P_Gx<Ee>  final G×E p-value, as the magnitude
+//                                     −log10(P).  Branch A (and the SPAGxE+
+//                                     GRM / residual-mode paths): the
 //                                     SPA/normal score p.  Branch B, base path:
 //                                     CCT(p_spa, p_wald).
-//   col 5 + 8·e+1   :  LOG10P_Gx<Ee>  the magnitude −log10(P_Gx<Ee>), carried
-//                                     in the log domain end to end (P_Gx is
-//                                     derived from it, not the other way round)
-//   col 5 + 8·e+2   :  LOG10P_Wald_Gx<Ee>  magnitude of the Branch-B Wald p of
+//   col 5 + 7·e+1   :  LOG10P_Wald_Gx<Ee>  magnitude of the Branch-B Wald p of
 //                                     the G:E coefficient (NaN in Branch A, the
 //                                     GRM path, and residual mode — no Wald there).
-//   col 5 + 8·e+3   :  Z_Gx<Ee>       p-consistent z of P_Gx<Ee>: 2·pnorm(−|Z|)==P
-//   col 5 + 8·e+4   :  Z_Norm_Gx<Ee>  raw score z (Score/√Var, SPA-uncalibrated)
-//   col 5 + 8·e+5   :  BETA_Gx<Ee>    score-derived interaction effect
-//   col 5 + 8·e+6   :  SE_Gx<Ee>      score-derived interaction SE
-//   col 5 + 8·e+7   :  SPA_STATUS_Gx<Ee>  saddlepoint outcome, as
+//   col 5 + 7·e+2   :  Z_Gx<Ee>       p-consistent z: 2·pnorm(−|Z|)==10^(−LOG10P)
+//   col 5 + 7·e+3   :  Z_Norm_Gx<Ee>  raw score z (Score/√Var, SPA-uncalibrated)
+//   col 5 + 7·e+4   :  BETA_Gx<Ee>    score-derived interaction effect
+//   col 5 + 7·e+5   :  SE_Gx<Ee>      score-derived interaction SE
+//   col 5 + 7·e+6   :  SPA_STATUS_Gx<Ee>  saddlepoint outcome, as
 //                                     static_cast<uint8_t>(spa::Status)
-// resultSize() = 5 + 8·nEnv.
+// resultSize() = 5 + 7·nEnv.
 //
 // LOG10P_Gx is a magnitude on every path, never −log10 of a linear p.  Where
 // the reported p IS the saddlepoint p it comes from the log-domain tail
@@ -99,22 +97,19 @@ struct AFData {
 // by math::cauchyCombineLog10 over the two magnitudes (log10p_unify Stage 5),
 // so the saddlepoint leg enters exactly and the Cauchy statistic — whose terms
 // are 1/(π p) and which therefore overflows for p ≤ 1e-308 — is never formed.
-// P_Gx is 10^(−LOG10P_Gx) until Stage 8 deletes it.  The Wald leg arrives as a
-// magnitude too since Stage 7 (wald::lastCoef*Log10P), so no leg of the
-// combination has an underflow ceiling any more.
+// The linear P_Gx column was deleted in Stage 8 (decision D1); a consumer that
+// needs it takes 10^(−LOG10P_Gx).  The Wald leg arrives as a magnitude too
+// since Stage 7 (wald::lastCoef*Log10P), so no leg of the combination has an
+// underflow ceiling any more.
 //
-// The marginal block carries SPA_STATUS_G but, for now, no LOG10P_G.  It is
+// The marginal block carries SPA_STATUS_G and, since Stage 8, LOG10P_G.  It is
 // always the normal approximation, never a saddlepoint, so the status is the
 // constant `1 NORMAL` wherever the block exists at all and `8 NA_NO_TEST`
 // where Var(S_G) ≤ 0 — which is exactly the distinction a bare row of NA does
 // not make, and the reason decision D4 gives every reported test a status.
-// The absent magnitude is not a design decision: Stage 8 turns P_G into
-// LOG10P_G along with every other P column (02_inventory §1.2), and until it
-// does, tests/regress.py reports SPA_STATUS_G as a status with no LOG10P
-// partner and skips invariant C3 for it.  Meanwhile −log10(P_G) is
-// recoverable from the exact Z_G to full precision, which is not true of the
-// G×E block (Z_Gx is derived FROM the reported p-value, through
-// math::zFromNegLog10P).
+// LOG10P_G is formed by spa::normalTwoSidedLog rather than as −log10 of the
+// linear tail, so it keeps rising past |Z_G| = 38.6 where the linear p flushes
+// to exactly zero and its logarithm would be the +Inf invariant C1 forbids.
 class SPAGxEMethod : public MethodBase {
   public:
     // resid    — the null-model residual R (per-phenotype dense, length N).
@@ -146,7 +141,7 @@ class SPAGxEMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 5 + 8 * static_cast<int>(m_envNames.size());
+        return 5 + 7 * static_cast<int>(m_envNames.size());
     }
 
     std::string getHeaderColumns() const override;

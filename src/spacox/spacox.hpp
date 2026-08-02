@@ -85,16 +85,19 @@ class SPACoxMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 7;
+        return 6;
     }
 
-// P, LOG10P, Z, Z_Norm, BETA, SE, SPA_STATUS.
+// LOG10P, Z, Z_Norm, BETA, SE, SPA_STATUS.
 //
-// LOG10P is -log10(P), computed through spa::bnTailLog / spa::combineTailsLog
-// so that it stays meaningful past the point where the linear-scale tail
-// underflows (Phi(-38.5) flushes to zero, i.e. p ~ 1e-316).
+// LOG10P is -log10(P) and, since log10p_unify Stage 8, the sole p-value
+// column (decision D1).  It is computed through spa::bnTailLog /
+// spa::assemble so that it stays meaningful past the point where the
+// linear-scale tail underflows (Phi(-38.5) flushes to zero, i.e. p ~ 1e-316).
+// A consumer that needs the linear p recovers it as P = 10^(-LOG10P).
 //
-// SPA_STATUS carries the spa::Status of the saddlepoint that produced P.  It
+// SPA_STATUS carries the spa::Status of the saddlepoint that produced
+// LOG10P.  It
 // is emitted as the integer enumerator rather than the token spelled by
 // spa::statusName because MethodBase hands the engine a std::vector<double>
 // and every result cell is formatted by numToChars; a string column would
@@ -113,7 +116,7 @@ class SPACoxMethod : public MethodBase {
 // anti-conservative at low MAC, so filter with SPA_STATUS <= 2 before judging
 // significance -- and >= 7 that LOG10P is NA.
     std::string getHeaderColumns() const override {
-        return "\tP\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
+        return "\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
     }
 
     void getResultVec(

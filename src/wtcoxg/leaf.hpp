@@ -105,11 +105,9 @@ class LEAFMethod : public MethodBase {
         std::vector<double> &result
     ) override;
 
-// Push the 6 + 10*K result cells in header order; see getHeaderColumns.
+// Push the 4 + 8*K result cells in header order; see getHeaderColumns.
     void pushResult(
         std::vector<double> &out,
-        const std::vector<double> &pExt,
-        const std::vector<double> &pNoext,
         const std::vector<double> &lExt,
         const std::vector<double> &lNoext,
         const std::vector<double> &sExt,

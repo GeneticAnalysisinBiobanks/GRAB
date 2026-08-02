@@ -33,6 +33,7 @@
 // from the tests/*_test.cpp wildcard with no Makefile entry.
 
 #include "tinytest.hpp"
+#include "linear_p.hpp"
 
 #include "util/spa.hpp"
 
@@ -586,12 +587,16 @@ ScaleOutcome twoSidedAtScale(const MixedCgf &base, double z, double scale) {
         st[k] = spa::worseStatus(r.status, stLog);
     }
 
-    // P is still pinned, and must be: while the column exists it is
-    // `pFromNegLog10P` of the assembled result, so bit-identity of P follows
-    // from bit-identity of LOG10P only if that conversion is itself a pure
-    // function of LOG10P — which is exactly what this asserts.
+    // The quantities the invariant is stated on are LOG10P and SPA_STATUS
+    // (02_inventory §6): the P column went in log10p_unify Stage 8 and there
+    // is no linear p in the shipped tree to pin.  The linear value is still
+    // computed and still asserted bit-identical, now through the test-side
+    // `tref::pFromNegLog10P`, because a conversion that is a pure function of
+    // LOG10P must inherit LOG10P's bit-identity — and if it ever failed to,
+    // the failure would be in the conversion rather than in the solver, which
+    // is worth separating.
     const spa::Result lg = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
-    return ScaleOutcome{spa::pFromNegLog10P(lg.negLog10p), lg.negLog10p,
+    return ScaleOutcome{tref::pFromNegLog10P(lg.negLog10p), lg.negLog10p,
                         zetaUpper, lg.status};
 }
 
@@ -844,7 +849,7 @@ TEST(assemble_fallback_and_na_blocks) {
                                             spa::Status::SpaOk, z);
         CHECK(r.status == spa::Status::SpaOk);
         CHECK(std::fabs(r.negLog10p - (-std::log10(0.05))) < 1e-12);
-        CHECK(std::fabs(spa::pFromNegLog10P(r.negLog10p) - 0.05) < 1e-15);
+        CHECK(std::fabs(tref::pFromNegLog10P(r.negLog10p) - 0.05) < 1e-15);
     }
 
     // One failed tail falls the WHOLE two-sided p back, and to the normal
@@ -1071,7 +1076,7 @@ TEST(status_guardw) {
     CHECK(ts.status == spa::Status::SpaWSingular);
     CHECK(spa::statusIsUsable(ts.status));
     CHECK(ts.negLog10p == 0.0);
-    CHECK(spa::pFromNegLog10P(ts.negLog10p) == 1.0);
+    CHECK(tref::pFromNegLog10P(ts.negLog10p) == 1.0);
 
     // Inside the band the returned probability is Phi(+/-w) — the same
     // phiTailLog call serves both branches, so the only difference from an
@@ -1645,7 +1650,7 @@ TEST(bntaillog_survives_past_linear_underflow) {
     // column, while it exists, is derived back from it: an honest zero, never
     // a floor.
     CHECK_CLOSE(-lp / kLn10, 400.0, 1e-12, 0.0);
-    CHECK(spa::pFromNegLog10P(-lp / kLn10) == 0.0);
+    CHECK(tref::pFromNegLog10P(-lp / kLn10) == 0.0);
 }
 
 TEST(bntaillog_matches_an_independent_higher_precision_reference) {
@@ -1764,7 +1769,7 @@ TEST(combine_tails_sums_and_reports_negative_log10) {
     // The P column, recovered from L.  The tolerance is the analytic cost of
     // the round trip, ln10*L*2^-53 = 4.0e-15 here (measured 1.65e-15), not a
     // fudge: see p_from_neglog10p_round_trip_is_within_the_analytic_bound.
-    CHECK_REL(spa::pFromNegLog10P(r.negLog10p), 1.3e-8,
+    CHECK_REL(tref::pFromNegLog10P(r.negLog10p), 1.3e-8,
               kLn10 * r.negLog10p * std::numeric_limits<double>::epsilon());
     CHECK(r.negLog10p > 0.0);
 
@@ -1773,7 +1778,7 @@ TEST(combine_tails_sums_and_reports_negative_log10) {
         std::log(0.5), std::log(0.5), spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(one.negLog10p == 0.0);
     CHECK(!std::signbit(one.negLog10p));
-    CHECK(spa::pFromNegLog10P(one.negLog10p) == 1.0);
+    CHECK(tref::pFromNegLog10P(one.negLog10p) == 1.0);
 }
 
 // The round trip P = 10^(-LOG10P) is the whole of what Stage 3 changed about
@@ -1794,7 +1799,7 @@ TEST(p_from_neglog10p_round_trip_is_within_the_analytic_bound) {
         // -log10, in long double, then rounded once.
         const long double pRef = std::pow(10.0L, -static_cast<long double>(L));
         if (pRef == 0.0L) break;
-        const double got = spa::pFromNegLog10P(L);
+        const double got = tref::pFromNegLog10P(L);
         const double rel =
             static_cast<double>(std::fabs((static_cast<long double>(got) - pRef) / pRef));
         const double bound = std::fmax(kLn10 * L * eps, 4.0 * eps);
@@ -1822,7 +1827,7 @@ TEST(p_from_neglog10p_round_trip_is_within_the_analytic_bound) {
         const double pIn = std::pow(10.0, -e10);
         if (pIn == 0.0) break;
         const double L = -std::log10(pIn);
-        const double back = spa::pFromNegLog10P(L);
+        const double back = tref::pFromNegLog10P(L);
         const double rel = std::fabs(back - pIn) / pIn;
         const double bound = std::fmax(2.0 * kLn10 * L * eps, 4.0 * eps);
         CHECK_MSG(rel <= bound,
@@ -1838,12 +1843,12 @@ TEST(p_from_neglog10p_round_trip_is_within_the_analytic_bound) {
                  nFull, worstFull, worstFullAtL);
 
     // Exact at the ends, and NaN is never laundered into a number.
-    CHECK(spa::pFromNegLog10P(0.0) == 1.0);
-    CHECK(spa::pFromNegLog10P(-0.0) == 1.0);
-    CHECK(spa::pFromNegLog10P(kInf) == 0.0);
-    CHECK(std::isnan(spa::pFromNegLog10P(kNaN)));
+    CHECK(tref::pFromNegLog10P(0.0) == 1.0);
+    CHECK(tref::pFromNegLog10P(-0.0) == 1.0);
+    CHECK(tref::pFromNegLog10P(kInf) == 0.0);
+    CHECK(std::isnan(tref::pFromNegLog10P(kNaN)));
     for (int e = 1; e <= 300; ++e)
-        CHECK(spa::pFromNegLog10P(static_cast<double>(e)) ==
+        CHECK(tref::pFromNegLog10P(static_cast<double>(e)) ==
               std::pow(10.0, -static_cast<double>(e)));
 }
 
@@ -1883,7 +1888,7 @@ TEST(combine_tails_never_reports_half_a_p_value) {
         spa::Status::SpaWSingular);
     CHECK(g.status == spa::Status::SpaWSingular);
     CHECK(spa::statusIsUsable(g.status));
-    CHECK_REL(spa::pFromNegLog10P(g.negLog10p), 0.50000001, 1e-15);
+    CHECK_REL(tref::pFromNegLog10P(g.negLog10p), 0.50000001, 1e-15);
 
     // ...but a genuine failure on the other side still wins.
     const spa::Result h = spa::combineTailsLog(
@@ -1907,7 +1912,7 @@ TEST(combine_tails_never_turns_nan_into_one) {
 
     // ...and the NaN survives the derivation of the P column too, rather than
     // being converted into a number on the way out.
-    CHECK(std::isnan(spa::pFromNegLog10P(r.negLog10p)));
+    CHECK(std::isnan(tref::pFromNegLog10P(r.negLog10p)));
 }
 
 TEST(combine_tails_clamps_at_p_equals_one_without_flooring_at_dbl_min) {
@@ -1916,7 +1921,7 @@ TEST(combine_tails_clamps_at_p_equals_one_without_flooring_at_dbl_min) {
         std::log(0.9), std::log(0.9), spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(hi.status == spa::Status::SpaOk);
     CHECK(hi.negLog10p == 0.0);
-    CHECK(spa::pFromNegLog10P(hi.negLog10p) == 1.0);
+    CHECK(tref::pFromNegLog10P(hi.negLog10p) == 1.0);
 
     // ...but a tail that underflowed keeps its magnitude, which is the entire
     // reason the assembly is in the log domain.  Substituting DBL_MIN for it,
@@ -1928,7 +1933,7 @@ TEST(combine_tails_clamps_at_p_equals_one_without_flooring_at_dbl_min) {
     CHECK(lo.status == spa::Status::SpaOk);
     CHECK(std::isfinite(lo.negLog10p));
     CHECK(lo.negLog10p > 347.0);
-    const double p = spa::pFromNegLog10P(lo.negLog10p);
+    const double p = tref::pFromNegLog10P(lo.negLog10p);
     CHECK(p == 0.0);
     CHECK(p != std::numeric_limits<double>::min());
 }
@@ -1949,7 +1954,7 @@ TEST(combine_tails_log_is_log_sum_exp) {
     // Two tails that both underflow on the linear scale still combine.
     const spa::Result deep = spa::combineTailsLog(
         -920.0, -921.0, spa::Status::SpaOk, spa::Status::SpaOk);
-    CHECK(spa::pFromNegLog10P(deep.negLog10p) == 0.0);
+    CHECK(tref::pFromNegLog10P(deep.negLog10p) == 0.0);
     CHECK(std::isfinite(deep.negLog10p));
     CHECK_REL(deep.negLog10p,
               -(-920.0 + std::log1p(std::exp(-1.0))) / kLn10, 1e-14);
@@ -1966,14 +1971,14 @@ TEST(combine_tails_log_is_log_sum_exp) {
     const spa::Result zero = spa::combineTailsLog(
         -kInf, -kInf, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(zero.negLog10p == kInf);
-    CHECK(spa::pFromNegLog10P(zero.negLog10p) == 0.0);
+    CHECK(tref::pFromNegLog10P(zero.negLog10p) == 0.0);
 
     // Over-unity is clamped at p = 1, i.e. at L = 0.
     const spa::Result over = spa::combineTailsLog(
         -0.1, -0.1, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(over.negLog10p == 0.0);
     CHECK(!std::signbit(over.negLog10p));
-    CHECK(spa::pFromNegLog10P(over.negLog10p) == 1.0);
+    CHECK(tref::pFromNegLog10P(over.negLog10p) == 1.0);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -2074,7 +2079,7 @@ TEST(a_p_of_1e_minus_400_is_recovered_in_log10p) {
         lTail, lTail, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(lg.status == spa::Status::SpaOk);
     CHECK_CLOSE(lg.negLog10p, 400.0, 1e-12, 0.0);
-    CHECK(spa::pFromNegLog10P(lg.negLog10p) == 0.0);   // honest zero, not DBL_MIN
+    CHECK(tref::pFromNegLog10P(lg.negLog10p) == 0.0);   // honest zero, not DBL_MIN
 
     // The deleted linear assembly had nothing left here: both tails had
     // already underflowed to exactly zero before it saw them, so it could only
@@ -2127,9 +2132,9 @@ TEST(log10p_agrees_with_minus_log10_p_at_full_precision) {
         // -log10 costs ln10*L*2^-53 relative, which over this sweep
         // (L <= 300) is at most 7.7e-14.
         const double pRel =
-            std::fabs(spa::pFromNegLog10P(lg.negLog10p) - pLin) / pLin;
+            std::fabs(tref::pFromNegLog10P(lg.negLog10p) - pLin) / pLin;
         if (pRel > worstPRel) { worstPRel = pRel; worstPAtL = lLin; }
-        CHECK_REL(spa::pFromNegLog10P(lg.negLog10p), pLin,
+        CHECK_REL(tref::pFromNegLog10P(lg.negLog10p), pLin,
                   std::fmax(4.0 * kLn10 * lLin * 2.220446049250313e-16, 1e-15));
         ++nChecked;
     }
@@ -2214,7 +2219,7 @@ TEST(normal_branch_bundle_is_self_consistent) {
         CHECK(b.status == spa::Status::Normal);
         CHECK(b.negLog10p == -spa::normalTwoSidedLog(z) / kLn10 ||
               b.negLog10p == 0.0);
-        const double p = spa::pFromNegLog10P(b.negLog10p);
+        const double p = tref::pFromNegLog10P(b.negLog10p);
         const double pLin =
             2.0 * math::pnorm(std::fabs(z), 0.0, 1.0, /*lower_tail=*/false);
         // The round trip -log10 -> 10^(-.) costs ln10*L*2^-53 relative.
@@ -2223,7 +2228,7 @@ TEST(normal_branch_bundle_is_self_consistent) {
     }
     CHECK(spa::normalBranch(0.0).negLog10p == 0.0);
     CHECK(!std::signbit(spa::normalBranch(0.0).negLog10p));
-    CHECK(spa::pFromNegLog10P(spa::normalBranch(0.0).negLog10p) == 1.0);
+    CHECK(tref::pFromNegLog10P(spa::normalBranch(0.0).negLog10p) == 1.0);
 }
 
 TEST(sign_of_is_zero_at_zero) {
@@ -2307,7 +2312,7 @@ TEST(end_to_end_two_sided_spa_p_value) {
         const double pLin = std::exp(lu) + std::exp(ll);
 
         CHECK(lg.status == spa::Status::SpaOk);
-        const double p = spa::pFromNegLog10P(lg.negLog10p);
+        const double p = tref::pFromNegLog10P(lg.negLog10p);
         CHECK(p > 0.0 && p <= 1.0);
         CHECK_REL(p, pLin, 1e-13);
         CHECK_NEAR(lg.negLog10p, -std::log10(pLin), 1e-11);

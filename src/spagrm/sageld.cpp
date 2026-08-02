@@ -1,8 +1,8 @@
 // sageld.cpp — SAGELD: G×E interaction marker test (pure C++17 / Eigen)
 //
 // Per marker, produces:
-//   P_G, LOG10P_G           — main genetic effect (normal approximation)
-//   P_Gx<E>, LOG10P_Gx<E>   — G×E interaction (SPA on combined residual per env)
+//   LOG10P_G                — main genetic effect (normal approximation)
+//   LOG10P_Gx<E>            — G×E interaction (SPA on combined residual per env)
 //   Z_G, Z_Gx<E>            — corresponding z-scores
 //   SPA_STATUS_G, SPA_STATUS_Gx<E>
 //                           — outcome of the test that produced each p-value,
@@ -339,8 +339,8 @@ SAGELDSplitLedgers buildSAGELDSplitLedgers(
 // Returns the tier's complete result — the magnitude L = −log10(P) and the
 // saddlepoint Status — because both are output columns as of log10p_unify
 // Stage 7.  It returned the linear p until Stage 4, then the bare magnitude
-// until Stage 7; the P column SAGELD still emits is `spa::pFromNegLog10P` of
-// the magnitude, and goes in Stage 8.
+// until Stage 7; Stage 8 deleted the P column, so the magnitude is now the
+// only p-value reported.
 spa::Result sageldMarkerLambdaResult(
     const SAGELDSplitLedgers &L,
     double lambda_i,
@@ -433,21 +433,23 @@ class SAGELDMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 6 + 7 * static_cast<int>(m_envs.size());
+        return 5 + 6 * static_cast<int>(m_envs.size());
     }
 
-    // Schema: a 6-wide G main-effect block (normal-approx only, so its Z is
-    // already p-consistent and needs no Z_Norm) followed by a 7-wide block per
+    // Schema: a 5-wide G main-effect block (normal-approx only, so its Z is
+    // already p-consistent and needs no Z_Norm) followed by a 6-wide block per
     // env G×E test (SPA score test, so the p-consistent Z and the raw-score
     // Z_Norm diverge in the tails):
-    //   col 0..5      :  P_G  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
-    //   col 6 + 7·e+0 :  P_Gx<Ee>
-    //   col 6 + 7·e+1 :  LOG10P_Gx<Ee>
-    //   col 6 + 7·e+2 :  Z_Gx<Ee>        (p-consistent: 2·pnorm(−|Z|)=P)
-    //   col 6 + 7·e+3 :  Z_Norm_Gx<Ee>   (raw Score/√Var)
-    //   col 6 + 7·e+4 :  BETA_Gx<Ee>
-    //   col 6 + 7·e+5 :  SE_Gx<Ee>
-    //   col 6 + 7·e+6 :  SPA_STATUS_Gx<Ee>
+    //   col 0..4      :  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+    //   col 5 + 6·e+0 :  LOG10P_Gx<Ee>
+    //   col 5 + 6·e+1 :  Z_Gx<Ee>        (p-consistent: 2·pnorm(−|Z|)=10^−L)
+    //   col 5 + 6·e+2 :  Z_Norm_Gx<Ee>   (raw Score/√Var)
+    //   col 5 + 6·e+3 :  BETA_Gx<Ee>
+    //   col 5 + 6·e+4 :  SE_Gx<Ee>
+    //   col 5 + 6·e+5 :  SPA_STATUS_Gx<Ee>
+    //
+    // The linear P_G / P_Gx columns left in Stage 8 (decision D1); LOG10P is
+    // the sole p-value and a consumer that needs the linear p takes 10^(−L).
     //
     // LOG10P and SPA_STATUS are new in log10p_unify Stage 7.  They were not
     // absent for a reason: SPAGRMClass::getMarkerPvalFromScore — the very
@@ -464,9 +466,9 @@ class SAGELDMethod : public MethodBase {
     // tail, which is the same rule every other block in the tree now follows:
     // 2·Φ(−|z|) is exactly zero beyond |z| ≈ 38.6, and −log10 of that is +∞.
     std::string getHeaderColumns() const override {
-        std::string h = "\tP_G\tLOG10P_G\tZ_G\tBETA_G\tSE_G\tSPA_STATUS_G";
+        std::string h = "\tLOG10P_G\tZ_G\tBETA_G\tSE_G\tSPA_STATUS_G";
         for (const auto &n : m_envNames)
-            h += "\tP_Gx" + n + "\tLOG10P_Gx" + n + "\tZ_Gx" + n +
+            h += "\tLOG10P_Gx" + n + "\tZ_Gx" + n +
                  "\tZ_Norm_Gx" + n + "\tBETA_Gx" + n + "\tSE_Gx" + n +
                  "\tSPA_STATUS_Gx" + n;
         return h;
@@ -479,13 +481,13 @@ class SAGELDMethod : public MethodBase {
         std::vector<double> &result
     ) override {
         const int nE = static_cast<int>(m_envs.size());
-        result.assign(6 + 7 * nE, std::numeric_limits<double>::quiet_NaN());
+        result.assign(5 + 6 * nE, std::numeric_limits<double>::quiet_NaN());
         // Every block gets a status even when it produces nothing, so that a
         // row of NA states which of the two reasons it is (D4).
         const double stNoTest =
             static_cast<double>(static_cast<uint8_t>(spa::Status::NaNoTest));
-        result[5] = stNoTest;
-        for (int i = 0; i < nE; ++i) result[6 + 7 * i + 6] = stNoTest;
+        result[4] = stNoTest;
+        for (int i = 0; i < nE; ++i) result[5 + 6 * i + 5] = stNoTest;
 
         const double MAF = std::min(altFreq, 1.0 - altFreq);
         const double G_var = 2.0 * MAF * (1.0 - MAF);
@@ -497,12 +499,12 @@ class SAGELDMethod : public MethodBase {
         if (Var_G > 0.0 && MAF > 0.0) {
             const double sdG = std::sqrt(Var_G);
             const double zG = Score_G / sdG;
-            // The magnitude first, the linear p from it (Stage 7).  The tail
-            // is the same 2·Φ(−|z|) that `2.0 * math::pnorm(|z|, upper)` gave,
+            // The magnitude, and only the magnitude (Stage 8).  The tail is
+            // the same 2·Φ(−|z|) that `2.0 * math::pnorm(|z|, upper)` gave,
             // evaluated in the log domain so that it keeps a magnitude past
             // |z| ≈ 38.6 where the linear form flushes to exactly zero.
             const spa::Result rG = spa::normalBranch(zG);
-            writePLZBetaSe(result, 0, rG, zG, Score_G / Var_G, 1.0 / sdG);
+            writeLZBetaSe(result, 0, rG, zG, Score_G / Var_G, 1.0 / sdG);
         }
 
         for (int i = 0; i < nE; ++i) {
@@ -510,9 +512,9 @@ class SAGELDMethod : public MethodBase {
             double zGxE = 0.0;
             double scoreVar = 0.0;
             double score = 0.0;
-            // The magnitude L = −log10(P) is what both branches below produce
-            // and what the Z inversion consumes; the P column is derived from
-            // it (Stage 4).  The Status travels with it since Stage 7.
+            // The magnitude L = −log10(P) is what both branches below produce,
+            // what the Z inversion consumes, and since Stage 8 the only p-value
+            // reported.  The Status travels with it since Stage 7.
             spa::Result rGxE{std::numeric_limits<double>::quiet_NaN(),
                              spa::Status::NaNoTest};
 
@@ -546,22 +548,20 @@ class SAGELDMethod : public MethodBase {
                     score, altFreq, zGxE, &scoreVar);
             }
 
-            const int base = 6 + 7 * i;
-            const double pGxE = spa::pFromNegLog10P(rGxE.negLog10p);
-            result[base + 6] =
+            const int base = 5 + 6 * i;
+            result[base + 5] =
                 static_cast<double>(static_cast<uint8_t>(rGxE.status));
             if (scoreVar > 0.0) {
                 const double sdE = std::sqrt(scoreVar);
                 // Z from L (Stage 4): the linear inversion saturated at
                 // |Z| = 37.0470962993612 for every L >= 299.698970.
-                writePLZZnormBetaSe(result, base, pGxE, rGxE.negLog10p,
-                                    math::zFromNegLog10P(rGxE.negLog10p, zGxE), zGxE,
-                                    score / scoreVar, 1.0 / sdE);
+                writeLZZnormBetaSe(result, base, rGxE.negLog10p,
+                                   math::zFromNegLog10P(rGxE.negLog10p, zGxE), zGxE,
+                                   score / scoreVar, 1.0 / sdE);
             } else {
-                // P / LOG10P even when var = 0: the SPA may still return a
-                // finite magnitude, and its status says which case this is.
-                result[base + 0] = pGxE;
-                result[base + 1] = rGxE.negLog10p;
+                // LOG10P even when var = 0: the SPA may still return a finite
+                // magnitude, and its status says which case this is.
+                result[base + 0] = rGxE.negLog10p;
             }
         }
     }
@@ -583,39 +583,36 @@ class SAGELDMethod : public MethodBase {
     }
 
   private:
-    // Write (P, LOG10P, Z, BETA, SE, SPA_STATUS) into out at offset, for the
+    // Write (LOG10P, Z, BETA, SE, SPA_STATUS) into out at offset, for the
     // normal-approximation G main-effect block.  `r` is the whole tier result,
-    // so the magnitude and the status can only ever be written together; P is
-    // derived from the magnitude until Stage 8 deletes the column.
-    static void writePLZBetaSe(
+    // so the magnitude and the status can only ever be written together.
+    static void writeLZBetaSe(
         std::vector<double> &out,
         size_t offset,
         const spa::Result &r, double z, double beta, double se
     ) {
-        out[offset + 0] = spa::pFromNegLog10P(r.negLog10p);
-        out[offset + 1] = r.negLog10p;
-        out[offset + 2] = z;
-        out[offset + 3] = beta;
-        out[offset + 4] = se;
-        out[offset + 5] = static_cast<double>(static_cast<uint8_t>(r.status));
+        out[offset + 0] = r.negLog10p;
+        out[offset + 1] = z;
+        out[offset + 2] = beta;
+        out[offset + 3] = se;
+        out[offset + 4] = static_cast<double>(static_cast<uint8_t>(r.status));
     }
 
-    // Write (P, LOG10P, Z, Z_Norm, BETA, SE) into out at offset, for the SPA
-    // G×E blocks.  zP is the p-consistent z (2·pnorm(−|zP|)=P after SPA); zNorm
-    // is the raw score z (Score/√Var).  SPA_STATUS is written by the caller,
-    // because it is set on every path including the ones that reach neither
-    // this helper nor a p-value at all.
-    static void writePLZZnormBetaSe(
+    // Write (LOG10P, Z, Z_Norm, BETA, SE) into out at offset, for the SPA
+    // G×E blocks.  zP is the p-consistent z (2·pnorm(−|zP|)=10^−L after SPA);
+    // zNorm is the raw score z (Score/√Var).  SPA_STATUS is written by the
+    // caller, because it is set on every path including the ones that reach
+    // neither this helper nor a p-value at all.
+    static void writeLZZnormBetaSe(
         std::vector<double> &out,
         size_t offset,
-        double p, double negLog10p, double zP, double zNorm, double beta, double se
+        double negLog10p, double zP, double zNorm, double beta, double se
     ) {
-        out[offset + 0] = p;
-        out[offset + 1] = negLog10p;
-        out[offset + 2] = zP;
-        out[offset + 3] = zNorm;
-        out[offset + 4] = beta;
-        out[offset + 5] = se;
+        out[offset + 0] = negLog10p;
+        out[offset + 1] = zP;
+        out[offset + 2] = zNorm;
+        out[offset + 3] = beta;
+        out[offset + 4] = se;
     }
 
     Eigen::VectorXd m_resid_G;
@@ -661,18 +658,19 @@ class GALLOPMethod : public MethodBase {
         return std::make_unique<GALLOPMethod>(*this);
     }
 
-    int resultSize() const override { return 12; }
+    int resultSize() const override { return 10; }
 
     int preferredBatchSize() const override {
         return 1;   // per-marker Wald; non-fused, so do not widen the window.
     }
 
-    // col 0..5  : P_G  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
-    // col 6..11 : P_Gx<E>  LOG10P_Gx<E>  Z_Gx<E>  BETA_Gx<E>  SE_Gx<E>
-    //             SPA_STATUS_Gx<E>
+    // col 0..4 : LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+    // col 5..9 : LOG10P_Gx<E>  Z_Gx<E>  BETA_Gx<E>  SE_Gx<E>  SPA_STATUS_Gx<E>
+    //
+    // The linear P_G / P_Gx columns left in log10p_unify Stage 8 (D1).
     std::string getHeaderColumns() const override {
-        return "\tP_G\tLOG10P_G\tZ_G\tBETA_G\tSE_G\tSPA_STATUS_G"
-               "\tP_Gx" + m_envName + "\tLOG10P_Gx" + m_envName +
+        return "\tLOG10P_G\tZ_G\tBETA_G\tSE_G\tSPA_STATUS_G"
+               "\tLOG10P_Gx" + m_envName +
                "\tZ_Gx" + m_envName + "\tBETA_Gx" + m_envName +
                "\tSE_Gx" + m_envName + "\tSPA_STATUS_Gx" + m_envName;
     }
@@ -683,33 +681,32 @@ class GALLOPMethod : public MethodBase {
         int,
         std::vector<double> &result
     ) override {
-        result.assign(12, std::numeric_limits<double>::quiet_NaN());
+        result.assign(10, std::numeric_limits<double>::quiet_NaN());
         const double stNoTest =
             static_cast<double>(static_cast<uint8_t>(spa::Status::NaNoTest));
-        result[5] = stNoTest;
-        result[11] = stNoTest;
+        result[4] = stNoTest;
+        result[9] = stNoTest;
         const auto g = nsSAGELDFit::markerGallop(GVec, *m_cache);
         if (!g.ok) return;   // the 2x2 solve failed: no estimate, status stays 8
         writeWald(result, 0, g.beta(0), g.se(0));   // G main effect
-        writeWald(result, 6, g.beta(1), g.se(1));   // G×E interaction
+        writeWald(result, 5, g.beta(1), g.se(1));   // G×E interaction
     }
 
   private:
-    // Wald (P, LOG10P, Z, BETA, SE, SPA_STATUS) from an effect estimate and its
+    // Wald (LOG10P, Z, BETA, SE, SPA_STATUS) from an effect estimate and its
     // standard error.  The tail is spa::normalBranch, which returns the
     // magnitude and the `1 NORMAL` status together; se <= 0 leaves the row's
     // pre-set `8 NA_NO_TEST`.
     static void writeWald(std::vector<double> &out, size_t off,
                           double beta, double se) {
-        out[off + 3] = beta;
-        out[off + 4] = se;
+        out[off + 2] = beta;
+        out[off + 3] = se;
         if (se > 0.0) {
             const double z = beta / se;
             const spa::Result r = spa::normalBranch(z);
-            out[off + 0] = spa::pFromNegLog10P(r.negLog10p);
-            out[off + 1] = r.negLog10p;
-            out[off + 2] = z;
-            out[off + 5] =
+            out[off + 0] = r.negLog10p;
+            out[off + 1] = z;
+            out[off + 4] =
                 static_cast<double>(static_cast<uint8_t>(r.status));
         }
     }

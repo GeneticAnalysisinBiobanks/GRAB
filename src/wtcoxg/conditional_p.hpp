@@ -153,9 +153,8 @@ constexpr double kImmaterialLeg = 1e-8;
 
 // -log10 of the conditional p-value, and the status that says what produced
 // it.  There is no linear `p` field: it was filled here from the same ratio
-// that underflowed, and a caller that still emits a P column derives it once,
-// through spa::pFromNegLog10P, exactly as every other method does since
-// log10p_unify Stage 3.
+// that underflowed.  Since log10p_unify Stage 8 there is no linear P column
+// either, so nothing downstream re-forms one (decision D1).
 struct ConditionalP {
     double negLog10p;
     spa::Status status;

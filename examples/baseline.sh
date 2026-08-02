@@ -73,15 +73,19 @@ build/grab2 \
 
 ## ── SPACox (fit mode, --pheno-name) ───────────────────────────────────
 #
-# Output columns (spa_unify Stage 3): the nine meta columns, then
-#   P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
-# LOG10P is -log10(P) computed in the log domain, so it stays meaningful
-# past the point where the linear-scale normal tail underflows.  SPA_STATUS
-# is the spa::Status enumerator of the saddlepoint that produced P, as an
-# integer: 0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV, 4 GUARD_W,
-# 5 NONFINITE, 6 NORMAL (|Z| <= --spa-z-threshold, saddlepoint not
-# attempted).  P and LOG10P are NA for every status other than 0 and 6, so
-# a saddlepoint failure is reported rather than silently substituted.
+# Output columns (log10p_unify Stage 8): the nine meta columns, then
+#   LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+# LOG10P = -log10(P) is the SOLE p-value column (decision D1); the linear P
+# column was deleted in Stage 8 because it is exactly zero for every
+# association stronger than p ~ 1e-308, which is the regime a GWAS result is
+# read in.  A consumer that needs the linear p takes 10^(-LOG10P).
+# SPA_STATUS is the spa::Status enumerator of the test that produced LOG10P,
+# as an integer (log10p_unify decision D4): 0 SPA_OK, 1 NORMAL, 2
+# SPA_W_SINGULAR, 3 FALLBACK_MAXITER, 4 FALLBACK_GUARD_TEMP, 5
+# FALLBACK_GUARD_CURV, 6 FALLBACK_NONFINITE, 7 NA_POST_FAIL, 8 NA_NO_TEST.
+# The order is a contract: <= 2 means LOG10P is trustworthy, 3..6 that the
+# saddlepoint failed and LOG10P is the substituted two-sided normal tail, and
+# >= 7 that LOG10P is NA.
 
 build/grab2 \
   --method SPACox \
@@ -129,16 +133,15 @@ build/grab2 \
 
 ## ── SPAmix (fit mode, --pheno-name) ───────────────────────────────────
 #
-# Output columns (spa_unify Stage 5): the nine meta columns, then
-#   P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
-# with the same meaning and the same integer SPA_STATUS encoding as the
-# SPACox and SPAGRM blocks above (0 OK, 1 MAXITER, 2 GUARD_TEMP,
-# 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL).  Stage 5 also stopped
-# SPAmix returning P = 1 for a marker with a non-positive score variance:
-# three markers of this fixture, all with ALT_FREQ > 0.99, have every
-# per-individual q_i saturated at 1 by the AF model and therefore have no
-# statistic at all.  They now report NA with SPA_STATUS 5 rather than a
-# fabricated perfectly-null p-value alongside NA in Z, BETA and SE.
+# Output columns (log10p_unify Stage 8): the nine meta columns, then
+#   LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+# with the same meaning and the same nine-value SPA_STATUS encoding as the
+# SPACox and SPAGRM blocks.  spa_unify Stage 5 also stopped SPAmix returning
+# P = 1 for a marker with a non-positive score variance: three markers of this
+# fixture, all with ALT_FREQ > 0.99, have every per-individual q_i saturated
+# at 1 by the AF model and therefore have no statistic at all.  They report NA
+# with SPA_STATUS 8 (NA_NO_TEST) rather than a fabricated perfectly-null
+# p-value alongside NA in Z, BETA and SE.
 
 build/grab2 \
   --method SPAmix \
@@ -198,13 +201,12 @@ build/grab2 \
 
 ## ── SPAGRM (fit mode, --pheno-name) ───────────────────────────────────
 #
-# Output columns (spa_unify Stage 4): the nine meta columns, then
-#   P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
-# with the same meaning and the same integer SPA_STATUS encoding as the
-# SPACox block above (0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV,
-# 4 GUARD_W, 5 NONFINITE, 6 NORMAL).  Stage 4 also gave SPAGRM the shared
-# guard set, so a saddlepoint that used to emit a bare NaN now reports NA in
-# P with the reason named.
+# Output columns (log10p_unify Stage 8): the nine meta columns, then
+#   LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+# with the same meaning and the same nine-value SPA_STATUS encoding as the
+# SPACox block above.  spa_unify Stage 4 also gave SPAGRM the shared guard
+# set, so a saddlepoint that used to emit a bare NaN now reports NA in
+# LOG10P with the reason named.
 #
 # GUARD_TEMP no longer occurs anywhere in this script, and that is a property
 # worth watching rather than a coincidence.  zeta*Score - K(zeta) is the
@@ -241,12 +243,13 @@ build/grab2 \
   --compression-level 3
 
 ## ── SAGELD (fit mode: --pheno-name + --envir-name) ────────────────────
-# Output columns (log10p_unify Stage 7): the nine meta columns, a six-wide
-# G main-effect block  P_G LOG10P_G Z_G BETA_G SE_G SPA_STATUS_G, then a
-# seven-wide block per environment
-#   P_Gx<E>  LOG10P_Gx<E>  Z_Gx<E>  Z_Norm_Gx<E>  BETA_Gx<E>  SE_Gx<E>
+# Output columns (log10p_unify Stage 8): the nine meta columns, a five-wide
+# G main-effect block  LOG10P_G Z_G BETA_G SE_G SPA_STATUS_G, then a
+# six-wide block per environment
+#   LOG10P_Gx<E>  Z_Gx<E>  Z_Norm_Gx<E>  BETA_Gx<E>  SE_Gx<E>
 #   SPA_STATUS_Gx<E>
-# LOG10P and SPA_STATUS are new in Stage 7.  Both were already produced by
+# LOG10P and SPA_STATUS are new in Stage 7; the linear P_G / P_Gx columns
+# were deleted in Stage 8 (decision D1).  Both were already produced by
 # SPAGRMClass::getMarkerPvalFromScore -- the routine SAGELD shares with
 # --method spagrm -- and discarded at the call site, which CLAUDE.md listed as
 # the first of the known gaps in the output-column contract.  SPA_STATUS_Gx is
@@ -319,7 +322,7 @@ done
 # relatedness through the random intercept/slope, so it takes NEITHER
 # --sp-grm NOR --pairwise-ibd; supplying them only triggers a warning.
 # Output: ${OUT}.<pheno>.GALLOP.gz (gzip path through multiPhenoEngine).
-# Columns are two six-wide Wald blocks, P LOG10P Z BETA SE SPA_STATUS for the
+# Columns are two five-wide Wald blocks, LOG10P Z BETA SE SPA_STATUS for the
 # G main effect and for the G x TIME interaction.  SPA_STATUS is 1 (NORMAL) on
 # both wherever the 2x2 solve produced a positive SE -- GALLOP runs no
 # saddlepoint at all -- and 8 (NA_NO_TEST) where it did not.
@@ -442,12 +445,13 @@ build/grab2 \
 ## ── SPAsqr (score mode, fit path) ─────────────────────────────────────
 # Consumes the INT-transformed phenotype file produced above.
 #
-# Output columns: the nine meta columns, then LOG10P_CCT and five per-tau
+# Output columns: the nine meta columns, then LOG10P_CCT and four per-tau
 # groups —
-#   LOG10P_CCT  P_tau*  LOG10P_tau*  Z_tau*  Z_Norm_tau*  SPA_STATUS_tau*
-# The saddlepoint is per tau, so both new columns are per tau too: a marker
+#   LOG10P_CCT  LOG10P_tau*  Z_tau*  Z_Norm_tau*  SPA_STATUS_tau*
+# The saddlepoint is per tau, so the status column is per tau too: a marker
 # can converge at one quantile level and fail at another.  SPA_STATUS_tau*
-# uses the same integer encoding as the SPACox and SPAGRM blocks.  The Cauchy
+# uses the same nine-value encoding as the SPACox and SPAGRM blocks, and the
+# linear P_tau* group left in log10p_unify Stage 8 (decision D1).  The Cauchy
 # combination is taken over the LOG10P_tau group (log10p_unify Stage 5): its
 # statistic's terms are 1/(pi*p), so a linear combination overflowed and
 # returned exactly 0 as soon as one tau reached p ~ 1e-308.  A tau whose test
@@ -611,7 +615,7 @@ build/grab2 \
 # marker-engine thread pool; chunk size auto-shrinks when --chunk-ksnp
 # is left at its 8-ksnp default (8192 SNPs) so the worker pool stays fed even on
 # small --extract subsets.  Output is plink2-style one-marker-per-line
-# wide format (LOG10P_CCT + P_tau* + LOG10P_tau* + Z_tau* + BETA_tau* +
+# wide format (LOG10P_CCT + LOG10P_tau* + Z_tau* + BETA_tau* +
 # SE_tau* + SPA_STATUS_tau* columns), written through TextWriter honoring
 # --compression.  SPA_STATUS_tau is 1 (NORMAL) wherever the tau produced a
 # test -- the Wald leg is a plain normal-reference z and never attempts a
@@ -653,22 +657,30 @@ build/grab2 \
 
 ## ── WtCoxG ────────────────────────────────────────────────────────────
 #
-# Output columns (spa_unify Stage 6): the nine meta columns, then
-#   P_EXT  LOG10P_EXT  P_NOEXT  LOG10P_NOEXT
+# Output columns (log10p_unify Stage 8): the nine meta columns, then
+#   LOG10P_EXT  LOG10P_NOEXT
 #   Z_EXT  Z_NOEXT  Z_Norm_EXT  Z_Norm_NOEXT
-#   P_BAT  PI_BAT  VAR_BAT  SPA_STATUS_EXT  SPA_STATUS_NOEXT
-# LOG10P_* is -log10 of the p-value in the preceding column, computed in the
-# log domain so it stays meaningful past the linear-scale underflow.
-# SPA_STATUS_* is the spa::Status enumerator of the saddlepoint that produced
-# that p-value, as an integer: 0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV,
-# 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| <= --spa-z-threshold, saddlepoint not
-# attempted).  P and LOG10P are NA for every status other than 0 and 6.
+#   LOG10P_BAT  PI_BAT  VAR_BAT  SPA_STATUS_EXT  SPA_STATUS_NOEXT
+# LOG10P_* is the sole p-value of its leg (decision D1), carried in the log
+# domain so it stays meaningful past the linear-scale underflow.  LOG10P_BAT
+# is the batch-effect test's magnitude; it was called P_BAT and held the
+# linear p until Stage 8, and it is formed by spa::normalTwoSidedLog at its
+# source rather than as -log10 of the linear p, which would be +Inf past
+# |z_adj| = 38.6.
+# SPA_STATUS is the spa::Status enumerator of the test that produced LOG10P,
+# as an integer (log10p_unify decision D4): 0 SPA_OK, 1 NORMAL, 2
+# SPA_W_SINGULAR, 3 FALLBACK_MAXITER, 4 FALLBACK_GUARD_TEMP, 5
+# FALLBACK_GUARD_CURV, 6 FALLBACK_NONFINITE, 7 NA_POST_FAIL, 8 NA_NO_TEST.
+# The order is a contract: <= 2 means LOG10P is trustworthy, 3..6 that the
+# saddlepoint failed and LOG10P is the substituted two-sided normal tail, and
+# >= 7 that LOG10P is NA.
 #
-# On the two batch-effect branches the reported P is a conditional probability
+# On the two batch-effect branches the reported p-value is a conditional
+# probability
 # assembled from a bivariate-normal integral rather than a saddlepoint tail,
 # and the saddlepoint enters only through the variance recovered by inverting
-# it; SPA_STATUS then describes that saddlepoint, and status 5 additionally
-# covers a marker whose conditional integral does not exist because the
+# it; SPA_STATUS then describes that saddlepoint, and status 7 (NA_POST_FAIL)
+# additionally covers a marker whose conditional integral does not exist because the
 # assembled 2x2 covariance is not positive semi-definite (177 markers of
 # Time_Event on this fixture, all in Branch B with sigma^2 >> var_Sbat).
 
@@ -703,17 +715,20 @@ build/grab2 \
 
 ## ── LEAF ──────────────────────────────────────────────────────────────
 #
-# Output columns (spa_unify Stage 6): the nine meta columns, then
-#   meta_P_EXT  meta_LOG10P_EXT  meta_P_NOEXT  meta_LOG10P_NOEXT
+# Output columns (log10p_unify Stage 8): the nine meta columns, then
+#   meta_LOG10P_EXT  meta_LOG10P_NOEXT
 #   meta_SPA_STATUS_EXT  meta_SPA_STATUS_NOEXT
 # and, per k-means cluster N,
-#   clN_MAC  clN_P_EXT  clN_LOG10P_EXT  clN_P_NOEXT  clN_LOG10P_NOEXT
-#   clN_P_BAT  clN_PI_BAT  clN_VAR_BAT  clN_SPA_STATUS_EXT  clN_SPA_STATUS_NOEXT
+#   clN_MAC  clN_LOG10P_EXT  clN_LOG10P_NOEXT
+#   clN_LOG10P_BAT  clN_PI_BAT  clN_VAR_BAT
+#   clN_SPA_STATUS_EXT  clN_SPA_STATUS_NOEXT
 # The per-cluster columns are the WtCoxG block above, evaluated within that
-# cluster; the encoding of SPA_STATUS is the same.  The META status describes
-# the POOLING rather than the clusters: it is the worst status among the
-# clusters that contributed to the fixed-effects pool, hence 0 or 6 whenever
-# meta_P is a number and 5 when no cluster contributed and meta_P is NA.  A
+# cluster; the encoding of SPA_STATUS is the same, and clN_P_BAT was renamed
+# clN_LOG10P_BAT in Stage 8, which closes the last of the six known gaps in
+# the output-column contract.  The META status describes the POOLING rather
+# than the clusters: it is the worst status among the clusters that
+# contributed to the fixed-effects pool, hence <= 6 whenever meta_LOG10P is a
+# number and 8 when no cluster contributed and meta_LOG10P is NA.  A
 # cluster with no informative subjects for a marker has no test, reports NA
 # with status 5, and is simply left out of the pool -- that is the common case
 # rather than the exception (2036 of 3000 markers for cluster 1 here).
@@ -758,22 +773,24 @@ build/grab2 \
 # also appear in --covar-name (it enters the genotype-independent null model
 # trait ~ X + E).  Plain-text output exercises the uncompressed writer path.
 #
-# Output columns (log10p_unify Stage 7): the nine meta columns, the marginal
-# block P_G Z_G BETA_G SE_G SPA_STATUS_G, then an eight-wide block per
+# Output columns (log10p_unify Stage 8): the nine meta columns, the marginal
+# block LOG10P_G Z_G BETA_G SE_G SPA_STATUS_G, then a seven-wide block per
 # environment
-#   P_Gx<E>  LOG10P_Gx<E>  LOG10P_Wald_Gx<E>  Z_Gx<E>  Z_Norm_Gx<E>
+#   LOG10P_Gx<E>  LOG10P_Wald_Gx<E>  Z_Gx<E>  Z_Norm_Gx<E>
 #   BETA_Gx<E>  SE_Gx<E>  SPA_STATUS_Gx<E>
-# SPA_STATUS_Gx uses the same integer encoding as the SPACox and SPAGRM
+# SPA_STATUS_Gx uses the same nine-value encoding as the SPACox and SPAGRM
 # blocks above and always describes the saddlepoint leg, so a Branch-B
 # marker whose SPA failed but whose Wald refit succeeded still shows a
-# finite P_Gx together with the status that says the SPA dropped out of the
-# Cauchy combination.  LOG10P_Gx is log-domain on every path: where the
+# finite LOG10P_Gx together with the status that says the SPA dropped out of
+# the Cauchy combination.  LOG10P_Gx is log-domain on every path: where the
 # reported p is the saddlepoint p it comes from the tail assembly, and where
 # Branch B adds a Wald leg the combination is taken over the two magnitudes
 # (Stage 5), both of which are produced as magnitudes at the source (Stage 7).
-# The marginal block is always the normal approximation, so it carries no
-# LOG10P_G, and SPA_STATUS_G is the constant 1 (NORMAL) wherever Var(S_G) > 0
-# and 8 (NA_NO_TEST) where it is not.
+# The marginal block is always the normal approximation; Stage 8 gave it
+# LOG10P_G, formed by spa::normalTwoSidedLog rather than as -log10 of the
+# linear tail so that it too keeps a magnitude past |Z_G| = 38.6.
+# SPA_STATUS_G is the constant 1 (NORMAL) wherever Var(S_G) > 0 and
+# 8 (NA_NO_TEST) where it is not.
 #
 # A distinct --out prefix keeps the fitted residual and per-marker tables from
 # colliding with the SPACox/SAGELD ${OUT}.* artifacts.

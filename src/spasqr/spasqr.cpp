@@ -268,24 +268,23 @@ class SPAsqrMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 5 * m_ntaus + 1;
+        return 4 * m_ntaus + 1;
     }
 
-// LOG10P_CCT, then five per-tau groups: P, LOG10P, Z, Z_Norm, SPA_STATUS.
+// LOG10P_CCT, then four per-tau groups: LOG10P, Z, Z_Norm, SPA_STATUS.
 //
-// The saddlepoint is per tau, so both new columns are per tau as well: a marker
+// The saddlepoint is per tau, so the status column is per tau as well: a marker
 // can converge at one quantile level and fail at another, and a single
-// aggregated status would hide which.  The LOG10P group is inserted directly
-// after the P group and the SPA_STATUS group appended last, so the relative
-// order of the pre-existing columns is unchanged and tests/regress.py reports
-// exactly one structural line per file.
+// aggregated status would hide which.  The linear P group left in log10p_unify
+// Stage 8 (decision D1); LOG10P_tau is the sole p-value per quantile level and
+// a consumer that needs the linear p takes 10^(-LOG10P_tau).
 //
 // The combination column is LOG10P_CCT, not P_CCT (log10p_unify Stage 5).  The
 // Cauchy statistic's terms are cot(pi*p) -> 1/(pi*p), so the statistic itself
 // overflows once any tau's p reaches 1e-308; the log-domain routine carries it
 // as T = 10^M * A and never forms it (math::cauchyCombineLog10).  The
 // combination is therefore taken over the LOG10P group rather than the P group,
-// which is also why the P group can leave in Stage 8 without taking the
+// which is also why the P group could leave in Stage 8 without taking the
 // combination with it.
 //
 // SPA_STATUS is static_cast<uint8_t>(spa::Status): 0 SPA_OK, 1 NORMAL,
@@ -302,7 +301,7 @@ class SPAsqrMethod : public MethodBase {
     std::string getHeaderColumns() const override {
         std::ostringstream oss;
         oss << "\tLOG10P_CCT";
-        static const char *const kGroups[] = {"P_", "LOG10P_", "Z_", "Z_Norm_",
+        static const char *const kGroups[] = {"LOG10P_", "Z_", "Z_Norm_",
                                               "SPA_STATUS_"};
         for (const char *g : kGroups) {
             for (int i = 0; i < m_ntaus; ++i) {
@@ -426,7 +425,6 @@ class SPAsqrMethod : public MethodBase {
         // fused GEMM window B is not capped at 16/B·ntaus ≤ 320.
         const size_t nCell = static_cast<size_t>(B) * m_ntaus;
         m_zBuf.resize(nCell);
-        m_pBuf.resize(nCell);
         m_lpBuf.resize(nCell);
         m_stBuf.resize(nCell);
 
@@ -446,9 +444,6 @@ class SPAsqrMethod : public MethodBase {
                                                    G_var, z, tau, *m_spaShared);
                 const size_t k = static_cast<size_t>(b) * m_ntaus + t;
                 m_zBuf[k]  = z;
-                // P from LOG10P: the tier stops producing a linear tail in
-                // log10p_unify Stage 3, and the column goes in Stage 8.
-                m_pBuf[k]  = spa::pFromNegLog10P(ts.negLog10p);
                 m_lpBuf[k] = ts.negLog10p;
                 m_stBuf[k] = static_cast<double>(static_cast<uint8_t>(ts.status));
             }
@@ -456,8 +451,8 @@ class SPAsqrMethod : public MethodBase {
 
         for (int b = 0; b < B; ++b) {
             const size_t off = static_cast<size_t>(b) * m_ntaus;
-            assemble(m_pBuf.data() + off, m_lpBuf.data() + off,
-                     m_zBuf.data() + off, m_stBuf.data() + off, results[b]);
+            assemble(m_lpBuf.data() + off, m_zBuf.data() + off,
+                     m_stBuf.data() + off, results[b]);
         }
     }
 
@@ -475,19 +470,18 @@ class SPAsqrMethod : public MethodBase {
     std::shared_ptr<const SharedMethodData> m_methodShared;
     Eigen::MatrixXd m_centeredBuf;  // reused across processScoreBatch calls
     // B × ntaus each, reused across processScoreBatch calls.
-    std::vector<double> m_zBuf, m_pBuf, m_lpBuf, m_stBuf;
+    std::vector<double> m_zBuf, m_lpBuf, m_stBuf;
 
     // Column assembly, shared by all three entry points so the header and the
     // row can only ever be built by the same code.
     void assemble(
-        const double *pvals,
         const double *lgs,
         const double *zScores,
         const double *stats,
         std::vector<double> &result
     ) const {
         result.clear();
-        result.reserve(5 * m_ntaus + 1);
+        result.reserve(4 * m_ntaus + 1);
 
         // math::cauchyCombineLog10 skips NaN entries, so a tau whose
         // saddlepoint failed drops out of the combination rather than poisoning
@@ -499,7 +493,6 @@ class SPAsqrMethod : public MethodBase {
         // P_CCT = 0 (log10p_unify Stage 5, 01_numerics §2.4).
         result.push_back(math::cauchyCombineLog10(lgs, m_ntaus));
 
-        for (int i = 0; i < m_ntaus; ++i) result.push_back(pvals[i]);
         for (int i = 0; i < m_ntaus; ++i) result.push_back(lgs[i]);
         for (int i = 0; i < m_ntaus; ++i) {
             const double zr = zScores[i];
@@ -530,19 +523,18 @@ class SPAsqrMethod : public MethodBase {
         std::vector<double> &result
     ) {
         // Stack arrays — ntaus is always small (≤20).
-        double zScores[20], pvals[20], lgs[20], stats[20];
+        double zScores[20], lgs[20], stats[20];
 
         for (int i = 0; i < m_ntaus; ++i) {
             double z;
             const spa::Result ts = tauPvalue(centeredScores[i], altFreq, G_var, z,
                                                m_spaShared->perTau[i], *m_spaShared);
             zScores[i] = z;
-            pvals[i]   = spa::pFromNegLog10P(ts.negLog10p);
             lgs[i]     = ts.negLog10p;
             stats[i]   = static_cast<double>(static_cast<uint8_t>(ts.status));
         }
 
-        assemble(pvals, lgs, zScores, stats, result);
+        assemble(lgs, zScores, stats, result);
     }
 
 };

@@ -837,13 +837,19 @@ std::unique_ptr<MethodBase> LEAFMethod::clone() const {
 }
 
 int LEAFMethod::resultSize() const {
-    return 6 + 10 * m_nCluster;
+    return 4 + 8 * m_nCluster;
 }
 
-// meta_P_EXT meta_LOG10P_EXT meta_P_NOEXT meta_LOG10P_NOEXT
-// meta_SPA_STATUS_EXT meta_SPA_STATUS_NOEXT, then per cluster
-// clN_MAC clN_P_EXT clN_LOG10P_EXT clN_P_NOEXT clN_LOG10P_NOEXT
-// clN_P_BAT clN_PI_BAT clN_VAR_BAT clN_SPA_STATUS_EXT clN_SPA_STATUS_NOEXT.
+// meta_LOG10P_EXT meta_LOG10P_NOEXT meta_SPA_STATUS_EXT meta_SPA_STATUS_NOEXT,
+// then per cluster
+// clN_MAC clN_LOG10P_EXT clN_LOG10P_NOEXT
+// clN_LOG10P_BAT clN_PI_BAT clN_VAR_BAT clN_SPA_STATUS_EXT clN_SPA_STATUS_NOEXT.
+//
+// The linear meta_P_* and clN_P_* columns left in log10p_unify Stage 8
+// (decision D1); clN_P_BAT was renamed clN_LOG10P_BAT and now carries the
+// magnitude of the per-cluster batch-effect test, taken in the log domain at
+// its source in wtcoxg.cpp rather than as -log10 of the linear p, which would
+// be +Inf past |z_adj| = 38.6 and violate invariant C1.
 //
 // The per-cluster SPA_STATUS is the WtCoxG status of that cluster's test; see
 // wtcoxg.hpp for the encoding.  The META status is about the POOLING, not
@@ -857,13 +863,13 @@ int LEAFMethod::resultSize() const {
 // 3000 markers for cluster 1 on the bundled fixture).
 std::string LEAFMethod::getHeaderColumns() const {
     std::ostringstream oss;
-    oss << "\tmeta_P_EXT\tmeta_LOG10P_EXT\tmeta_P_NOEXT\tmeta_LOG10P_NOEXT"
+    oss << "\tmeta_LOG10P_EXT\tmeta_LOG10P_NOEXT"
         << "\tmeta_SPA_STATUS_EXT\tmeta_SPA_STATUS_NOEXT";
     for (int i = 1; i <= m_nCluster; ++i)
         oss << "\tcl" << i << "_MAC"
-            << "\tcl" << i << "_P_EXT\tcl" << i << "_LOG10P_EXT"
-            << "\tcl" << i << "_P_NOEXT\tcl" << i << "_LOG10P_NOEXT"
-            << "\tcl" << i << "_P_BAT"
+            << "\tcl" << i << "_LOG10P_EXT"
+            << "\tcl" << i << "_LOG10P_NOEXT"
+            << "\tcl" << i << "_LOG10P_BAT"
             << "\tcl" << i << "_PI_BAT\tcl" << i << "_VAR_BAT"
             << "\tcl" << i << "_SPA_STATUS_EXT\tcl" << i << "_SPA_STATUS_NOEXT";
     return oss.str();
@@ -881,7 +887,6 @@ void LEAFMethod::getResultVec(
     std::vector<double> &result
 ) {
 
-    std::vector<double> pExt(m_nCluster), pNoext(m_nCluster);
     std::vector<double> lExt(m_nCluster), lNoext(m_nCluster);
     std::vector<double> sExt(m_nCluster), sNoext(m_nCluster);
     std::vector<double> mac(m_nCluster);
@@ -903,8 +908,6 @@ void LEAFMethod::getResultVec(
         // LEAF: one guard, one place.  metaPvalueScorePool then leaves the
         // cluster out of the pool because its p is NA.
         auto dr = m_clusterMethods[c]->computeDual(gClu, markerInChunkIdx);
-        pExt[c] = dr.p_ext;
-        pNoext[c] = dr.p_noext;
         lExt[c] = dr.log10p_ext;
         lNoext[c] = dr.log10p_noext;
         sExt[c] = dr.score_ext;
@@ -914,16 +917,14 @@ void LEAFMethod::getResultVec(
         mac[c] = std::min(dr.gSum, 2.0 * static_cast<double>(dr.N) - dr.gSum);
     }
 
-    pushResult(result, pExt, pNoext, lExt, lNoext, sExt, sNoext, mac,
+    pushResult(result, lExt, lNoext, sExt, sNoext, mac,
                stExt, stNoext, markerInChunkIdx);
 }
 
-// Push the 6 + 10*K result cells in header order.  Shared by getResultVec and
+// Push the 4 + 8*K result cells in header order.  Shared by getResultVec and
 // the fused-GEMM processScoreBatch so the two cannot drift.
 void LEAFMethod::pushResult(
     std::vector<double> &out,
-    const std::vector<double> &pExt,
-    const std::vector<double> &pNoext,
     const std::vector<double> &lExt,
     const std::vector<double> &lNoext,
     const std::vector<double> &sExt,
@@ -942,21 +943,16 @@ void LEAFMethod::pushResult(
     // src/util/meta_pvalue.hpp.
     const math::MetaPooled mExt   = math::metaPvalueScorePool(sExt,   lExt,   stExt);
     const math::MetaPooled mNoext = math::metaPvalueScorePool(sNoext, lNoext, stNoext);
-    // P from LOG10P, the one spelling the tree uses while the column survives.
-    out.push_back(spa::pFromNegLog10P(mExt.negLog10p));
-    out.push_back(mExt.negLog10p);
-    out.push_back(spa::pFromNegLog10P(mNoext.negLog10p));
-    out.push_back(mNoext.negLog10p);
+    out.push_back(mExt.negLog10p);      // meta_LOG10P_EXT
+    out.push_back(mNoext.negLog10p);    // meta_LOG10P_NOEXT
     out.push_back(wtcoxg_cgf::statusCode(mExt.status));
     out.push_back(wtcoxg_cgf::statusCode(mNoext.status));
     for (int c = 0; c < m_nCluster; ++c) {
         const auto &ri = m_clusterMethods[c]->chunkRefInfoAt(chunkIdx);
         out.push_back(mac[c]);
-        out.push_back(pExt[c]);
         out.push_back(lExt[c]);
-        out.push_back(pNoext[c]);
         out.push_back(lNoext[c]);
-        out.push_back(ri.pvalue_bat);
+        out.push_back(ri.log10p_bat);   // cl<c>_LOG10P_BAT
         out.push_back(ri.TPR);
         out.push_back(ri.sigma2);
         out.push_back(wtcoxg_cgf::statusCode(stExt[c]));
@@ -1024,7 +1020,7 @@ void LEAFMethod::processScoreBatch(
     const int K = m_nCluster;
     results.resize(B);
 
-    std::vector<double> pExt(K), pNoext(K), lExt(K), lNoext(K);
+    std::vector<double> lExt(K), lNoext(K);
     std::vector<double> sExt(K), sNoext(K), mac(K);
     std::vector<spa::Status> stExt(K), stNoext(K);
 
@@ -1040,8 +1036,6 @@ void LEAFMethod::processScoreBatch(
             // name from WtCoxGMethod's own MAC / Var(S) guard.
             auto dr = m_clusterMethods[c]->computeDualFromScalars(
                 R_dot_g, gSum, Nc, chunkIdx);
-            pExt[c]   = dr.p_ext;
-            pNoext[c] = dr.p_noext;
             lExt[c]   = dr.log10p_ext;
             lNoext[c] = dr.log10p_noext;
             sExt[c]   = dr.score_ext;
@@ -1053,8 +1047,8 @@ void LEAFMethod::processScoreBatch(
 
         auto &r = results[b];
         r.clear();
-        r.reserve(6 + 10 * K);
-        pushResult(r, pExt, pNoext, lExt, lNoext, sExt, sNoext, mac,
+        r.reserve(4 + 8 * K);
+        pushResult(r, lExt, lNoext, sExt, sNoext, mac,
                    stExt, stNoext, chunkIdx);
     }
 }

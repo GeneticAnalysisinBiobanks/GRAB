@@ -33,6 +33,7 @@
 // Build:  make test   (or: make build/tests/log10p_test && ./build/tests/log10p_test)
 
 #include "tinytest.hpp"
+#include "linear_p.hpp"
 
 #include "util/math_helper.hpp"
 #include "util/spa.hpp"
@@ -274,12 +275,12 @@ TEST(zFromNegLog10P_matches_zFromPval_below_the_clamp) {
         CHECK_REL(math::zFromNegLog10P(L, 1.0), zFromPvalDeleted(p, 1.0), 1e-14);
     }
     // Below the seam the replacement IS the deleted route, evaluated on
-    // P = 10^(-L) = spa::pFromNegLog10P(L): same Boost quantile, same argument.
+    // P = 10^(-L) = tref::pFromNegLog10P(L): same Boost quantile, same argument.
     // The Z column is therefore bit-identical wherever P > 0.1, which is where
     // the overwhelming majority of markers sit and why Stage 4 moves so little
     // of it.
     for (double L = 0.005; L < 0.999; L *= 1.07)
-        CHECK(math::zFromNegLog10P(L, 1.0) == zFromPvalDeleted(spa::pFromNegLog10P(L), 1.0));
+        CHECK(math::zFromNegLog10P(L, 1.0) == zFromPvalDeleted(tref::pFromNegLog10P(L), 1.0));
 }
 
 TEST(zFromNegLog10P_edge_cases) {
@@ -521,7 +522,7 @@ TEST(stage5_spasqr_wald_leg_is_a_magnitude) {
     for (double z : {0.5, 1.0, 2.5, 6.0, 15.0, 30.0, 37.0}) {
         const double L = -spa::normalTwoSidedLog(z) / kLn10;
         const double pLin = 2.0 * math::pnorm(std::fabs(z), 0.0, 1.0, false);
-        CHECK_REL(spa::pFromNegLog10P(L), pLin, 1e-13);
+        CHECK_REL(tref::pFromNegLog10P(L), pLin, 1e-13);
     }
     // Past |z| = 38.6 the linear tail is exactly zero and the magnitude is not.
     const double zBig = 60.0;
@@ -1250,7 +1251,7 @@ TEST(metaPool_L_floor_is_the_image_of_the_old_p_ceiling) {
     CHECK_REL(math::META_L_FLOOR, -std::log10(1.0 - 1e-15), 0.0);
     CHECK_REL(math::chisq1FromNegLog10P(math::META_L_FLOOR), 1.57e-30, 1e-2);
     // And the round trip closes: the L bound maps back to the p bound.
-    CHECK_REL(spa::pFromNegLog10P(math::META_L_FLOOR), 1.0 - 1e-15, 1e-15);
+    CHECK_REL(tref::pFromNegLog10P(math::META_L_FLOOR), 1.0 - 1e-15, 1e-15);
 
     // L = 0 exactly (p = 1) would give q = 0 and an infinite variance; the
     // bound keeps the pool finite and the cluster's influence negligible.

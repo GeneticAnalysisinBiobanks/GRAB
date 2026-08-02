@@ -78,9 +78,8 @@ constexpr double META_L_FLOOR = 4.339473599489794e-16;
 // Pooled result: the magnitude −log10(P) and the status of the POOLING.
 //
 // The linear pooled p was dropped in log10p_unify Stage 4 together with the
-// linear inversion it was paired with; a caller that still emits a P column
-// derives it as `spa::pFromNegLog10P(negLog10p)`, the one spelling the whole
-// tree uses while that column survives (it goes in Stage 8).
+// linear inversion it was paired with, and the meta_P_EXT / meta_P_NOEXT
+// columns LEAF derived from it went in Stage 8 (decision D1).
 //
 // The status is the worst spa::Status among the clusters that actually
 // contributed.  Contributing requires a finite score and a finite L.  Under

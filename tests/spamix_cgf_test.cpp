@@ -63,6 +63,7 @@
 
 #include "spamix/spamix_cgf.hpp"
 #include "tinytest.hpp"
+#include "linear_p.hpp"
 
 namespace {
 
@@ -316,7 +317,7 @@ TEST(twosided_reproduces_the_normal_tail_when_there_are_no_outliers) {
         const double want =
             2.0 * math::pnorm(z, 0.0, 1.0, /*lower_tail=*/false);
         worstP = std::fmax(
-            worstP, std::fabs(spa::pFromNegLog10P(ts.negLog10p) - want) / want);
+            worstP, std::fabs(tref::pFromNegLog10P(ts.negLog10p) - want) / want);
         const double wantL = -spa::normalTwoSidedLog(z) / std::log(10.0);
         worstL = std::fmax(worstL, std::fabs(ts.negLog10p - wantL) / wantL);
     }
@@ -340,7 +341,7 @@ TEST(twosided_agrees_with_the_normal_tail_when_the_outlier_block_is_negligible) 
     c.var = 4.0;
     const spa::Result ts = spamix_cgf::twoSidedSpa(c, 0.0, 3.0 * 2.0, c.var, 3.0);
     CHECK(ts.status == spa::Status::SpaOk);
-    CHECK_REL(spa::pFromNegLog10P(ts.negLog10p),
+    CHECK_REL(tref::pFromNegLog10P(ts.negLog10p),
               2.0 * math::pnorm(3.0, 0.0, 1.0, /*lower_tail=*/false), 1e-5);
 }
 

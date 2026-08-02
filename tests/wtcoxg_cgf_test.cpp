@@ -78,6 +78,7 @@
 #include <vector>
 
 #include "tinytest.hpp"
+#include "linear_p.hpp"
 #include "util/math_helper.hpp"
 #include "wtcoxg/conditional_p.hpp"
 #include "wtcoxg/wtcoxg_cgf.hpp"
@@ -290,7 +291,7 @@ TEST(gaussian_cgf_reproduces_the_closed_form_two_sided_p) {
         const double want = 2.0 * Phi(-dev / sd);
         CHECK(ts.status == spa::Status::SpaOk);
         // The P column, derived from LOG10P since log10p_unify Stage 3.
-        const double p = spa::pFromNegLog10P(ts.negLog10p);
+        const double p = tref::pFromNegLog10P(ts.negLog10p);
         if (want > 0.0) {
             const double rel = std::fabs(p - want) / want;
             std::printf("    dev=%5.1f  p=%.12e  closed form=%.12e  rel=%.2e\n",
@@ -326,13 +327,13 @@ TEST(d2_a_degenerate_saddlepoint_is_named_never_a_masked_one) {
     CHECK(spa::statusIsFallback(ts.status));
     CHECK(ts.negLog10p == -spa::normalTwoSidedLog(zBad) / std::log(10.0));
     std::printf("    deterministic genotype: p=%g status=%s\n",
-                spa::pFromNegLog10P(ts.negLog10p), spa::statusName(ts.status));
+                tref::pFromNegLog10P(ts.negLog10p), spa::statusName(ts.status));
 
     // With no z either, there is nothing to fall back to and the row is NA.
     const spa::Result tsNa = wtcoxg_cgf::twoSidedSpa(
         c, 3.0, 0.0, std::numeric_limits<double>::quiet_NaN());
     CHECK(std::isnan(tsNa.negLog10p));
-    CHECK(std::isnan(spa::pFromNegLog10P(tsNa.negLog10p)));
+    CHECK(std::isnan(tref::pFromNegLog10P(tsNa.negLog10p)));
     CHECK(tsNa.status == spa::Status::NaNoTest);
 
     // And the idiom itself: this is what the old code did.

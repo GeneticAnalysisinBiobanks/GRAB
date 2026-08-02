@@ -245,14 +245,13 @@ static const FOWFn fow_kernel = pickFowFn();
 // ────────────────────────────────────────────────────────────────────
 
 struct SpaResult {
-    double pval;        // two-sided p: SPA above the cutoff, normal below
-    double negLog10p;   // -log10(pval), from the log-domain assembly
-    double pval2;       // the plain normal two-sided p, always
+    double negLog10p;   // -log10(p), from the log-domain assembly: the sole
+                        // p-value representation since log10p_unify D1
     double score;       // S_raw, before the variance-ratio division
     double zscore;
-    spa::Status status; // the nine-value spa::Status: <= 2 when pval is the
-                        // saddlepoint or designed normal value, 3..6 when it
-                        // is the substituted normal tail, >= 7 when NA
+    spa::Status status; // the nine-value spa::Status: <= 2 when negLog10p is
+                        // the saddlepoint or designed normal value, 3..6 when
+                        // it is the substituted normal tail, >= 7 when NA
 };
 
 // Every early return of the routine below reports a degenerate INPUT rather
@@ -269,7 +268,7 @@ struct SpaResult {
 // and be classified after the fact.
 inline SpaResult spaDegenerate(double score) {
     const double nan = NaN::quiet_NaN();
-    return {nan, nan, nan, score, nan, spa::Status::NaNoTest};
+    return {nan, score, nan, spa::Status::NaNoTest};
 }
 
 // Scalar-input variant of spaGOneSnpHomo.  The only quantities derived
@@ -335,23 +334,14 @@ SpaResult spaGOneSnpHomoFromScalars(
     if (S_var <= 0.0) return spaDegenerate(S_raw);
 
     double z = S / std::sqrt(S_var);
-    // D2, the same idiom at a second site.  The predecessor wrote
-    // `std::min(1.0, 2.0 * math::pnorm(-std::abs(z)))` here and at the
-    // `pval2` slot.  z cannot be NaN on this line — S is finite and S_var was
-    // just tested positive — so the two spellings agree bit-for-bit today and
-    // this branch is unchanged; but `std::min(1.0, NaN)` is 1.0, so leaving
-    // the idiom in place leaves a mask that fires the moment an upstream
-    // change makes z non-finite.  Written as an explicit clamp that a NaN
-    // passes through instead.
-    double pval_norm = 2.0 * math::pnorm(-std::abs(z));
-    if (pval_norm > 1.0) pval_norm = 1.0;
     if (std::abs(z) <= SPA_Cutoff) {
         // The saddlepoint is never attempted here.  spa::normalBranch supplies
-        // the log-domain magnitude and the NORMAL status; the linear p stays
-        // the expression the predecessor used, so this branch is unchanged to
-        // the last bit.
+        // the log-domain magnitude and the NORMAL status.  The two linear
+        // fields this branch also filled — `pval` and the never-read `pval2` —
+        // went with the P column in log10p_unify Stage 8, and with them the
+        // `std::min(1.0, 2*pnorm(-|z|))` idiom D2 had to defuse here.
         const spa::Result nb = spa::normalBranch(z);
-        return {pval_norm, nb.negLog10p, pval_norm, S_raw, z, spa::Status::Normal};
+        return {nb.negLog10p, S_raw, z, spa::Status::Normal};
     }
 
     // Non-outlier Gaussian CGF terms (closed form, O(1) per variant).
@@ -388,13 +378,7 @@ SpaResult spaGOneSnpHomoFromScalars(
     }
 
     const spa::Result ts = wtcoxg_cgf::twoSidedSpa(ctx, std::abs(S), S_var, z);
-    // P from LOG10P: log10p_unify Stage 3 deleted the parallel linear tail, so
-    // -log10(P) is the only quantity the saddlepoint tier assembles.  Since
-    // Stage 4 nothing reads the `pval` field except the P column it feeds —
-    // the conditional branches invert `negLog10p` and LEAF pools it — so the
-    // field goes with that column in Stage 8.
-    return {spa::pFromNegLog10P(ts.negLog10p), ts.negLog10p,
-            pval_norm, S_raw, z, ts.status};
+    return {ts.negLog10p, S_raw, z, ts.status};
 }
 
 } // namespace
@@ -740,6 +724,7 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
         double mu0, mu1, n0, n1, mu_int;
         double var_ratio_w0;
         double pvalue_bat;
+        double log10p_bat;
     };
 
     std::vector<MarkerBatchData> batchData(nMarkers);
@@ -779,6 +764,12 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
         double z = (v > 0.0) ? (weight_maf - m.AF_ref) / std::sqrt(v) : 0.0;
         double z_adj = (bd.var_ratio_w0 > 0.0) ? z / std::sqrt(bd.var_ratio_w0) : z;
         bd.pvalue_bat = 2.0 * math::pnorm(-std::abs(z_adj));
+        // The reported column is the magnitude, formed in the log domain so
+        // that it keeps rising past |z_adj| = 38.6 where `pvalue_bat` flushes
+        // to exactly zero (invariant C1).  `pvalue_bat` stays linear: its
+        // remaining consumers are the `p_cut` branch decision and the
+        // empirical pass-rate cutoffs, both input-side (decision D8).
+        bd.log10p_bat = -spa::normalTwoSidedLog(z_adj) / math::kLn10;
     }
 
     // --- Estimate TPR, sigma2, w.ext per MAF group ---
@@ -1005,6 +996,7 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
             ri.TPR = TPR;
             ri.sigma2 = sigma2;
             ri.pvalue_bat = batchData[i].pvalue_bat;
+            ri.log10p_bat = batchData[i].log10p_bat;
             ri.w_ext = w_ext;
             ri.var_ratio_w0 = batchData[i].var_ratio_w0;
             ri.var_ratio_int = var_ratio_int;
@@ -1105,12 +1097,12 @@ std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
 }
 
 std::string WtCoxGMethod::getHeaderColumns() const {
-    return "\tP_EXT\tLOG10P_EXT\tP_NOEXT\tLOG10P_NOEXT"
+    return "\tLOG10P_EXT\tLOG10P_NOEXT"
            "\tZ_EXT\tZ_NOEXT\tZ_Norm_EXT\tZ_Norm_NOEXT"
-           "\tP_BAT\tPI_BAT\tVAR_BAT\tSPA_STATUS_EXT\tSPA_STATUS_NOEXT";
+           "\tLOG10P_BAT\tPI_BAT\tVAR_BAT\tSPA_STATUS_EXT\tSPA_STATUS_NOEXT";
 }
 
-// Push the 13 result cells in header order.  Shared by getResultVec and the
+// Push the 11 result cells in header order.  Shared by getResultVec and the
 // fused-GEMM processScoreBatch so the two cannot drift.
 void WtCoxGMethod::pushResult(
     std::vector<double> &out,
@@ -1118,19 +1110,17 @@ void WtCoxGMethod::pushResult(
     const WtResult &noext,
     const WtCoxGRefInfo &info
 ) {
-    out.push_back(ext.pval);          // P_EXT
+    // LOG10P is the sole p-value column since log10p_unify Stage 8 (D1);
+    // a consumer that needs the linear p takes 10^(-LOG10P).
     out.push_back(ext.negLog10p);     // LOG10P_EXT
-    out.push_back(noext.pval);        // P_NOEXT
     out.push_back(noext.negLog10p);   // LOG10P_NOEXT
     // Z from LOG10P, not from P (Stage 4): the linear inversion saturated at
-    // |Z| = 37.0470962993612 for every L >= 299.698970.  LOG10P_EXT is still
-    // -log10 of a linear conditional ratio, so on the EXT leg the saturation is
-    // displaced to that step rather than removed, until Stage 6 moves it.
+    // |Z| = 37.0470962993612 for every L >= 299.698970.
     out.push_back(math::zFromNegLog10P(ext.negLog10p, ext.zscore));     // Z_EXT
     out.push_back(math::zFromNegLog10P(noext.negLog10p, noext.zscore)); // Z_NOEXT
     out.push_back(ext.zscore);                                // Z_Norm_EXT
     out.push_back(noext.zscore);                              // Z_Norm_NOEXT
-    out.push_back(info.pvalue_bat);
+    out.push_back(info.log10p_bat);   // LOG10P_BAT
     out.push_back(info.TPR);
     out.push_back(info.sigma2);
     out.push_back(wtcoxg_cgf::statusCode(ext.status));        // SPA_STATUS_EXT
@@ -1255,8 +1245,7 @@ WtCoxGMethod::DualResult WtCoxGMethod::computeDualFromScalars(
         m_shared->cutoff
     );
 
-    return {res_ext.pval, res_noext.pval,
-            res_ext.negLog10p, res_noext.negLog10p,
+    return {res_ext.negLog10p, res_noext.negLog10p,
             res_ext.score, res_noext.score, gSum, N,
             res_ext.status, res_noext.status};
 }
@@ -1339,7 +1328,7 @@ void WtCoxGMethod::processScoreBatch(
 // outside the D5 fallback block because there is no statistic to approximate.
 WtCoxGMethod::WtResult WtCoxGMethod::wtDegenerate() {
     const double nan = NaN::quiet_NaN();
-    return {nan, nan, nan, nan, spa::Status::NaNoTest};
+    return {nan, nan, nan, spa::Status::NaNoTest};
 }
 
 // The two conditional branches below assemble their p-value through
@@ -1396,7 +1385,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
             R_dot_g, gSum, Nint, *m_shared,
             m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
             0.0, 0.0, 0.0, 0.0, vr, m_shared->SPA_Cutoff);
-        return {spa.pval, spa.negLog10p, spa.score, spa.zscore, spa.status};
+        return {spa.negLog10p, spa.score, spa.zscore, spa.status};
     }
 
     const double sum_g = gSum;
@@ -1420,7 +1409,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
                 R_dot_g, gSum, Nint, *m_shared,
                 m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
                 NaN::quiet_NaN(), 0.0, 0.0, 0.0, var_ratio_int, m_shared->SPA_Cutoff);
-            return {spa.pval, spa.negLog10p, spa.score, spa.zscore, spa.status};
+            return {spa.negLog10p, spa.score, spa.zscore, spa.status};
         }
 
         const double mu_loc = (N_d > 0.0) ? (gSum / N_d) / 2.0 : 0.0;
@@ -1471,8 +1460,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         // The guard now tests the magnitude, which is the quantity being
         // inverted; it is NaN on exactly the markers whose p was NaN.
         if (!std::isfinite(spa_s0.negLog10p))
-            return {NaN::quiet_NaN(), NaN::quiet_NaN(), S_loc,
-                    NaN::quiet_NaN(), spa_s0.status};
+            return {NaN::quiet_NaN(), S_loc, NaN::quiet_NaN(), spa_s0.status};
         const double qchi0 = math::chisq1FromNegLog10P(spa_s0.negLog10p);
         const double var_S = (qchi0 > 0.0)
             ? S_loc * S_loc / var_ratio0 / qchi0
@@ -1531,8 +1519,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
             lnW1, lnM1, lnP1, spa_s0.status,
             lnW0, lnM0, lnP0, spa_s0.status,
             lnDeno);
-        return {spa::pFromNegLog10P(con.negLog10p), con.negLog10p, S_loc, z_loc,
-                con.status};
+        return {con.negLog10p, S_loc, z_loc, con.status};
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -1650,7 +1637,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     // z is the plain normal statistic S/sd(S); it is not a saddlepoint output
     // and is reported whether or not the conditional assembly succeeded, as
     // the predecessor did.
-    return {spa::pFromNegLog10P(con.negLog10p), con.negLog10p, S, z, con.status};
+    return {con.negLog10p, S, z, con.status};
 }
 
 // ======================================================================

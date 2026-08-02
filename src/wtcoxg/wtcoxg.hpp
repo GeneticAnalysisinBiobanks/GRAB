@@ -34,6 +34,13 @@ struct WtCoxGRefInfo {
     double TPR = std::numeric_limits<double>::quiet_NaN();
     double sigma2 = std::numeric_limits<double>::quiet_NaN();
     double pvalue_bat = std::numeric_limits<double>::quiet_NaN();
+    // -log10 of the same batch-effect p, taken in the log domain rather than
+    // as -log10(pvalue_bat): the linear form underflows to exactly zero past
+    // |z_adj| = 38.6 and its logarithm would be +Inf, which invariant C1
+    // forbids in a LOG10P-family column.  `pvalue_bat` itself stays linear
+    // because its consumers are the input-side comparisons against `p_cut`
+    // and the empirical pass-rate cutoffs (decision D8).
+    double log10p_bat = std::numeric_limits<double>::quiet_NaN();
     double w_ext = std::numeric_limits<double>::quiet_NaN();
     double var_ratio_w0 = 1.0;
     double var_ratio_int = 1.0;
@@ -136,15 +143,21 @@ class WtCoxGMethod : public MethodBase {
 // ---- MethodBase interface ----
     std::unique_ptr<MethodBase> clone() const override;
 
-// P_EXT LOG10P_EXT P_NOEXT LOG10P_NOEXT Z_EXT Z_NOEXT Z_Norm_EXT
-// Z_Norm_NOEXT P_BAT PI_BAT VAR_BAT SPA_STATUS_EXT SPA_STATUS_NOEXT.
+// LOG10P_EXT LOG10P_NOEXT Z_EXT Z_NOEXT Z_Norm_EXT Z_Norm_NOEXT
+// LOG10P_BAT PI_BAT VAR_BAT SPA_STATUS_EXT SPA_STATUS_NOEXT.
 //
-// LOG10P_* is −log10 of the p-value in the adjacent column, computed through
-// spa::bnTailLog / spa::combineTailsLog so that it stays meaningful past the
-// point where the linear-scale tail underflows (Φ(−38.5) flushes to zero,
-// i.e. p ~ 1e-316).  On the two conditional branches, where the reported
-// quantity is a bivariate-normal integral rather than a saddlepoint tail, it
-// is −log10 of that integral.
+// LOG10P_* is −log10(P) and, since log10p_unify Stage 8, the sole p-value
+// column of its leg (decision D1); a consumer that needs the linear p takes
+// 10^(−LOG10P).  It is computed through spa::bnTailLog / spa::assemble so that
+// it stays meaningful past the point where the linear-scale tail underflows
+// (Φ(−38.5) flushes to zero, i.e. p ~ 1e-316).  On the two conditional
+// branches, where the reported quantity is a bivariate-normal integral rather
+// than a saddlepoint tail, it is the log-domain magnitude of that integral.
+//
+// LOG10P_BAT is the batch-effect test's own magnitude — the column was called
+// P_BAT and carried the linear p until Stage 8.  It is formed at its source
+// (wtcoxg.cpp) by spa::normalTwoSidedLog rather than as −log10 of the linear
+// p, which would be +Inf past |z_adj| = 38.6 and violate invariant C1.
 //
 // SPA_STATUS_* carries the spa::Status of the saddlepoint underlying that
 // p-value, as the integer enumerator rather than the token spa::statusName
@@ -183,8 +196,12 @@ class WtCoxGMethod : public MethodBase {
 // saddlepoint that actually produced the number in the P column, and which
 // keeps the invariant above intact.  A component whose loss can move the
 // answer still takes the marker to NA with a failure status.
+//
+// Since log10p_unify Stage 8 the linear P_EXT / P_NOEXT columns are gone
+// (decision D1) and LOG10P_EXT / LOG10P_NOEXT are the sole p-values; P_BAT is
+// renamed LOG10P_BAT and carries the magnitude of the batch-effect test.
     int resultSize() const override {
-        return 13;
+        return 11;
     }
 
     std::string getHeaderColumns() const override;
@@ -200,8 +217,9 @@ class WtCoxGMethod : public MethodBase {
 
 // For LEAF: compute ext/noext results with raw scores for meta-analysis.
     struct DualResult {
-        double p_ext, p_noext;
-        double log10p_ext, log10p_noext;   // −log10 of the two above
+        // −log10 of the two conditional p-values.  The linear pair went with
+        // the P column in log10p_unify Stage 8 (decision D1).
+        double log10p_ext, log10p_noext;
         double score_ext, score_noext;
         double gSum;     // ALT-allele count within this cluster's subjects
         int    N;        // number of subjects in this cluster
@@ -268,7 +286,6 @@ class WtCoxGMethod : public MethodBase {
 
   private:
     struct WtResult {
-        double pval;
         double negLog10p;
         double score;
         double zscore;
@@ -278,7 +295,7 @@ class WtCoxGMethod : public MethodBase {
 // The all-NA result of a marker for which no test exists.
     static WtResult wtDegenerate();
 
-// Push the 13 result cells in header order.
+// Push the 11 result cells in header order.
     static void pushResult(
         std::vector<double> &out,
         const WtResult &ext,

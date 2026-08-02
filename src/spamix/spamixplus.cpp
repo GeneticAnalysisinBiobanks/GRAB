@@ -440,10 +440,10 @@ spa::Result SPAmixPlusMethod::markerPvalFromAF(
 }
 
 // ======================================================================
-// pushResult — the seven output cells
+// pushResult — the six output cells
 // ======================================================================
 //
-// P LOG10P Z Z_Norm BETA SE SPA_STATUS.  Z is the p-consistent z (the normal
+// LOG10P Z Z_Norm BETA SE SPA_STATUS.  Z is the p-consistent z (the normal
 // quantile of P carrying Z_Norm's sign) and Z_Norm the raw score z; they differ
 // in the tails, which is exactly where the saddlepoint does its work.
 
@@ -459,10 +459,8 @@ void SPAmixPlusMethod::pushResult(
     const double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : nan;
     const double se   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS : nan;
 
-    // P is derived from LOG10P, which is the only p-value the tier produces
-    // since log10p_unify Stage 3; the column itself goes away in Stage 8.
-    const double p = spa::pFromNegLog10P(ts.negLog10p);
-    r.push_back(p);
+    // LOG10P is the sole p-value column since log10p_unify Stage 8 (D1);
+    // a consumer that needs the linear p takes 10^(-LOG10P).
     r.push_back(ts.negLog10p);
     // Z from L, not from P: the linear inversion saturated at
     // |Z| = 37.0470962993612 for every L >= 299.698970 (Stage 4).
@@ -564,7 +562,7 @@ void SPAmixPlusMethod::processScoreBatch(
 
         auto &r = results[b];
         r.clear();
-        r.reserve(7);
+        r.reserve(6);
         pushResult(r, ts, zScore, VarS);
     }
 }
@@ -625,7 +623,7 @@ void SPAmixPlusMethod::getResultBatch(
 
             auto &r = results[b];
             r.clear();
-            r.reserve(7);
+            r.reserve(6);
             pushResult(r, ts, zScore, VarS);
         }
         return;
@@ -647,7 +645,7 @@ void SPAmixPlusMethod::getResultBatch(
 
         auto &r = results[b];
         r.clear();
-        r.reserve(7);
+        r.reserve(6);
         pushResult(r, ts, zScore, VarS);
     }
 }

@@ -1234,7 +1234,10 @@ static void runUnifiedGWAS(
     // LOG10P and SPA_STATUS are the two columns Stage 7 of the saddlepoint
     // rework adds, in the encoding every other SPA method in GRAB now uses:
     // LOG10P is -log10(P) computed in the log domain, so it stays meaningful
-    // below the point where P itself underflows to zero, and SPA_STATUS is the
+    // below the point where P itself underflows to zero — which is why
+    // log10p_unify Stage 8 deleted the linear anc<k>_P column and left this
+    // one as the sole p-value (decision D1); a consumer that needs the linear
+    // p takes 10^(-LOG10P).  SPA_STATUS is the
     // numeric spa::Status — 0 SPA_OK, 1 NORMAL, 2 SPA_W_SINGULAR, 3..6 the
     // FALLBACK_* codes, 7 NA_POST_FAIL, 8 NA_NO_TEST.  The order is a
     // contract (log10p_unify D4): SPA_STATUS <= 2 means LOG10P is
@@ -1247,7 +1250,6 @@ static void runUnifiedGWAS(
         header += pfx + "MISS_RATE";
         header += pfx + "ALT_FREQ";
         header += pfx + "MAC";
-        header += pfx + "P";
         header += pfx + "LOG10P";
         header += pfx + "BETA";
         header += pfx + "SE";
@@ -1498,7 +1500,7 @@ static void runUnifiedGWAS(
                             buf += fmtBuf;
 
                             if (!as.pass) {
-                                buf += "\tNA\tNA\tNA\tNA\tNA";
+                                buf += "\tNA\tNA\tNA\tNA";
                                 continue;
                             }
 
@@ -1524,12 +1526,6 @@ static void runUnifiedGWAS(
                             double seG   = (varS > 0.0) ? 1.0 / std::sqrt(varS)
                                                          : std::numeric_limits<double>::quiet_NaN();
 
-                            buf += '\t';
-                            // P from LOG10P: the saddlepoint tier stopped
-                            // assembling a linear tail in log10p_unify
-                            // Stage 3, and this column goes in Stage 8.
-                            writeNum(buf, fmtBuf,
-                                     spa::pFromNegLog10P(res.negLog10p));
                             buf += '\t';
                             writeNum(buf, fmtBuf, res.negLog10p);
                             buf += '\t';

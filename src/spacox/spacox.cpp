@@ -301,8 +301,11 @@ spa::Result SPACoxMethod::getMarkerPvalCore(
     //
     // The comparison stays on the linear scale because --covar-p-threshold is
     // an INPUT parameter and decision D8 keeps input thresholds in linear p.
-    // `pFromNegLog10P` propagates NaN, so the fall-through above is preserved.
-    if (spa::pFromNegLog10P(ts.negLog10p) > m_pvalCovAdjCut) return ts;
+    // `std::pow(10, -L)` propagates NaN, so the fall-through above is
+    // preserved; this is the site the deleted `spa::pFromNegLog10P` served
+    // that is not an output column, and it is the reason the conversion is
+    // written here rather than shared (log10p_unify Stage 8).
+    if (std::pow(10.0, -ts.negLog10p) > m_pvalCovAdjCut) return ts;
 
     // ---- Stage 2: covariate-adjusted SPA ----
     //
@@ -350,10 +353,8 @@ void SPACoxMethod::pushResult(
     double S,
     double scoreVar
 ) {
-    // P is derived from LOG10P, which is the only p-value the tier produces
-    // since log10p_unify Stage 3; the column itself goes away in Stage 8.
-    const double p = spa::pFromNegLog10P(ts.negLog10p);
-    out.push_back(p);             // P
+    // LOG10P is the sole p-value column since log10p_unify Stage 8 (D1);
+    // a consumer that needs the linear p takes 10^(-LOG10P).
     out.push_back(ts.negLog10p);  // LOG10P
     if (scoreVar > 0.0) {
         const double sd = std::sqrt(scoreVar);
@@ -472,7 +473,7 @@ void SPACoxMethod::getResultBatch(
     for (int b = 0; b < B; ++b) {
         auto &r = results[b];
         r.clear();
-        r.reserve(7);
+        r.reserve(6);
         double zScore, scoreVar;
         const spa::Result ts =
             getMarkerPvalCore(GBatch.col(b), altFreqs[b], scores[b], zScore, scoreVar);

@@ -62,6 +62,7 @@
 
 #include "localplus/spamixlocalp_cgf.hpp"
 #include "tinytest.hpp"
+#include "linear_p.hpp"
 
 namespace {
 
@@ -294,7 +295,7 @@ TEST(a_nan_residual_propagates_rather_than_becoming_minus_infinity) {
     const spa::Result ts = spamixlocalp_cgf::twoSidedSpa(
         c, 0.0, 1.0, 1.0, std::numeric_limits<double>::quiet_NaN());
     CHECK(std::isnan(ts.negLog10p));
-    CHECK(std::isnan(spa::pFromNegLog10P(ts.negLog10p)));
+    CHECK(std::isnan(tref::pFromNegLog10P(ts.negLog10p)));
     CHECK(ts.status == spa::Status::NaNoTest);
     std::printf("    NaN residual: K'' = %s, K = %.6g, status = %s\n",
                 std::isnan(k.k2) ? "nan" : "finite", k.k0,
@@ -387,7 +388,7 @@ TEST(twosided_reproduces_the_normal_tail_when_there_are_no_outliers) {
         const double want =
             2.0 * math::pnorm(z, 0.0, 1.0, /*lower_tail=*/false);
         worstP = std::fmax(
-            worstP, std::fabs(spa::pFromNegLog10P(ts.negLog10p) - want) / want);
+            worstP, std::fabs(tref::pFromNegLog10P(ts.negLog10p) - want) / want);
         const double wantL = -spa::normalTwoSidedLog(z) / std::log(10.0);
         worstL = std::fmax(worstL, std::fabs(ts.negLog10p - wantL) / wantL);
     }

@@ -25,8 +25,10 @@
 //   before   two tails x (bnTail + bnTailLog), then combineTails and
 //            combineTailsLog, then the hand splice — what Stage 2 shipped.
 //   after    two tails x bnTailLog, then spa::assemble — what Stage 3 ships.
-//   after+P  the same, plus `spa::pFromNegLog10P` for the P column that
-//            survives until Stage 8.  This is the cost actually paid today.
+//
+// A third arm measured the `spa::pFromNegLog10P` call that produced the P
+// column on top of `after`.  Stage 8 deleted the column and the helper, so
+// `after` IS the cost paid today and the arm was removed rather than retimed.
 //
 // WHAT THE NUMBER MEANS.  The saving lands only on markers that take the SPA
 // branch — 2 % to 8 % of markers at the default --spa-z-threshold — and the
@@ -163,20 +165,8 @@ int main() {
         }
     Clock::time_point t2 = Clock::now();
 
-    // ── after, plus the P column that survives until Stage 8 ───────────
-    for (int r = 0; r < REPS; ++r)
-        for (const TailPoint &t : pop) {
-            spa::Status su = spa::Status::SpaOk, sl = spa::Status::SpaOk;
-            const double lu = spa::bnTailLog(t.zetaU, t.sU, t.K0U, t.K2U, false, su);
-            const double ll = spa::bnTailLog(t.zetaL, t.sL, t.K0L, t.K2L, true, sl);
-            const spa::Result lg = spa::assemble(lu, ll, su, sl, t.zNorm);
-            sink += lg.negLog10p + spa::pFromNegLog10P(lg.negLog10p);
-        }
-    Clock::time_point t3 = Clock::now();
-
     const double before = nsPer(t0, t1, total);
     const double after = nsPer(t1, t2, total);
-    const double afterP = nsPer(t2, t3, total);
 
     std::printf("\nspa tail path, ns per two-sided p-value (%d points x %d reps)\n\n",
                 N, REPS);
@@ -185,8 +175,6 @@ int main() {
                 "before  2x(bnTail+bnTailLog)+2 assemblies", before, "1.00x");
     std::printf("  %-42s %8.2f  %7.2fx\n",
                 "after   2x bnTailLog + assemble", after, before / after);
-    std::printf("  %-42s %8.2f  %7.2fx\n",
-                "after   + pFromNegLog10P (P column)", afterP, before / afterP);
     std::printf("\n  tailAbscissa evaluations per two-sided p-value: 4 -> 2\n");
     std::printf("  Realized only on the %.0f-%.0f%% of markers that enter the SPA\n"
                 "  branch, and only against the tail's own share of such a\n"

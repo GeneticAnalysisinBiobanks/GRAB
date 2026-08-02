@@ -170,16 +170,19 @@ class SPAGRMMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 7;
+        return 6;
     }
 
-// P, LOG10P, Z, Z_Norm, BETA, SE, SPA_STATUS.
+// LOG10P, Z, Z_Norm, BETA, SE, SPA_STATUS.
 //
-// LOG10P is −log10(P), computed through spa::bnTailLog / spa::combineTailsLog
-// so that it stays meaningful past the point where the linear-scale tail
-// underflows (Φ(−38.5) flushes to zero, i.e. p ≈ 1e-316).
+// LOG10P is −log10(P) and, since log10p_unify Stage 8, the sole p-value column
+// (decision D1).  It is computed through spa::bnTailLog / spa::assemble so that
+// it stays meaningful past the point where the linear-scale tail underflows
+// (Φ(−38.5) flushes to zero, i.e. p ≈ 1e-316).  A consumer that needs the
+// linear p recovers it as P = 10^(−LOG10P).
 //
-// SPA_STATUS carries the spa::Status of the saddlepoint that produced P.  It is
+// SPA_STATUS carries the spa::Status of the saddlepoint that produced LOG10P.
+// It is
 // emitted as the integer enumerator rather than the token spelled by
 // spa::statusName because MethodBase hands the engine a std::vector<double> and
 // every result cell is formatted by numToChars; a string column would require a
@@ -199,7 +202,7 @@ class SPAGRMMethod : public MethodBase {
 // anti-conservative at low MAC, so filter with SPA_STATUS <= 2 before judging
 // significance -- and >= 7 that LOG10P is NA.
     std::string getHeaderColumns() const override {
-        return "\tP\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
+        return "\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
     }
 
     void getResultVec(
@@ -332,11 +335,9 @@ class SPAGRMMethod : public MethodBase {
         std::vector<double> &out
     ) {
         out.clear();
-        out.reserve(7);
-        // P is derived from LOG10P, which is the only p-value the tier
-        // produces since log10p_unify Stage 3; the column goes in Stage 8.
-        const double p = spa::pFromNegLog10P(ts.negLog10p);
-        out.push_back(p);             // P
+        out.reserve(6);
+        // LOG10P is the sole p-value column since log10p_unify Stage 8 (D1);
+        // a consumer that needs the linear p takes 10^(−LOG10P).
         out.push_back(ts.negLog10p);  // LOG10P
         if (scoreVar > 0.0) {
             const double sd = std::sqrt(scoreVar);

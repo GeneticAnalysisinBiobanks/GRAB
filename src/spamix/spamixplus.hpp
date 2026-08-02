@@ -102,16 +102,18 @@ class SPAmixPlusMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 7;
+        return 6;
     }
 
     // spa_unify L2 and L3.  LOG10P is -log10(P) carried through the log-domain
     // tail assembly, so it stays meaningful past the point where the linear
-    // sum of the two tails underflows to zero; SPA_STATUS is
+    // sum of the two tails underflows to zero, and since log10p_unify Stage 8
+    // it is the sole p-value column (decision D1); a consumer that needs the
+    // linear p takes 10^(-LOG10P).  SPA_STATUS is
     // static_cast<uint8_t>(spa::Status), the encoding Stages 3 and 4 gave
     // SPACox, SPAGRM and SPAsqr.  Column order matches those three exactly.
     std::string getHeaderColumns() const override {
-        return "\tP\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
+        return "\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
     }
 
     void prepareChunk(const std::vector<uint64_t> &gIndices) override;
