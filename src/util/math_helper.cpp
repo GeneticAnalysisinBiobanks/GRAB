@@ -73,7 +73,17 @@ double zFromNegLog10P(
     const double A      = 2.0 * negLog10p * kLn10;
     // Analytic inversion of the Mills asymptote ln P = ln 2 − z²/2 − ln z
     // − ln√(2π), with ln z ≈ ½ ln A on the right-hand side.
-    double z = std::sqrt(std::fmax(A - std::log(A) + kLn2OverPi, 1.0));
+    //
+    // A overflows for L above DBL_MAX/(2·ln 10) = 3.9e307, and the post-audit
+    // repair removed what happened next: A − ln A is ∞ − ∞ = NaN, std::fmax
+    // returns the NON-NaN operand by definition, and the function reported
+    // z = 1 — a fabricated finite number — for L = 1e308, whose root
+    // 2.1459660262893472e154 is an ordinary double.  Below the overflow the
+    // Mills correction −ln A + ln(2/π) is 1e-306 of A, so √L·√(2 ln 10) is that
+    // same root to the last bit and forms it without ever forming A.
+    double z = std::isfinite(A)
+        ? std::sqrt(std::fmax(A - std::log(A) + kLn2OverPi, 1.0))
+        : std::sqrt(negLog10p) * std::sqrt(2.0 * kLn10);
 
     // Relative criterion, no absolute constant: see the header comment and
     // 04_validation.md §2 invariant 3.
@@ -111,30 +121,124 @@ double ptLog(
     if (!(at > 0.0)) return 0.0;      // P(|T| > 0) = 1
     if (std::isinf(at)) return -inf;
 
-    const double a     = 0.5 * df;
-    const double b     = 0.5;
-    const double denom = df + at * at;
-    const double x     = df / denom;
-    // ln x and ln(1−x) built from the closed forms rather than from x, so
-    // that neither loses digits as x → 1 (small t, large df).
-    const double lnx   = std::log(df) - std::log(denom);
-    const double ln1mx = 2.0 * std::log(at) - std::log(denom);
+    const double a = 0.5 * df;
+    const double b = 0.5;
+    // Term cap for both ₂F₁ series below.  The ratio of successive terms tends
+    // to the argument, so the count is data dependent (about 300 at df = 10 000)
+    // and the stopping rule has to be relative rather than a fixed truncation.
+    constexpr long kMaxTerms = 100000;
+
+    // x = df/(df + t²) and 1 − x = t²/(df + t²), built from the RATIO of the
+    // two terms rather than from their sum.
+    //
+    // Forming `df + t*t` directly is what the post-audit repair removed.  Every
+    // finite |t| above √DBL_MAX = 1.3407807929942596e154 overflows t², makes the
+    // denominator +∞, x exactly 0 and both logarithms −∞, and the function then
+    // returns −∞ — i.e. LOG10P = +∞, a C1 violation — for arguments whose answer
+    // is an ordinary double.  Reference values at 50 significant digits (mpmath,
+    // I_x(df/2, 1/2)), quoted to what a double holds:
+    //     −log10 P(|T_10| > 1e155) = 1545.6088994158582679
+    //     −log10 P(|T_10| > 1e300) = 2995.6088994158582679
+    //     −log10 P(|T_4|  > 1e155) =  619.2218487496163564
+    // The Wald leg reaches those t: a linear refit with β = 1e154 and se = 0.1
+    // gives t = 1e155 at df = 4, and `wald::lastCoefLinearLog10P` returned +∞
+    // for it where the third line above is the answer.
+    //
+    // The ratio is formed in whichever orientation is ≤ 1, so neither the
+    // product nor the quotient can overflow; and its LOGARITHM is taken
+    // analytically as 2·ln|t| − ln df rather than as log() of the formed ratio,
+    // so that a ratio which underflows to zero still carries its exponent into
+    // ln x / ln(1−x).  log1p on the ≤ 1 side is what keeps the other logarithm
+    // free of cancellation as x → 1 (small t, large df) — the property the
+    // previous two-log difference had to be written for explicitly.
+    const double lnRatio = 2.0 * std::log(at) - std::log(df);   // ln(t²/df)
+    double lnx, ln1mx, x;
+    double y = -1.0;              // 1 − x, kept only on the t² ≤ df side
+    if (at <= df / at) {                       // t² ≤ df; comparison cannot overflow
+        const double u   = (at / df) * at;     // t²/df ∈ [0, 1]; may underflow to 0
+        const double l1p = std::log1p(u);
+        lnx   = -l1p;                          // ln( 1/(1+u) )
+        ln1mx = lnRatio - l1p;                 // ln( u/(1+u) ), exponent from lnRatio
+        x     = 1.0 / (1.0 + u);
+        y     = u / (1.0 + u);                 // ordinary double however small u is
+    } else {                                   // t² > df
+        const double v   = (df / at) / at;     // df/t² ∈ [0, 1); may underflow to 0
+        const double l1p = std::log1p(v);
+        ln1mx = -l1p;                          // ln( 1/(1+v) )
+        lnx   = -lnRatio - l1p;                // ln( v/(1+v) )
+        x     = v / (1.0 + v);
+    }
     const double lnBeta = std::lgamma(a) + std::lgamma(b) - std::lgamma(a + b);
+
+    // ── P close to 1: evaluate the COMPLEMENT ────────────────────────────
+    //
+    // I_x(a,b) = 1 − I_y(b,a) with y = 1 − x.  Where the answer is close to 1
+    // this is the only accurate route, and the post-audit repair added it: ln P
+    // is then a small negative number, x has already rounded to 1.0 and carries
+    // none of it, while y remains an ordinary double however small it is.  The
+    // predecessor took the direct route at every |t| and returned
+    //
+    //     ptLog(3e-8,   10) =    0        (correct: −2.3350e-8)
+    //     ptLog(1e-300, 10) = −686.06     (correct: −7.78e-301)
+    //
+    // the second being a fabricated LOG10P = 297.95 — a genome-wide significant
+    // p-value for a t statistic of zero — manufactured by truncating, at 100 000
+    // terms, a ₂F₁ series that DIVERGES at x = 1.
+    //
+    // Attempted only for t² ≤ df, where y ≤ 1/2, and accepted only when the
+    // complement it returns is itself ≤ 1/2.  I_x + I_y = 1, so exactly one of
+    // the two is ≤ 1/2, and that is the one whose logarithm has no cancellation.
+    // Large df puts x above 1/2 while I_x is still tiny (df = 10 000, |t| = 50
+    // gives x = 0.8 and I_x = 1e-486); there the test fails and the direct route
+    // below runs unchanged.
+    if (y >= 0.0) {
+        // Boost evaluates I_y(b,a) while y is a NORMAL double.  Once y is
+        // subnormal it has lost relative precision — u = (|t|/df)·|t| is what
+        // underflows, and y inherits it — and I_y is taken instead from the
+        // same DLMF 8.17.7 factorization the direct route uses, with a and b
+        // exchanged.  Its LOGARITHM survives that underflow, because ln(1−x) was
+        // built from lnRatio rather than from y: at df = 3, |t| = 3e-162 the
+        // subnormal y costs Boost 28 % of the answer, and the factorization
+        // reproduces the reference to the last bit.
+        double iy;
+        if (y >= std::numeric_limits<double>::min()) {
+            iy = boost::math::ibeta(b, a, y);
+        } else {
+            double term = 1.0, series = 1.0;
+            for (long n = 0; n < kMaxTerms; ++n) {
+                const double k = static_cast<double>(n);
+                term *= y * (a + b + k) / (b + 1.0 + k);
+                series += term;
+                if (!(term > 1e-18 * series)) break;
+            }
+            // exp() underflows to zero exactly where ln P is smaller in
+            // magnitude than the smallest subnormal, so log1p below still
+            // rounds correctly; nothing is clamped.
+            iy = std::exp(b * ln1mx + a * lnx - std::log(b) - lnBeta
+                          + std::log(series));
+        }
+        if (iy <= 0.5) return std::log1p(-iy);
+        // I_y > 1/2 means I_x <= 1/2, and the direct route below is then the
+        // one whose logarithm has no cancellation.
+    }
+
     // ln of the leading factor x^a (1−x)^b / (a·B(a,b)) of DLMF 8.17.7.  The
     // ₂F₁ that multiplies it is ≥ 1, so this is a lower bound on ln I_x and
     // decides whether Boost's ibeta can represent the answer at all.
     const double lnLead = a * lnx + b * ln1mx - std::log(a) - lnBeta;
 
-    if (lnLead >= -690.0) {
+    // Boost is used while x is a NORMAL double and its answer is representable.
+    // A SUBNORMAL x carries only the bits its exponent leaves it — at df = 1,
+    // |t| = 3e161 it retains two — and Boost's (2/π)·arcsin(√x) then lands
+    // 1.6e-4 (relative) away from ln I_x, whereas the factorization below reads
+    // ln x from lnRatio and reproduces the reference exactly.  Below the
+    // -690 seam Boost has underflowed and the factorization is the only route.
+    if (lnLead >= -690.0 && x >= std::numeric_limits<double>::min()) {
         const double ib = boost::math::ibeta(a, b, x);
         if (ib > 0.0) return std::log(ib);
     }
 
     // ₂F₁(a+b, 1; a+1; x) = Σ_{n≥0} [(a+b)_n/(a+1)_n]·xⁿ, all terms positive.
-    // The ratio of successive terms tends to x, so the term count is data
-    // dependent (about 300 at df = 10 000) and the stopping rule has to be
-    // relative rather than a fixed truncation.
-    constexpr long kMaxTerms = 100000;
     double term = 1.0, series = 1.0;
     for (long n = 0; n < kMaxTerms; ++n) {
         const double k = static_cast<double>(n);
@@ -195,19 +299,30 @@ double cauchyCombineLog10(
         return -std::log1p(-std::atan(1.0 / negT) / M_PI) / kLn10;
     }
 
-    const double lnT = maxL * kLn10 + std::log(A);
-    if (lnT <= 1.0)
-        return -std::log10(0.5 - std::atan(std::exp(lnT)) / M_PI);
-    if (lnT < 350.0) {
+    // log10 T = maxL + log10 A, and ln T = log10 T · ln 10.  The branch
+    // predicates and the asymptote are stated in log10 because ln T overflows
+    // for maxL above DBL_MAX/ln 10 = 7.8e307: the post-audit repair found
+    // cauchyCombineLog10({1e308, 5}) returning +∞ where the combination is
+    // 1e308 − log10 2, an ordinary double.  Inside the two bounded branches
+    // ln T is recovered in the original spelling, which cannot overflow there
+    // (|log10 T| < 152) and keeps those branches bit-for-bit unchanged.
+    const double lnA    = std::log(A);
+    const double log10T = maxL + lnA / kLn10;
+    if (log10T <= 1.0 / kLn10)
+        return -std::log10(0.5 - std::atan(std::exp(maxL * kLn10 + lnA)) / M_PI);
+    if (log10T < 350.0 / kLn10) {
         // p = atan(1/T)/π.  The direct form is accurate over the whole of
         // this interval; the truncated log(atan u)/u series an earlier draft
         // used is wrong by 3.5e-5 at lnT = 1 and only reaches double
         // precision at lnT ≥ 5 (01_numerics §2.2).
-        return -(std::log(std::atan(std::exp(-lnT))) - kLnPi) / kLn10;
+        return -(std::log(std::atan(std::exp(-(maxL * kLn10 + lnA)))) - kLnPi) / kLn10;
     }
     // exp(−lnT) underflows past lnT = 708; atan(u) = u to well within double
-    // precision once lnT > 20, so the asymptote is exact here.
-    return (lnT + kLnPi) / kLn10;
+    // precision once lnT > 20, so the asymptote is exact here.  Written as
+    // maxL + (ln A + ln π)/ln 10 rather than (ln T + ln π)/ln 10: maxL then
+    // enters exactly instead of through a multiply-divide pair, which is both
+    // overflow-free and one rounding more accurate.
+    return maxL + (lnA + kLnPi) / kLn10;
 }
 
 // § 2  Bivariate normal CDF  (Genz 2004)

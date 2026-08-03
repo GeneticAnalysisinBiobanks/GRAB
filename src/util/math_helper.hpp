@@ -703,7 +703,9 @@ OptimResult bfgs(
 // caller that assembles its Lᵢ in the log domain never produces +∞ and so
 // never sees it; a caller that still recovers an Lᵢ as −log10 of a linear
 // p-value can, and must not write the result into a LOG10P column (invariant
-// C1).  SPAGxE's Wald leg is the last such caller and Stage 7 closes it.
+// C1).  There is no such caller left: SPAGxE's Wald leg was the last one, and
+// Stage 7 moved it onto `ptLog`, so every Lᵢ reaching this function is now
+// built in the log domain.
 double cauchyCombineLog10(
     const double *negLog10p,
     int n

@@ -398,7 +398,7 @@ The columns are:
   | 4 | `FALLBACK_GUARD_TEMP` | **substituted normal tail** | `zeta*s - K(zeta) < 0`, so `w` is not real. |
   | 5 | `FALLBACK_GUARD_CURV` | **substituted normal tail** | `K''(zeta) <= 0`, so `v` is not real. |
   | 6 | `FALLBACK_NONFINITE` | **substituted normal tail** | `zeta`, a cumulant, or `r*` left the reals. |
-  | 7 | `NA_POST_FAIL` | `NA` | A step *downstream* of the saddlepoint failed: a `(var_S, cov, var_Sbat)` triple that is not a covariance matrix, a conditional denominator that is not usable, a mixture leg that is missing and not immaterial, a meta pool with `sum Var <= 0`. The saddlepoint may never have been attempted, so `Z` says nothing about the quantity that failed. |
+  | 7 | `NA_POST_FAIL` | `NA` | A step *downstream* of the saddlepoint failed: a `(var_S, cov, var_Sbat)` triple that is not a covariance matrix, a conditional denominator that is not usable, a mixture leg that is missing and not immaterial, a meta pool with `sum Var <= 0` — **including the pool over clusters none of which contributed**, because what failed there is the pooling and not the existence of a statistic. The saddlepoint may never have been attempted, so `Z` says nothing about the quantity that failed. |
   | 8 | `NA_NO_TEST` | `NA` | No statistic exists for this marker in this stratum: no informative subject, a monomorphic stratum, `Var(S) <= 0`, a non-finite `Z`. There is nothing to fall back *to*. |
 
   **The ordering is a design property, not a coincidence, and it is the
@@ -648,6 +648,25 @@ usually exit non-zero and that is not by itself a finding:
   estimate, and is not reproducible run to run even on an unmodified tree.
   `tests/regress.py` has no exclusion list, so delete or ignore that file
   before reading the report.
+- `baseline/converted/1kg.bcf` is handled **in the tool**, and it is not the
+  same kind of exception.  `plink2 --export bcf` stamps its VCF header with
+  `##fileDate=YYYYMMDD`, so a run on a different day differs in bytes on an
+  unmodified tree.  For a BCF the comparison decompresses the BGZF container
+  and normalizes exactly eight ASCII digits after a literal `##fileDate=`
+  **inside the file's own declared header-text region**; the magic, `l_text`,
+  every other header line and every variant/genotype record still have to
+  match byte for byte, and the replacement is length-preserving so a header
+  whose length changed still fails.  `bash tests/regress.sh --self-test`
+  proves both halves of that on constructed inputs — a date-only change
+  passes, a changed byte anywhere else (including an eight-digit run inside a
+  record, a seven- or nine-digit `##fileDate`, and a changed `l_text`) fails —
+  and `regress.sh` runs it before every comparison.
+
+  The three per-artifact exceptions are deliberately different in kind and
+  must not be conflated: `1kg.log` is discounted by hand and entirely;
+  `fit.ibd.zst` is excluded from the **reproducibility** gate only (ruling
+  R4) and is compared normally between trees; `1kg.bcf` has one field
+  normalized and everything else still exact.
 
 Then read the report column by column.  The questions it has to answer
 are: which columns moved, by how much on the `-log10(P)` scale a GWAS

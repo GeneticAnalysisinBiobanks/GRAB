@@ -48,6 +48,18 @@ Note that '+Inf' and '-Inf' are treated as missing by the numeric comparison
 (see NA_TOKENS).  That conflation is deliberate for the difference report, and
 the C1 invariant below is what makes an infinity in a LOG10P column a failure
 rather than a silently-counted change in missingness.
+
+Binary artifacts (the .bed / .bcf / .bgen the cross-format SPAGRM block
+produces) are compared byte for byte, with exactly ONE relaxation: a BCF's
+'##fileDate=YYYYMMDD', which plink2 writes from the wall clock and which
+therefore differs between two runs on different days.  See bcf_normalized
+below for what that does and does not cover, and run
+
+    python3 tests/regress.py --self-test
+
+to re-prove it: a date-only change passes and a changed byte anywhere else
+fails, on inputs constructed here rather than read from a baseline tree.
+tests/regress.sh runs the self-test ahead of every comparison.
 """
 
 import argparse
@@ -272,6 +284,186 @@ def log10p_partner_of_status(name):
     if "SPA_STATUS" not in name:
         return None
     return name.replace("SPA_STATUS", "LOG10P", 1)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Binary comparison of a BCF, with the writer's own timestamp normalized
+# ──────────────────────────────────────────────────────────────────────
+#
+# `examples/baseline.sh` converts the bundled .pgen to BCF with `plink2
+# --export bcf`, and plink2 stamps the VCF header it writes with
+# '##fileDate=YYYYMMDD'.  Two runs on different days therefore produce
+# different bytes even on an unmodified tree, and the whole cross-format block
+# reports a false failure.  Stage 4 established the fact and Stage 10 did not
+# carry it into the final gate; this is that gate.
+#
+# What is normalized is exactly eight ASCII digits after a literal
+# '##fileDate=' that is followed by a newline and lies inside the BCF's own
+# declared header-text region.  NOTHING else is relaxed:
+#
+#   * the BGZF/gzip container is decompressed and the DECOMPRESSED bytes are
+#     compared, so a re-compression that changes block boundaries but not
+#     content passes and a changed byte anywhere fails;
+#   * the 5-byte magic, the 4-byte l_text, every other header line, and every
+#     variant/genotype record are compared verbatim;
+#   * the replacement is length-preserving, so l_text is not adjusted and a
+#     header whose length changed still fails;
+#   * a file that is not a BCF, or whose header does not parse, falls back to
+#     the plain byte comparison.
+#
+# This is the third and last of three per-artifact exceptions in this
+# repository, and they are deliberately not interchangeable:
+#   1. baseline/converted/1kg.log      plink2's own log, with a wall-clock
+#                                      timestamp AND a memory estimate; it is
+#                                      not reproducible at all and is
+#                                      discounted BY HAND (CLAUDE.md).
+#   2. baseline/fit.ibd.zst            thread-order non-determinism in
+#                                      src/spagrm/ibd.cpp; excluded from the
+#                                      REPRODUCIBILITY gate by ruling R4, and
+#                                      compared normally between trees.
+#   3. baseline/converted/1kg.bcf      this: one field normalized, everything
+#                                      else still exact.
+
+BCF_MAGIC = b"BCF\x02\x02"
+FILE_DATE_RE = re.compile(rb"(##fileDate=)([0-9]{8})(?=\n)")
+
+
+def gunzip_all(raw):
+    """Decompress a (possibly multi-member BGZF) gzip stream, or return None."""
+    if len(raw) < 2 or raw[0] != 0x1F or raw[1] != 0x8B:
+        return None
+    try:
+        return gzip.decompress(raw)      # handles the BGZF member chain
+    except Exception:
+        return None
+
+
+def bcf_normalized(raw):
+    """Return the decompressed BCF with ##fileDate=<8 digits> normalized.
+
+    Returns None when `raw` is not a BCF whose header parses, so the caller
+    falls back to comparing bytes.
+    """
+    plain = gunzip_all(raw)
+    if plain is None or not plain.startswith(BCF_MAGIC) or len(plain) < 9:
+        return None
+    l_text = int.from_bytes(plain[5:9], "little")
+    if l_text <= 0 or 9 + l_text > len(plain):
+        return None
+    head = plain[9:9 + l_text]
+    head, n = FILE_DATE_RE.subn(rb"\g<1>00000000", head)
+    if n == 0:
+        return plain                     # no date to normalize; still exact
+    return plain[:9] + head + plain[9 + l_text:]
+
+
+def binary_files_equivalent(base_path, new_path):
+    """Compare two non-text artifacts.
+
+    Returns (equal, label).  `label` names the ground on which they were
+    found equal, so the report says which of the two comparisons answered.
+    """
+    import hashlib
+
+    def digest(path):
+        h = hashlib.sha256()
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    if digest(base_path) == digest(new_path):
+        return True, "identical (binary)"
+
+    with open(base_path, "rb") as fh:
+        raw_b = fh.read()
+    with open(new_path, "rb") as fh:
+        raw_n = fh.read()
+    nb, nn = bcf_normalized(raw_b), bcf_normalized(raw_n)
+    if nb is not None and nn is not None and nb == nn:
+        return True, "identical (BCF, ##fileDate normalized)"
+    return False, None
+
+
+def self_test():
+    """Exercise the BCF comparison on constructed inputs.  Returns 0 or 1.
+
+    Run by tests/regress.sh ahead of every comparison, so the one relaxation
+    in this script is re-proved on each use rather than trusted.  The inputs
+    are built here rather than read from examples_output/, so the test does
+    not depend on a baseline run having happened.
+    """
+    import struct
+    import tempfile
+
+    def build(date=b"20260802", source=b"PLINKv2.0", body=b"\x01\x02\x03rec20260802\x04",
+              text_extra=b"", bad_len=0, level=9):
+        head = (b"##fileformat=VCFv4.3\n##fileDate=" + date + b"\n"
+                b"##source=" + source + b"\n" + text_extra +
+                b"#CHROM\tPOS\tID\tREF\tALT\n\x00")
+        l_text = len(head) + bad_len
+        return gzip.compress(BCF_MAGIC + struct.pack("<I", l_text) + head + body,
+                             level)
+
+    cases = [
+        # (label, base bytes, new bytes, expected equality)
+        ("only ##fileDate differs",
+         build(), build(date=b"20260803"), True),
+        ("identical",
+         build(), build(), True),
+        ("same content, different gzip level",
+         build(), build(level=1), True),
+        ("a record byte differs",
+         build(), build(body=b"\x01\x02\x03rec20260802\x05"), False),
+        ("an eight-digit run in a RECORD differs",
+         build(), build(body=b"\x01\x02\x03rec20260803\x04"), False),
+        ("another header line differs",
+         build(), build(source=b"PLINKv2.1"), False),
+        ("the header gains a line",
+         build(), build(text_extra=b"##contig=<ID=1>\n"), False),
+        ("the declared l_text differs",
+         build(), build(bad_len=1), False),
+        ("##fileDate has seven digits, so it is not normalized",
+         build(date=b"2026080"), build(date=b"2026081"), False),
+        ("##fileDate has nine digits, so it is not normalized",
+         build(date=b"202608021"), build(date=b"202608031"), False),
+        ("not a BCF at all: bytes must match exactly",
+         gzip.compress(b"not a bcf 20260802"),
+         gzip.compress(b"not a bcf 20260803"), False),
+        ("uncompressed input falls back to bytes",
+         b"20260802", b"20260803", False),
+    ]
+
+    failures = 0
+    with tempfile.TemporaryDirectory() as d:
+        bp = os.path.join(d, "base.bcf")
+        np_ = os.path.join(d, "new.bcf")
+        for label, rb, rn, want in cases:
+            with open(bp, "wb") as fh:
+                fh.write(rb)
+            with open(np_, "wb") as fh:
+                fh.write(rn)
+            got, how = binary_files_equivalent(bp, np_)
+            ok = (got == want)
+            if not ok:
+                failures += 1
+            print("  %-4s %-52s expected %-5s got %-5s %s"
+                  % ("PASS" if ok else "FAIL", label,
+                     "equal" if want else "differ",
+                     "equal" if got else "differ", how or ""))
+    # The normalization must be length preserving, or l_text would stop
+    # describing the header it declares.
+    a = build()
+    na = bcf_normalized(a)
+    if na is None or len(na) != len(gunzip_all(a)):
+        print("  FAIL normalization changed the decompressed length")
+        failures += 1
+    else:
+        print("  PASS normalization is length preserving")
+
+    print("self-test: %s (%d failure(s))"
+          % ("PASS" if failures == 0 else "FAIL", failures))
+    return 1 if failures else 0
 
 
 class Violation:
@@ -580,6 +772,12 @@ def parse_pair(spec):
 
 
 def main():
+    if "--self-test" in sys.argv[1:]:
+        if len(sys.argv) != 2:
+            print("--self-test takes no other arguments", file=sys.stderr)
+            return 2
+        return self_test()
+
     ap = argparse.ArgumentParser()
     ap.add_argument("base")
     ap.add_argument("new")
@@ -640,19 +838,11 @@ def main():
             # .bgen files the cross-format block produces.  These carry no
             # floating-point output of ours and must be bit-identical, so
             # compare them byte for byte rather than skipping them.
-            import hashlib
-
-            def digest(path):
-                h = hashlib.sha256()
-                with open(path, "rb") as fh:
-                    for chunk in iter(lambda: fh.read(1 << 20), b""):
-                        h.update(chunk)
-                return h.hexdigest()
-
-            if digest(bp) == digest(np_):
+            equal, how = binary_files_equivalent(bp, np_)
+            if equal:
                 n_identical += 1
                 if not args.quiet:
-                    print("%-44s identical (binary)" % name)
+                    print("%-44s %s" % (name, how))
             else:
                 failed = True
                 print("%-44s BINARY CONTENT DIFFERS" % name)

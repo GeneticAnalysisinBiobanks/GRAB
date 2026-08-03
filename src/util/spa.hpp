@@ -91,9 +91,12 @@ namespace spa {
 //                             normal approximation by design)
 //     3 <= SPA_STATUS <= 6   LOG10P is the FALLBACK normal approximation,
 //                            reported because the saddlepoint failed; the code
-//                            names which way it failed.  Anti-conservative at
-//                            low MAC, which is exactly where it fires — filter
-//                            with SPA_STATUS <= 2 before judging significance.
+//                            names which way it failed.  The normal
+//                            approximation is what the saddlepoint exists to
+//                            correct, so those rows are the less accurate ones
+//                            — filter with SPA_STATUS <= 2 before judging
+//                            significance.  See statusIsFallback below for
+//                            what is and is not measured about them.
 //     SPA_STATUS >= 7        LOG10P is NA; no probability was produced.
 //
 // Any re-encoding that breaks that monotonicity is wrong.  `statusIsUsable`,
@@ -125,7 +128,11 @@ enum class Status : uint8_t {
                         //   math::pmvnorm2dHalfRect handed a (var_S, cov,
                         //   var_Sbat) triple that is not a covariance matrix,
                         //   a conditional denominator that is not usable, a
-                        //   mixture leg that is missing and not immaterial.
+                        //   mixture leg that is missing and not immaterial, a
+                        //   math::metaPvalueScorePool with sum Var <= 0 --
+                        //   including the pool over clusters none of which
+                        //   contributed, since what failed there is the
+                        //   POOLING and not the existence of a statistic.
                         //   The saddlepoint may never have been attempted, so
                         //   Z says nothing about the quantity that failed and
                         //   must not be used to manufacture a p-value.
@@ -165,8 +172,30 @@ inline bool statusIsUsable(Status s) noexcept {
 // Block 2: the saddlepoint failed and LOG10P carries the substituted
 // normal-approximation tail instead, with the code naming the failure.  This
 // is a named substitution, not a fabrication: there is a genuine estimator
-// behind it and a status value that identifies it.  It is anti-conservative in
-// exactly the regime that produces it, which is why it is a separate block.
+// behind it and a status value that identifies it.
+//
+// What is known about that estimator, stated as measurement rather than as
+// folklore (ruling R1, dev-notes/methods/log10p_unify/05_rulings.md):
+//
+//   * The normal approximation is BY CONSTRUCTION the thing the saddlepoint
+//     exists to correct, so these rows are less accurate than blocks 0-2.
+//     That much is definitional.
+//   * On every null cohort measured in this repository the substitution does
+//     not occur at all -- including bench_data/fallback, built specifically to
+//     provoke it, and with --spa-z-threshold lowered to 0.05 so that nearly
+//     every marker enters the saddlepoint branch.  The mechanism that used to
+//     produce it was the pairwise-IBD triple not summing to one, repaired in
+//     commit e8b912e8.
+//   * Where it WAS observed, on the pre-repair binary, it did NOT concentrate
+//     at low MAC: the rate across ten MAC bins ran 2.87e-2 to 4.39e-2 with no
+//     monotone trend, and the highest-MAC substituted marker sat at MAC = 1175.
+//     Do not repeat the claim that it concentrates at low MAC; measurement
+//     refutes it.
+//   * It fired only in a narrow band of |Z| just above --spa-z-threshold, which
+//     bounded those rows at LOG10P <= 3.97 and made their enrichment at the
+//     genome-wide threshold 7.301 exactly zero.
+//   * That bound is EMPIRICAL, not a theorem.  A saddlepoint failure at large
+//     |Z| would still produce a large substituted LOG10P.
 inline bool statusIsFallback(Status s) noexcept {
     const uint8_t v = static_cast<uint8_t>(s);
     return v >= 3 && v <= 6;

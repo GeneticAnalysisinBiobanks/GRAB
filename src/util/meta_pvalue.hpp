@@ -33,16 +33,21 @@
 // to exactly zero — now yields Var_c = 0 rather than a clamped variance: the
 // natural limit of the formula, in which that cluster's score is treated as
 // exact.  If it is the only contributing cluster the pool has no variance at
-// all and reports NA with NA_NO_TEST; otherwise it enters the numerator with
+// all and reports NA with NA_POST_FAIL; otherwise it enters the numerator with
 // no matching denominator term, and the pooled magnitude is then bounded only
 // by the OTHER clusters' variances — measured at L_meta = 3.5e4 on one
 // bench_data/witness marker, which is not a number any reader should trust.
-// The only producer of an infinite L in the tree is WtCoxG's conditional
-// p-value, which still takes −log10 of a linear ratio
-// (`src/wtcoxg/conditional_p.hpp`); log10p_unify Stage 6 moves it into the log
-// domain and the case stops arising.  It is deliberately NOT intercepted here:
-// the defect is the infinite input, and masking its consequence would weaken
-// the three-state acceptance test Stage 6 is validated against.
+//
+// That input no longer arises.  Its only producer was WtCoxG's conditional
+// p-value taking −log10 of a linear ratio, and log10p_unify Stage 6 rewrote
+// `src/wtcoxg/conditional_p.hpp` in the log domain: `wtcoxg_cond::conditionalP`
+// assembles the mixture through `math::logAddExp` / `math::logSubExp` over
+// `math::pmvnorm2dHalfRectLog`, returns a magnitude directly, and a denominator
+// that is not usable comes back as NA with NA_POST_FAIL rather than as an
+// infinite L.  The paragraph above is kept because the LIMIT it describes is
+// still the behaviour of this function for an infinite L; what changed is that
+// no caller in the tree supplies one.  It is still deliberately not
+// intercepted here.
 //
 // Clusters with NaN score or NaN L are skipped (their per-cluster computation
 // failed upstream — that is a distinct signal from a finite boundary p-value
@@ -90,8 +95,19 @@ constexpr double META_L_FLOOR = 4.339473599489794e-16;
 // by pooling.  A cluster with no test at all still has a NaN L and is still
 // skipped.
 //
-// When nothing contributed there is no pooled statistic, so the status is
-// NA_NO_TEST, not a saddlepoint failure: no root was ever sought.
+// When the pooled variance is not positive there is no pooled statistic, and
+// the status is NA_POST_FAIL — decision D4 lists "a meta pool with sum Var <= 0"
+// under 7 by name, and 7 is what CLAUDE.md's status table has always said.
+// This covers the empty pool too, and the post-audit repair is exactly that
+// unification: Stage 2 wrote NA_NO_TEST here, which contradicted D4, the CLAUDE.md
+// table and the LEAF `--help` block all at once, and made `meta_SPA_STATUS`
+// claim that the MARKER has no statistic when what failed is the POOLING of
+// the per-cluster ones.  Code 8 is reserved for "no statistic exists in this
+// stratum" — no informative subject, a monomorphic stratum, Var(S) <= 0, a
+// non-finite Z — which are properties of a cluster, not of the pool over them.
+// Either way LOG10P is NA and there is no fallback: both codes are >= 7, so the
+// C3 invariant is unaffected and no reader who filters on SPA_STATUS <= 2 or
+// >= 7 sees any change.
 struct MetaPooled {
     double negLog10p;
     spa::Status status;
@@ -104,6 +120,8 @@ inline MetaPooled metaPvalueScorePool(
 ) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
     double sumScore = 0.0, sumVar = 0.0;
+    // Placeholder only: `any` guards every read of `st`, and a pool with no
+    // contributor exits through the sum Var <= 0 branch below.
     spa::Status st = spa::Status::NaNoTest;
     bool any = false;
     const std::size_t K = scores.size();
@@ -118,7 +136,7 @@ inline MetaPooled metaPvalueScorePool(
         st  = any ? spa::worseStatus(st, statuses[c]) : statuses[c];
         any = true;
     }
-    if (sumVar <= 0.0) return MetaPooled{nan, spa::Status::NaNoTest};
+    if (sumVar <= 0.0) return MetaPooled{nan, spa::Status::NaPostFail};
     const double z = sumScore / std::sqrt(sumVar);
     return MetaPooled{spa::normalBranch(z).negLog10p, st};
 }

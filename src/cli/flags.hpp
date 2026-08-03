@@ -1208,7 +1208,10 @@ inline const MethodDef kLEAF = {
   A cluster with no informative subject for a marker is the common case, not
   the exception, and it is reported as 8 (NA_NO_TEST) with that cluster's
   p-value cells NA -- never as a fallback, because no statistic exists there.
-  The meta columns take 8 as well when the pooled variance is not positive.
+  The meta columns take 7 (NA_POST_FAIL) when the pooled variance is not
+  positive, including when no cluster contributed at all: what failed there is
+  the POOLING, and 8 states the stronger thing, that the marker has no
+  statistic in this stratum.  Both are NA and neither is a fallback.
 )"
     GRAB_SPA_STATUS_TABLE
     GRAB_SPA_FALLBACK_NOTE,

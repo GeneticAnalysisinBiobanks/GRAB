@@ -175,9 +175,12 @@ class WtCoxGMethod : public MethodBase {
 //
 // The order is a contract (log10p_unify decision D4): SPA_STATUS <= 2 means
 // LOG10P is trustworthy, 3..6 that the saddlepoint failed and LOG10P is the
-// substituted two-sided normal tail -log10(2*Phi(-|Z_Norm|)) -- which is
-// anti-conservative at low MAC, so filter with SPA_STATUS <= 2 before judging
-// significance -- and >= 7 that LOG10P is NA.
+// substituted two-sided normal tail -log10(2*Phi(-|Z_Norm|)) -- the estimator
+// the saddlepoint exists to correct, hence the less accurate one, so filter
+// with SPA_STATUS <= 2 before judging significance -- and >= 7 that LOG10P is
+// NA.  What is and is not measured about that substitution is recorded once,
+// on spa::statusIsFallback in src/util/spa.hpp; in particular it does NOT
+// concentrate at low MAC, which measurement refutes.
 //
 // log10p_unify Stage 2 split what used to be one NONFINITE code into the three
 // different events WtCoxG produced under it: a saddlepoint that left the reals

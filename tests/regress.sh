@@ -28,6 +28,29 @@
 # violation.  Those are properties of one tree, so they fire whether or not
 # anything changed between the two.
 #
+# Binary artifacts (.bed / .bcf / .bgen, from the cross-format SPAGRM block)
+# are compared byte for byte, with ONE documented exception.  `plink2 --export
+# bcf` stamps its VCF header with '##fileDate=YYYYMMDD', so two runs on
+# different days differ on an unmodified tree; for a BCF the comparison
+# therefore decompresses the BGZF container and normalizes exactly eight ASCII
+# digits after a literal '##fileDate=' inside the file's own declared
+# header-text region.  Every other byte — the magic, l_text, every other header
+# line, every variant and genotype record — still has to match, and the
+# replacement is length preserving so a header whose length changed still
+# fails.  `python3 tests/regress.py --self-test` proves both halves of that on
+# constructed inputs and is run below before every comparison.
+#
+# That is one of three per-artifact exceptions in this repository, and they are
+# not interchangeable:
+#   baseline/converted/1kg.log  plink2's log: a wall-clock timestamp AND a
+#                               memory estimate, not reproducible at all,
+#                               discounted BY HAND (CLAUDE.md).
+#   baseline/fit.ibd.zst        thread-order non-determinism in
+#                               src/spagrm/ibd.cpp; excluded from the
+#                               REPRODUCIBILITY gate by ruling R4, and compared
+#                               normally between trees.
+#   baseline/converted/1kg.bcf  the ##fileDate normalization above.
+#
 # Usage:
 #     tests/regress.sh BASE_DIR NEW_DIR [--rtol 1e-9] [--quiet]
 #                      [--pair BASE_COL:NEW_COL]...
@@ -64,8 +87,10 @@ while [ $# -gt 0 ]; do
         --pair)  EXTRA+=(--pair "$2"); shift 2 ;;
         --spa-status-semantics)
                  EXTRA+=(--spa-status-semantics "$2"); shift 2 ;;
+        --self-test)
+            exec "${PYTHON:-python3}" "$(dirname "$0")/regress.py" --self-test ;;
         -h|--help)
-            sed -n '2,48p' "$0"; exit 0 ;;
+            sed -n '2,70p' "$0"; exit 0 ;;
         *)
             if   [ -z "$BASE" ]; then BASE="$1"
             elif [ -z "$NEW"  ]; then NEW="$1"
@@ -92,6 +117,16 @@ if ! command -v "$PY" >/dev/null 2>&1; then
     echo "error: python3 not found; set PYTHON=/path/to/python3" >&2
     exit 2
 fi
+
+# Re-prove the one relaxation in the comparison (the BCF ##fileDate
+# normalization) on constructed inputs before using it.  Milliseconds, and it
+# means the exception is checked on every gate rather than trusted.
+echo "=== regress.py self-test ==="
+if ! "$PY" "$(dirname "$0")/regress.py" --self-test; then
+    echo "error: regress.py self-test failed; the comparison is not trustworthy" >&2
+    exit 2
+fi
+echo
 
 exec "$PY" "$(dirname "$0")/regress.py" "$BASE" "$NEW" --rtol "$RTOL" \
     $([ "$QUIET" -eq 1 ] && echo --quiet) ${EXTRA[@]+"${EXTRA[@]}"}
