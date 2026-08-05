@@ -5,8 +5,12 @@
 //
 // Algorithm outline:
 //   1. Load sparse GRM via SparseGRM; extract off-diagonal (related) pairs.
-//   2. Create PlinkData for ALL subjects so that per-marker MAF is
-//      computed from the full cohort (matching the R code's use of .frq).
+//   2. Create genotype data for the analysed subject set (genotype .fam
+//      intersected with the GRM subjects, then --keep / --remove), so the
+//      per-marker ALT frequency is computed over exactly those subjects.
+//      The R original instead read MAF from a PLINK .frq computed over the
+//      whole cohort; the two coincide when the GRM covers every genotyped
+//      subject and differ otherwise.
 //   3. Stream through every marker once.  For markers with MAF ≥ threshold,
 //      mean-impute missing genotypes and accumulate weighted IBS0 statistics
 //      for each related pair.
@@ -278,7 +282,7 @@ void runPairwiseIBD(
         auto cursor = genoData->makeCursor();
         Eigen::VectorXd genoVec(nSubj);
         std::vector<uint32_t> missingIdx;
-        double altFreq, altCounts, missingRate, hweP, maf, mac;
+        double altFreq, altCounts, missingRate, log10pHwe, maf, mac;
 
         double *localXW = threadAccs[tid].sumXW.data();
         double *localW = threadAccs[tid].sumW.data();
@@ -295,7 +299,7 @@ void runPairwiseIBD(
             if (!chunk.empty()) cursor->beginSequentialBlock(chunk.front());
 
             for (uint64_t gi : chunk) {
-                cursor->getGenotypes(gi, genoVec, altFreq, altCounts, missingRate, hweP, maf, mac, missingIdx);
+                cursor->getGenotypes(gi, genoVec, altFreq, altCounts, missingRate, log10pHwe, maf, mac, missingIdx);
                 if (maf < minMafIBD) continue;
 
                 const double meanGeno = 2.0 * altFreq;
@@ -357,15 +361,52 @@ void runPairwiseIBD(
     const double *sumXW = threadAccs[0].sumXW.data();
     const double *sumW = threadAccs[0].sumW.data();
     //
-    // pc_raw = 0.5 * sumXW / sumW
+    // The estimator is Eq. (17) of the SPAGRM paper (Nat Commun 16:1413),
+    // written there in terms of rho1 = 2*phi (the sparse-GRM off-diagonal)
+    // and rho2 (the IBS0 method-of-moments estimator of zero-IBD sharing):
     //
-    // Constraints (from R code):
-    //   upper_bound = (1 - grmValue)^2 - 1e-10
-    //   lower_bound = 1 - 2 * grmValue
-    //   pc = clamp(pc_raw, lower_bound, upper_bound)
-    //   pb = 2 - 2*pc - 2*grmValue
-    //   pa = 2*grmValue + pc - 1
-    //   if (pb < 0) { pa += 0.5*pb; pb = 0; pc = 0; }
+    //     delta0 = rho2                    == pc
+    //     delta1 = 2*(1 - rho1 - rho2)     == pb
+    //     delta2 = 2*rho1 + rho2 - 1       == pa
+    //
+    // The third of the paper's three defining equations is the normalization
+    // delta0 + delta1 + delta2 = 1, which the algebra above satisfies as an
+    // identity.  Everything downstream depends on it: nsGRMNull::
+    // buildChowLiuTree mixes three conditional joint tables that each have
+    // marginal p0 with these three weights, so the family table is a
+    // probability distribution — and the family CGF satisfies K(0) = 0 —
+    // exactly when the weights sum to one.
+    //
+    // (pa, pb, pc) is a valid IBD vector iff three inequalities hold.  Writing
+    // rho± for the roots of x² - 2*rho1*x + delta2 = 0, which are the
+    // per-allele sharing probabilities the two-subject CGF factorizes through
+    // (grm_null.cpp's `Rho ± midterm`):
+    //
+    //   (i)   delta2 >= 0   <=>  pc >= 1 - 2v        the lower clamp
+    //   (ii)  rho± real     <=>  pc <= (1 - v)^2     the upper clamp; also
+    //                                                the non-inbred
+    //                                                admissibility inequality
+    //                                                delta1^2 >= 4*delta0*delta2
+    //   (iii) rho+ <= 1     <=>  v <= 1              the monozygotic bound
+    //
+    // Given (i) and (ii), delta1 >= 0 follows automatically PROVIDED v <= 1,
+    // because 1 - v - pc >= 1 - v - (1-v)^2 = v*(1-v).  The predecessor
+    // enforced (i) and (ii) but not (iii), and carried an `if (pb < 0)`
+    // repair branch that is unreachable for v <= 1 and therefore fired only
+    // on v > 1.  Its effect was pa += 0.5*pb, pb = pc = 0, which evaluates to
+    // pa = v exactly: it emitted pa > 1 with pa + pb + pc = v != 1, breaking
+    // the paper's own normalization equation and, through it, K(0) = 0.  On
+    // the bundled 1kg fixture that was 173 of 39 799 pairs, and it is what
+    // put 14 markers of the cross-format Binary run into GUARD_TEMP — a
+    // status that cannot arise from a genuine CGF, since zeta*s - K(zeta) is
+    // the Legendre transform and is non-negative by construction.
+    //
+    // (iii) is now enforced at its source by capping v at 1.  At v = 1 the
+    // clamps give pc = 0, pb = 0, pa = 1: the duplicate / monozygotic
+    // interpretation.  It sums to one, keeps rho± = 1, and maximizes the
+    // modelled dependence, so it is conservative.  v > 1 is nevertheless a
+    // statement about the GRM rather than about the pair — 2*phi cannot
+    // exceed 1 for any relationship — so the count is reported.
 
     struct IBDResult {
         uint32_t idx1, idx2;
@@ -374,24 +415,41 @@ void runPairwiseIBD(
 
     std::vector<IBDResult> results(nPairs);
 
+    size_t nCapped = 0, nFloored = 0;
+    double maxGrm = 0.0, minGrm = 0.0;
+
     for (size_t k = 0; k < nPairs; ++k) {
-        double pc = (sumW[k] > 0.0) ? 0.5 * sumXW[k] / sumW[k] : 0.0;
-        const double grm = pairs[k].grmValue;
+        const double pcRaw = (sumW[k] > 0.0) ? 0.5 * sumXW[k] / sumW[k] : 0.0;
+        const double grmRaw = pairs[k].grmValue;
+        if (grmRaw > 1.0) { ++nCapped; if (grmRaw > maxGrm) maxGrm = grmRaw; }
+        if (grmRaw < 0.0) { ++nFloored; if (grmRaw < minGrm) minGrm = grmRaw; }
 
-        const double upper = (1.0 - grm) * (1.0 - grm) - 1e-10;
-        const double lower = 1.0 - 2.0 * grm;
-        pc = std::clamp(pc, lower, upper);
+        // The derivation itself lives in ibd.hpp so that tests/
+        // spagrm_ibd_test.cpp can exercise it directly; this loop supplies
+        // the two moment estimates and nothing else.
+        const ibd::Triple t = ibd::deriveIBD(grmRaw, pcRaw);
 
-        double pb = 2.0 - 2.0 * pc - 2.0 * grm;
-        double pa = 2.0 * grm + pc - 1.0;
+        results[k] = {pairs[k].idx1, pairs[k].idx2, t.pa, t.pb, t.pc};
+    }
 
-        if (pb < 0.0) {
-            pa += 0.5 * pb;
-            pb = 0.0;
-            pc = 0.0;
-        }
-
-        results[k] = {pairs[k].idx1, pairs[k].idx2, pa, pb, pc};
+    // Report what was DONE.  SparseGRM::checkValueRange has already reported
+    // the same entries as out of range at load, so this message states only
+    // the consequence and stays inside warnMsg's 512-byte buffer, which
+    // silently truncates (util/logging.hpp).
+    if (nCapped > 0) {
+        warnMsg(
+            "  %zu of %zu pairs had their GRM off-diagonal capped at 1.0 "
+            "(max %.6g) before deriving (pa, pb, pc): 2*phi > 1 is outside "
+            "the IBD model, and the cap yields the duplicate vector (1, 0, 0).",
+            nCapped, nPairs, maxGrm
+        );
+    }
+    if (nFloored > 0) {
+        warnMsg(
+            "  %zu of %zu pairs had a negative GRM off-diagonal floored at 0 "
+            "(min %.6g), giving the unrelated vector (0, 0, 1).",
+            nFloored, nPairs, minGrm
+        );
     }
 
     // ── 8. Write output (same pair order as the sparse GRM) ────────────

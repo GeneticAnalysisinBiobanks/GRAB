@@ -8,7 +8,10 @@
 #include "util/math_helper.hpp"
 #include "util/simd_dispatch.hpp"
 #include "util/simd_math.hpp"
+#include "util/spa.hpp"
 #include "util/text_scanner.hpp"
+#include "wtcoxg/conditional_p.hpp"
+#include "wtcoxg/wtcoxg_cgf.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -32,212 +35,18 @@ using NaN = std::numeric_limits<double>;
 // Non-outlier residuals contribute via their 2nd-order Taylor expansion of
 // the binomial CGF (a Gaussian closed form), avoiding the O(N) inner loop
 // for every Newton-Raphson iteration.  Outlier residuals retain the full
-// empirical CGF.  Newton-Raphson reuses K2 for both the saddle-point step
-// and the Lugannani-Rice tail.
+// empirical CGF.
+//
+// The CGF kernel, the root finder and the tail are no longer here: they moved
+// to wtcoxg/wtcoxg_cgf.hpp on top of the unified util/spa.hpp solver and the
+// vectorized util/spa_cgf.hpp binomial kernels (spa_unify Stage 6).  The
+// sentence this comment used to carry — "Newton-Raphson reuses K2 for both the
+// saddle-point step and the Lugannani-Rice tail" — was never true: the finder
+// returned a K2 that no caller read, and the tail recomputed the whole CGF at
+// the root.  It is now true, and it is the solver that makes it so.
 // ======================================================================
 
 namespace {
-
-// ────────────────────────────────────────────────────────────────────
-// Outlier CGF kernel — single pass returning K0, K1, K2 reductions
-// over the centered residuals (r_i = R[i] − bm) at saddlepoint t.
-//
-//   For each i:  λ = exp(t·r),  α = (1−p) + p·λ,  α₁ = p·r·λ,  α₂ = r·α₁,
-//                m₀ = α²,  m₁ = 2·α·α₁,  m₂ = 2·(α₁² + α·α₂),
-//                K0_i = log(m₀),  K1_i = m₁/m₀,  K2_i = m₂/m₀ − (m₁/m₀)².
-//   Returns sums.
-//
-// Three variants compiled: scalar / AVX2 / AVX-512.  Resolved at first
-// call via simdLevel().  ARM falls through to scalar (NEON via
-// auto-vectorization of the inlined inner loop after std::exp).
-// ────────────────────────────────────────────────────────────────────
-
-struct OutlierCgf3 {
-    double K0;
-    double K1;
-    double K2;
-};
-
-static OutlierCgf3 outlierCgf_scalar(
-    double t,
-    const double *residCentered,
-    int n,
-    double MAF
-) {
-    const double oneMmaf = 1.0 - MAF;
-    double K0 = 0.0, K1 = 0.0, K2 = 0.0;
-    for (int i = 0; i < n; ++i) {
-        const double r      = residCentered[i];
-        const double lambda = std::exp(t * r);
-        const double alpha  = oneMmaf + MAF * lambda;
-        const double alpha1 = MAF * r * lambda;
-        const double alpha2 = r * alpha1;
-        const double mgf0   = alpha * alpha;
-        const double mgf1   = 2.0 * alpha * alpha1;
-        const double mgf2   = 2.0 * (alpha1 * alpha1 + alpha * alpha2);
-        const double ratio  = mgf1 / mgf0;
-        K0 += std::log(mgf0);
-        K1 += ratio;
-        K2 += mgf2 / mgf0 - ratio * ratio;
-    }
-    return {K0, K1, K2};
-}
-
-#if defined(__x86_64__) || defined(_M_X64)
-
-__attribute__((target("avx2,avx512f,avx512vl,fma")))
-static OutlierCgf3 outlierCgf_avx512(
-    double t,
-    const double *residCentered,
-    int n,
-    double MAF
-) {
-    const __m512d vt       = _mm512_set1_pd(t);
-    const __m512d vMAF     = _mm512_set1_pd(MAF);
-    const __m512d vOneMmaf = _mm512_set1_pd(1.0 - MAF);
-    const __m512d vTwo     = _mm512_set1_pd(2.0);
-
-    __m512d vK0 = _mm512_setzero_pd();
-    __m512d vK1 = _mm512_setzero_pd();
-    __m512d vK2 = _mm512_setzero_pd();
-
-    int i = 0;
-    const int n8 = n & ~7;
-    for (; i < n8; i += 8) {
-        const __m512d vr      = _mm512_loadu_pd(residCentered + i);
-        const __m512d vlambda = avx512_exp_pd(_mm512_mul_pd(vt, vr));
-        const __m512d valpha  = _mm512_fmadd_pd(vMAF, vlambda, vOneMmaf);
-        const __m512d valpha1 = _mm512_mul_pd(vMAF, _mm512_mul_pd(vr, vlambda));
-        const __m512d valpha2 = _mm512_mul_pd(vr, valpha1);
-
-        const __m512d vmgf0   = _mm512_mul_pd(valpha, valpha);
-        const __m512d vmgf1   = _mm512_mul_pd(vTwo, _mm512_mul_pd(valpha, valpha1));
-        const __m512d vmgf2   = _mm512_mul_pd(vTwo,
-                                              _mm512_fmadd_pd(valpha1, valpha1,
-                                                              _mm512_mul_pd(valpha, valpha2)));
-
-        vK0 = _mm512_add_pd(vK0, avx512_log_pd(vmgf0));
-        const __m512d vratio = _mm512_div_pd(vmgf1, vmgf0);
-        vK1 = _mm512_add_pd(vK1, vratio);
-        vK2 = _mm512_add_pd(vK2,
-                            _mm512_sub_pd(_mm512_div_pd(vmgf2, vmgf0),
-                                          _mm512_mul_pd(vratio, vratio)));
-    }
-
-    // Masked tail: r=0 for inactive lanes → α=1, α₁=α₂=0, m₀=1, log(1)=0,
-    // ratio=0 — all zero contributions.
-    if (i < n) {
-        const __mmask8 mask = static_cast<__mmask8>((1u << (n - i)) - 1u);
-        const __m512d vr      = _mm512_maskz_loadu_pd(mask, residCentered + i);
-        const __m512d vlambda = avx512_exp_pd(_mm512_mul_pd(vt, vr));
-        const __m512d valpha  = _mm512_fmadd_pd(vMAF, vlambda, vOneMmaf);
-        const __m512d valpha1 = _mm512_mul_pd(vMAF, _mm512_mul_pd(vr, vlambda));
-        const __m512d valpha2 = _mm512_mul_pd(vr, valpha1);
-
-        const __m512d vmgf0   = _mm512_mul_pd(valpha, valpha);
-        const __m512d vmgf1   = _mm512_mul_pd(vTwo, _mm512_mul_pd(valpha, valpha1));
-        const __m512d vmgf2   = _mm512_mul_pd(vTwo,
-                                              _mm512_fmadd_pd(valpha1, valpha1,
-                                                              _mm512_mul_pd(valpha, valpha2)));
-
-        vK0 = _mm512_add_pd(vK0, avx512_log_pd(vmgf0));
-        const __m512d vratio = _mm512_div_pd(vmgf1, vmgf0);
-        vK1 = _mm512_add_pd(vK1, vratio);
-        vK2 = _mm512_add_pd(vK2,
-                            _mm512_sub_pd(_mm512_div_pd(vmgf2, vmgf0),
-                                          _mm512_mul_pd(vratio, vratio)));
-    }
-
-    return {_mm512_reduce_add_pd(vK0),
-            _mm512_reduce_add_pd(vK1),
-            _mm512_reduce_add_pd(vK2)};
-}
-
-__attribute__((target("avx2,fma")))
-static OutlierCgf3 outlierCgf_avx2(
-    double t,
-    const double *residCentered,
-    int n,
-    double MAF
-) {
-    const __m256d vt       = _mm256_set1_pd(t);
-    const __m256d vMAF     = _mm256_set1_pd(MAF);
-    const __m256d vOneMmaf = _mm256_set1_pd(1.0 - MAF);
-    const __m256d vTwo     = _mm256_set1_pd(2.0);
-
-    __m256d vK0 = _mm256_setzero_pd();
-    __m256d vK1 = _mm256_setzero_pd();
-    __m256d vK2 = _mm256_setzero_pd();
-
-    int i = 0;
-    const int n4 = n & ~3;
-    for (; i < n4; i += 4) {
-        const __m256d vr      = _mm256_loadu_pd(residCentered + i);
-        const __m256d vlambda = avx2_exp_pd(_mm256_mul_pd(vt, vr));
-        const __m256d valpha  = _mm256_fmadd_pd(vMAF, vlambda, vOneMmaf);
-        const __m256d valpha1 = _mm256_mul_pd(vMAF, _mm256_mul_pd(vr, vlambda));
-        const __m256d valpha2 = _mm256_mul_pd(vr, valpha1);
-
-        const __m256d vmgf0   = _mm256_mul_pd(valpha, valpha);
-        const __m256d vmgf1   = _mm256_mul_pd(vTwo, _mm256_mul_pd(valpha, valpha1));
-        const __m256d vmgf2   = _mm256_mul_pd(vTwo,
-                                              _mm256_fmadd_pd(valpha1, valpha1,
-                                                              _mm256_mul_pd(valpha, valpha2)));
-
-        vK0 = _mm256_add_pd(vK0, avx2_log_pd(vmgf0));
-        const __m256d vratio = _mm256_div_pd(vmgf1, vmgf0);
-        vK1 = _mm256_add_pd(vK1, vratio);
-        vK2 = _mm256_add_pd(vK2,
-                            _mm256_sub_pd(_mm256_div_pd(vmgf2, vmgf0),
-                                          _mm256_mul_pd(vratio, vratio)));
-    }
-
-    auto hsum = [](__m256d v) -> double {
-        __m128d lo = _mm256_castpd256_pd128(v);
-        __m128d hi = _mm256_extractf128_pd(v, 1);
-        lo = _mm_add_pd(lo, hi);
-        return _mm_cvtsd_f64(lo) + _mm_cvtsd_f64(_mm_unpackhi_pd(lo, lo));
-    };
-    double K0 = hsum(vK0);
-    double K1 = hsum(vK1);
-    double K2 = hsum(vK2);
-
-    // Scalar tail (1-3 remaining)
-    const double oneMmaf = 1.0 - MAF;
-    for (; i < n; ++i) {
-        const double r      = residCentered[i];
-        const double lambda = std::exp(t * r);
-        const double alpha  = oneMmaf + MAF * lambda;
-        const double alpha1 = MAF * r * lambda;
-        const double alpha2 = r * alpha1;
-        const double mgf0   = alpha * alpha;
-        const double mgf1   = 2.0 * alpha * alpha1;
-        const double mgf2   = 2.0 * (alpha1 * alpha1 + alpha * alpha2);
-        const double ratio  = mgf1 / mgf0;
-        K0 += std::log(mgf0);
-        K1 += ratio;
-        K2 += mgf2 / mgf0 - ratio * ratio;
-    }
-    return {K0, K1, K2};
-}
-
-#endif  // x86_64 SIMD variants
-
-// Dispatch: pick fastest available CGF kernel.  Resolved once at startup.
-using OutlierCgfFn = OutlierCgf3 (*)(double, const double *, int, double);
-
-static OutlierCgfFn pickOutlierCgfFn() {
-#if defined(__x86_64__) || defined(_M_X64)
-    switch (simdLevel()) {
-    case SimdLevel::AVX512: return outlierCgf_avx512;
-    case SimdLevel::AVX2:   return outlierCgf_avx2;
-    default: break;
-    }
-#endif
-    return outlierCgf_scalar;
-}
-
-static const OutlierCgfFn outlierCgf = pickOutlierCgfFn();
 
 // ────────────────────────────────────────────────────────────────────
 // fow_kernel — N-length inner loop of fun_optimalWeight (Brent root
@@ -424,100 +233,43 @@ static FOWFn pickFowFn() {
 static const FOWFn fow_kernel = pickFowFn();
 
 // ────────────────────────────────────────────────────────────────────
-// SPA helpers — operate on already-centered residuals (r_i = R[i] − bm)
+// SPA — the saddlepoint test on one marker within one cluster.
+//
+// The CGF, the root finder and the Barndorff-Nielsen tail all live in
+// wtcoxg/wtcoxg_cgf.hpp over util/spa.hpp and util/spa_cgf.hpp; what remains
+// here is the tier-3 part, which is everything that decides what a subject
+// contributes: the MAF blend, the variance-ratio rescaling, the two
+// closed-form Gaussian blocks over the non-outliers and the normal
+// short-circuit.  See wtcoxg_cgf.hpp for what was replaced and why,
+// including D4's deliberately inconsistent (K, K'') pair.
 // ────────────────────────────────────────────────────────────────────
 
-// Newton-Raphson: find ζ such that K1_total(ζ) = s.
-//   K1_total(ζ) = K1_outlier(ζ) + (mean_n + var_n_K01 · ζ)
-//   K2_total(ζ) = K2_outlier(ζ) + var_n_K2
-// var_n_K01 vs var_n_K2 differ in WtCoxG: var_n_K01 carries the batch-effect
-// Gaussian variance (4·b²·sumR²·var_mu_ext) while var_n_K2 carries the
-// finite-reference-panel correction (obs_ct·(sumR/N_all)²·MAF·(1-MAF)).
-struct RootResultWt {
-    double root;
-    double K2;
-    bool converge;
-};
-
-RootResultWt fastGetRootK1_wt(
-    double s,
-    const double *residCentered,
-    int nOut,
-    double MAF,
-    double mean_n,
-    double var_n_K01,
-    double var_n_K2
-) {
-    double x = 0.0, oldX;
-    double K1 = 0.0, K2 = 0.0, oldK1;
-    double diffX = std::numeric_limits<double>::infinity(), oldDiffX;
-    bool converge = true;
-    constexpr double tol = 1e-3;
-    constexpr int maxiter = 100;
-
-    for (int iter = 0; iter < maxiter; ++iter) {
-        oldX = x;
-        oldDiffX = diffX;
-        oldK1 = K1;
-
-        const OutlierCgf3 cgf = outlierCgf(x, residCentered, nOut, MAF);
-        K1 = cgf.K1 - s + mean_n + var_n_K01 * x;
-        K2 = cgf.K2 + var_n_K2;
-
-        diffX = -K1 / K2;
-
-        if (!std::isfinite(K1)) {
-            x = std::numeric_limits<double>::infinity();
-            K2 = 0.0;
-            break;
-        }
-
-        if (iter > 0 && ((K1 > 0) != (oldK1 > 0))) {
-            while (std::abs(diffX) > std::abs(oldDiffX) - tol)
-                diffX *= 0.5;
-        }
-
-        if (std::abs(diffX) < tol) break;
-        x = oldX + diffX;
-
-        if (iter == maxiter - 1) converge = false;
-    }
-    return {x, K2, converge};
-}
-
-// Lugannani-Rice tail probability with outlier/non-outlier split.
-double getProbSpaG_wt(
-    double s,
-    bool lower_tail,
-    const double *residCentered,
-    int nOut,
-    double MAF,
-    double mean_n,
-    double var_n_K01,
-    double var_n_K2
-) {
-    auto root = fastGetRootK1_wt(s, residCentered, nOut, MAF,
-                                 mean_n, var_n_K01, var_n_K2);
-    double zeta = root.root;
-    if (!std::isfinite(zeta)) return NaN::quiet_NaN();
-
-    const OutlierCgf3 cgf = outlierCgf(zeta, residCentered, nOut, MAF);
-    double k0_total = cgf.K0 + mean_n * zeta + 0.5 * var_n_K01 * zeta * zeta;
-    double k2_total = cgf.K2 + var_n_K2;
-
-    double temp1 = zeta * s - k0_total;
-    if (temp1 < 0.0 || k2_total <= 0.0) return NaN::quiet_NaN();
-
-    double w = (zeta >= 0 ? 1.0 : -1.0) * std::sqrt(2.0 * temp1);
-    double v = zeta * std::sqrt(k2_total);
-    if (w == 0.0 || v == 0.0 || (v / w) <= 0.0) return NaN::quiet_NaN();
-
-    return math::pnorm(w + (1.0 / w) * std::log(v / w), 0.0, 1.0, lower_tail, false);
-}
-
 struct SpaResult {
-    double pval, pval2, score, zscore;
+    double negLog10p;   // -log10(p), from the log-domain assembly: the sole
+                        // p-value representation since log10p_unify D1
+    double score;       // S_raw, before the variance-ratio division
+    double zscore;
+    spa::Status status; // the nine-value spa::Status: <= 2 when negLog10p is
+                        // the saddlepoint or designed normal value, 3..6 when
+                        // it is the substituted normal tail, >= 7 when NA
 };
+
+// Every early return of the routine below reports a degenerate INPUT rather
+// than a saddlepoint failure: too few minor alleles for the approximation to
+// mean anything, or a score variance that is not positive.  There is no test
+// in those cases, and no root was ever sought, so the status is NA_NO_TEST and
+// the row is NA.  It is NOT eligible for the D5 normal fallback: there is
+// nothing to fall back to.
+//
+// This is the single site that produces LEAF's per-cluster "no informative
+// subject" rows.  A cluster in which the marker is monomorphic, or carries
+// fewer than ten minor alleles, arrives here through the MAC guard below and
+// leaves with NA_NO_TEST by name — not by letting a NaN propagate downstream
+// and be classified after the fact.
+inline SpaResult spaDegenerate(double score) {
+    const double nan = NaN::quiet_NaN();
+    return {nan, score, nan, spa::Status::NaNoTest};
+}
 
 // Scalar-input variant of spaGOneSnpHomo.  The only quantities derived
 // from g that the original routine uses are R.dot(g), g.sum(), and N;
@@ -527,10 +279,7 @@ SpaResult spaGOneSnpHomoFromScalars(
     double R_dot_g,
     double gSum,
     int Nint,
-    const OutlierData &outlier,
-    int nNonOutlier,
-    double sumR_nonOutlier,
-    double sumR2_nonOutlier,
+    const WtCoxGShared &shared,
     double meanR,
     double sumR,
     double sqSumR,
@@ -560,9 +309,8 @@ SpaResult spaGOneSnpHomoFromScalars(
     const double sum_g_chk   = gSum;
     const double sum_2mg_chk = 2.0 * static_cast<double>(Nint) - gSum;
     if (sum_g_chk < 10.0 || sum_2mg_chk < 10.0) {
-        return {NaN::quiet_NaN(), NaN::quiet_NaN(),
-                R_dot_g - 2.0 * (gSum / std::max(1.0, static_cast<double>(Nint)) / 2.0) * sumR,
-                NaN::quiet_NaN()};
+        return spaDegenerate(
+            R_dot_g - 2.0 * (gSum / std::max(1.0, static_cast<double>(Nint)) / 2.0) * sumR);
     }
 
     const double N = static_cast<double>(Nint);
@@ -583,40 +331,54 @@ SpaResult spaGOneSnpHomoFromScalars(
     const double R_adj_sq_sum = sqSumR - 2.0 * bm * sumR + N * bm * bm;
     double S_var = R_adj_sq_sum * g_var_est + 4.0 * b * b * sumR * sumR * var_mu_ext;
 
-    if (S_var <= 0.0) return {NaN::quiet_NaN(), NaN::quiet_NaN(), S_raw, NaN::quiet_NaN()};
+    if (S_var <= 0.0) return spaDegenerate(S_raw);
 
     double z = S / std::sqrt(S_var);
     if (std::abs(z) <= SPA_Cutoff) {
-        double pval_norm = std::min(1.0, 2.0 * math::pnorm(-std::abs(z)));
-        return {pval_norm, pval_norm, S_raw, z};
+        // The saddlepoint is never attempted here.  spa::normalBranch supplies
+        // the log-domain magnitude and the NORMAL status.  The two linear
+        // fields this branch also filled — `pval` and the never-read `pval2` —
+        // went with the P column in log10p_unify Stage 8, and with them the
+        // `std::min(1.0, 2*pnorm(-|z|))` idiom D2 had to defuse here.
+        const spa::Result nb = spa::normalBranch(z);
+        return {nb.negLog10p, S_raw, z, spa::Status::Normal};
     }
 
     // Non-outlier Gaussian CGF terms (closed form, O(1) per variant).
-    const double n_non_d        = static_cast<double>(nNonOutlier);
-    const double shifted_sum    = sumR_nonOutlier - n_non_d * bm;
-    const double shifted_sumsq  = sumR2_nonOutlier
-                                - 2.0 * bm * sumR_nonOutlier
+    const double n_non_d        = static_cast<double>(shared.nNonOutlier);
+    const double shifted_sum    = shared.sumR_nonOutlier - n_non_d * bm;
+    const double shifted_sumsq  = shared.sumR2_nonOutlier
+                                - 2.0 * bm * shared.sumR_nonOutlier
                                 + n_non_d * bm * bm;
     const double mu_adj         = -2.0 * b * sumR * MAF;
     const double var_adj_batch  = 4.0 * b * b * sumR * sumR * var_mu_ext;
     const double var_adj_finite = obs_ct * (sumR / N_all) * (sumR / N_all) * MAF * (1.0 - MAF);
     const double var_n_resid    = 2.0 * MAF * (1.0 - MAF) * shifted_sumsq;
-    const double mean_n     = 2.0 * MAF * shifted_sum + mu_adj;
-    const double var_n_K01  = var_n_resid + var_adj_batch;
-    const double var_n_K2   = var_n_resid + var_adj_finite;
 
-    // Centered outlier residuals — built once, reused by both tail calls and
-    // by every Newton-Raphson iteration inside.
-    const int nOut = static_cast<int>(outlier.posOutlier.size());
-    Eigen::ArrayXd residCentered = outlier.residOutlier.array() - bm;
-    const double *residCenteredPtr = residCentered.data();
+    wtcoxg_cgf::Context ctx;
+    ctx.nOutlier = static_cast<int>(shared.outlier.posOutlier.size());
+    ctx.maf      = MAF;
+    ctx.mean     = 2.0 * MAF * shifted_sum + mu_adj;
+    // D4: varK01 carries the batch-effect Gaussian variance and enters K and
+    // K'; varK2 carries the finite-reference-panel correction and enters K''.
+    // They differ exactly when obs_ct > 0.  Preserved, not repaired — see
+    // wtcoxg_cgf.hpp.
+    ctx.varK01   = var_n_resid + var_adj_batch;
+    ctx.varK2    = var_n_resid + var_adj_finite;
 
-    double pval1 = getProbSpaG_wt(std::abs(S), false, residCenteredPtr, nOut, MAF,
-                                  mean_n, var_n_K01, var_n_K2);
-    double pval2 = getProbSpaG_wt(-std::abs(S), true, residCenteredPtr, nOut, MAF,
-                                  mean_n, var_n_K01, var_n_K2);
-    double pval_spa = std::min(1.0, pval1 + pval2);
-    return {pval_spa, std::min(1.0, 2.0 * math::pnorm(-std::abs(z))), S_raw, z};
+    // P7: the centred outlier residuals come from the per-(cluster, b) table
+    // built once in the WtCoxGMethod constructor.  The fallback covers a b
+    // that Phase 2 never produced, which cannot happen on any reachable path
+    // but must not read a null pointer if it ever does.
+    Eigen::ArrayXd scratch;
+    ctx.resid = shared.residCenteredFor(b);
+    if (ctx.resid == nullptr) {
+        scratch = shared.outlier.residOutlier.array() - bm;
+        ctx.resid = scratch.data();
+    }
+
+    const spa::Result ts = wtcoxg_cgf::twoSidedSpa(ctx, std::abs(S), S_var, z);
+    return {ts.negLog10p, S_raw, z, ts.status};
 }
 
 } // namespace
@@ -962,6 +724,7 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
         double mu0, mu1, n0, n1, mu_int;
         double var_ratio_w0;
         double pvalue_bat;
+        double log10p_bat;
     };
 
     std::vector<MarkerBatchData> batchData(nMarkers);
@@ -1001,6 +764,12 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
         double z = (v > 0.0) ? (weight_maf - m.AF_ref) / std::sqrt(v) : 0.0;
         double z_adj = (bd.var_ratio_w0 > 0.0) ? z / std::sqrt(bd.var_ratio_w0) : z;
         bd.pvalue_bat = 2.0 * math::pnorm(-std::abs(z_adj));
+        // The reported column is the magnitude, formed in the log domain so
+        // that it keeps rising past |z_adj| = 38.6 where `pvalue_bat` flushes
+        // to exactly zero (invariant C1).  `pvalue_bat` stays linear: its
+        // remaining consumers are the `p_cut` branch decision and the
+        // empirical pass-rate cutoffs, both input-side (decision D8).
+        bd.log10p_bat = -spa::normalTwoSidedLog(z_adj) / math::kLn10;
     }
 
     // --- Estimate TPR, sigma2, w.ext per MAF group ---
@@ -1074,8 +843,8 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
                 double ub = q * std::sqrt(var_Sbat);
                 double var_Sbat_par2 = var_Sbat + sigma2;
                 if (var_Sbat_par2 <= 0.0) return 1e30;
-                double c_val = math::pnorm(ub, 0.0, std::sqrt(var_Sbat_par2), true, true);
-                double d_val = math::pnorm(lb, 0.0, std::sqrt(var_Sbat_par2), true, true);
+                double c_val = math::pnormLog(ub, 0.0, std::sqrt(var_Sbat_par2), true);
+                double d_val = math::pnormLog(lb, 0.0, std::sqrt(var_Sbat_par2), true);
                 double pro_cut =
                     TPR * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) *
                     (1.0 - p_cut);
@@ -1139,18 +908,16 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
                 double q = math::qnorm(1.0 - p_cut / 2.0);
                 double lb = -q * std::sqrt(var_Sbat_loc);
                 double ub = q * std::sqrt(var_Sbat_loc);
-                double c_val = math::pnorm(
+                double c_val = math::pnormLog(
                     ub,
                     0.0,
                     std::sqrt(var_Sbat_loc + sigma2),
-                    true,
                     true
                 );
-                double d_val = math::pnorm(
+                double d_val = math::pnormLog(
                     lb,
                     0.0,
                     std::sqrt(var_Sbat_loc + sigma2),
-                    true,
                     true
                 );
                 double p_deno = TPR *
@@ -1229,6 +996,7 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
             ri.TPR = TPR;
             ri.sigma2 = sigma2;
             ri.pvalue_bat = batchData[i].pvalue_bat;
+            ri.log10p_bat = batchData[i].log10p_bat;
             ri.w_ext = w_ext;
             ri.var_ratio_w0 = batchData[i].var_ratio_w0;
             ri.var_ratio_int = var_ratio_int;
@@ -1278,6 +1046,39 @@ WtCoxGMethod::WtCoxGMethod(
     sh->nNonOutlier      = static_cast<int>(sh->outlier.posNonOutlier.size());
     sh->sumR_nonOutlier  = sh->outlier.residNonOutlier.sum();
     sh->sumR2_nonOutlier = sh->outlier.resid2NonOutlier.sum();
+
+    // ── P7: build the per-b centred-residual table ──────────────────
+    //
+    // Every SPA entry needs r_i = R_i − (1−b)·meanR over the outliers.  b is
+    // 0 on every NOEXT call, on the no-external fallback and throughout
+    // Branch A, and is `info.w_ext` on the two Branch-B calls; w_ext is fitted
+    // once per MAF group in Phase 2, so the distinct values are few and all of
+    // them are already in the reference map handed to this constructor.
+    // Building the table here means the array is materialised once per
+    // (cluster, b) for the whole run rather than once per marker per variant,
+    // and the shared_ptr<const> makes it free for the worker clones.
+    {
+        std::vector<double> bs;
+        bs.push_back(0.0);
+        if (m_refMap) {
+            for (const auto &e : *m_refMap) {
+                const double b = e.second.w_ext;
+                if (!std::isfinite(b)) continue;
+                bool seen = false;
+                for (double v : bs)
+                    if (v == b) { seen = true; break; }
+                if (!seen) bs.push_back(b);
+            }
+        }
+        std::sort(bs.begin(), bs.end());
+        sh->residCenteredByB.reserve(bs.size());
+        for (double b : bs) {
+            const double bm = (1.0 - b) * sh->meanR;
+            sh->residCenteredByB.emplace_back(
+                b, Eigen::ArrayXd(sh->outlier.residOutlier.array() - bm));
+        }
+    }
+
     m_shared = std::move(sh);
 }
 
@@ -1296,7 +1097,34 @@ std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
 }
 
 std::string WtCoxGMethod::getHeaderColumns() const {
-    return "\tP_EXT\tP_NOEXT\tZ_EXT\tZ_NOEXT\tZ_Norm_EXT\tZ_Norm_NOEXT\tP_BAT\tPI_BAT\tVAR_BAT";
+    return "\tLOG10P_EXT\tLOG10P_NOEXT"
+           "\tZ_EXT\tZ_NOEXT\tZ_Norm_EXT\tZ_Norm_NOEXT"
+           "\tLOG10P_BAT\tPI_BAT\tVAR_BAT\tSPA_STATUS_EXT\tSPA_STATUS_NOEXT";
+}
+
+// Push the 11 result cells in header order.  Shared by getResultVec and the
+// fused-GEMM processScoreBatch so the two cannot drift.
+void WtCoxGMethod::pushResult(
+    std::vector<double> &out,
+    const WtResult &ext,
+    const WtResult &noext,
+    const WtCoxGRefInfo &info
+) {
+    // LOG10P is the sole p-value column since log10p_unify Stage 8 (D1);
+    // a consumer that needs the linear p takes 10^(-LOG10P).
+    out.push_back(ext.negLog10p);     // LOG10P_EXT
+    out.push_back(noext.negLog10p);   // LOG10P_NOEXT
+    // Z from LOG10P, not from P (Stage 4): the linear inversion saturated at
+    // |Z| = 37.0470962993612 for every L >= 299.698970.
+    out.push_back(math::zFromNegLog10P(ext.negLog10p, ext.zscore));     // Z_EXT
+    out.push_back(math::zFromNegLog10P(noext.negLog10p, noext.zscore)); // Z_NOEXT
+    out.push_back(ext.zscore);                                // Z_Norm_EXT
+    out.push_back(noext.zscore);                              // Z_Norm_NOEXT
+    out.push_back(info.log10p_bat);   // LOG10P_BAT
+    out.push_back(info.TPR);
+    out.push_back(info.sigma2);
+    out.push_back(wtcoxg_cgf::statusCode(ext.status));        // SPA_STATUS_EXT
+    out.push_back(wtcoxg_cgf::statusCode(noext.status));      // SPA_STATUS_NOEXT
 }
 
 void WtCoxGMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
@@ -1363,15 +1191,7 @@ void WtCoxGMethod::getResultVec(
         m_shared->cutoff
     );
 
-    result.push_back(res_ext.pval);
-    result.push_back(res_noext.pval);
-    result.push_back(math::zFromPval(res_ext.pval, res_ext.zscore));     // Z_EXT (p-consistent)
-    result.push_back(math::zFromPval(res_noext.pval, res_noext.zscore)); // Z_NOEXT (p-consistent)
-    result.push_back(res_ext.zscore);                                    // Z_Norm_EXT
-    result.push_back(res_noext.zscore);                                  // Z_Norm_NOEXT
-    result.push_back(info.pvalue_bat);
-    result.push_back(info.TPR);
-    result.push_back(info.sigma2);
+    pushResult(result, res_ext, res_noext, info);
 }
 
 WtCoxGMethod::DualResult WtCoxGMethod::computeDual(
@@ -1425,7 +1245,9 @@ WtCoxGMethod::DualResult WtCoxGMethod::computeDualFromScalars(
         m_shared->cutoff
     );
 
-    return {res_ext.pval, res_noext.pval, res_ext.score, res_noext.score, gSum, N};
+    return {res_ext.negLog10p, res_noext.negLog10p,
+            res_ext.score, res_noext.score, gSum, N,
+            res_ext.status, res_noext.status};
 }
 
 // ── Fused-GEMM hooks ────────────────────────────────────────────────
@@ -1496,18 +1318,24 @@ void WtCoxGMethod::processScoreBatch(
 
         auto &r = results[b];
         r.clear();
-        r.reserve(9);
-        r.push_back(res_ext.pval);
-        r.push_back(res_noext.pval);
-        r.push_back(math::zFromPval(res_ext.pval, res_ext.zscore));     // Z_EXT (p-consistent)
-        r.push_back(math::zFromPval(res_noext.pval, res_noext.zscore)); // Z_NOEXT (p-consistent)
-        r.push_back(res_ext.zscore);                                    // Z_Norm_EXT
-        r.push_back(res_noext.zscore);                                  // Z_Norm_NOEXT
-        r.push_back(info.pvalue_bat);
-        r.push_back(info.TPR);
-        r.push_back(info.sigma2);
+        r.reserve(13);
+        pushResult(r, res_ext, res_noext, info);
     }
 }
+
+// A marker for which no test exists: MAC below 10, a non-positive variance, an
+// unmatched batch-effect p-value.  NA_NO_TEST names exactly that, and is
+// outside the D5 fallback block because there is no statistic to approximate.
+WtCoxGMethod::WtResult WtCoxGMethod::wtDegenerate() {
+    const double nan = NaN::quiet_NaN();
+    return {nan, nan, nan, spa::Status::NaNoTest};
+}
+
+// The two conditional branches below assemble their p-value through
+// wtcoxg_cond::conditionalP (src/wtcoxg/conditional_p.hpp), which also owns
+// the rule for a mixture leg whose joint probability could not be computed.
+using wtcoxg_cond::ConditionalP;
+using wtcoxg_cond::conditionalP;
 
 WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
     const Eigen::Ref<const Eigen::VectorXd> &g_input,
@@ -1554,17 +1382,16 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     if (std::isnan(mu_ext)) {
         double vr = (std::isnan(TPR) && std::isnan(sigma2)) ? var_ratio_int : 1.0;
         SpaResult spa = spaGOneSnpHomoFromScalars(
-            R_dot_g, gSum, Nint, m_shared->outlier, m_shared->nNonOutlier,
-            m_shared->sumR_nonOutlier, m_shared->sumR2_nonOutlier,
+            R_dot_g, gSum, Nint, *m_shared,
             m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
             0.0, 0.0, 0.0, 0.0, vr, m_shared->SPA_Cutoff);
-        return {spa.pval, spa.score, spa.zscore};
+        return {spa.negLog10p, spa.score, spa.zscore, spa.status};
     }
 
     const double sum_g = gSum;
     const double sum_2mg = 2.0 * static_cast<double>(Nint) - gSum;
     if (std::isnan(p_bat) || sum_g < 10 || sum_2mg < 10)
-        return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
+        return wtDegenerate();
 
     const double N_d = static_cast<double>(Nint);
 
@@ -1579,38 +1406,66 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         if (std::isnan(TPR) || std::isnan(sigma2)) {
             // No batch parameters: fall back to plain internal SPA.
             SpaResult spa = spaGOneSnpHomoFromScalars(
-                R_dot_g, gSum, Nint, m_shared->outlier, m_shared->nNonOutlier,
-                m_shared->sumR_nonOutlier, m_shared->sumR2_nonOutlier,
+                R_dot_g, gSum, Nint, *m_shared,
                 m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
                 NaN::quiet_NaN(), 0.0, 0.0, 0.0, var_ratio_int, m_shared->SPA_Cutoff);
-            return {spa.pval, spa.score, spa.zscore};
+            return {spa.negLog10p, spa.score, spa.zscore, spa.status};
         }
 
         const double mu_loc = (N_d > 0.0) ? (gSum / N_d) / 2.0 : 0.0;
         const double S_loc  = R_dot_g - 2.0 * mu_loc * m_shared->sumR;
         const double var_mu_ext_loc = (obs_ct > 0.0) ? mu_loc * (1.0 - mu_loc) / obs_ct : 0.0;
         const double var_Sbat = m_shared->w1Sq * 2.0 * mu_loc * (1.0 - mu_loc) + var_mu_ext_loc;
-        if (var_Sbat <= 0.0) return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
+        if (var_Sbat <= 0.0) return wtDegenerate();
 
         const double qnorm_val = math::qnorm(1.0 - p_cut / 2.0);
         const double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
         const double ub = -lb;
 
-        const double c_val = math::pnorm(lb / std::sqrt(var_ratio_w1), 0.0,
-                                         std::sqrt(var_Sbat + sigma2), true, true);
-        const double p_deno = TPR * 2.0 * std::exp(c_val) + (1.0 - TPR) * p_cut;
+        // m1 / m0: the conditioning mass P(|S_bat| > threshold | component)
+        // that each mixture component carries.  Branch A conditions on the
+        // COMPLEMENT of the acceptance interval, so m0 is p_cut exactly, by
+        // construction of lb and ub, and m1 is the same complement's mass
+        // under the sigma2-inflated law.  Their TPR-mixture is p_deno.
+        const double c_val = math::pnormLog(lb / std::sqrt(var_ratio_w1), 0.0,
+                                            std::sqrt(var_Sbat + sigma2), true);
+        // Stage 6: the weights, the two conditioning masses and their mixture
+        // stay in the log domain from here to the reported LOG10P.  m1 is the
+        // complement mass 2*Phi(lb) under the sigma2-inflated law, which is
+        // what c_val already holds the logarithm of, so exp/log round trips
+        // disappear rather than being rearranged.  p_deno had been spelled
+        // `TPR * 2.0 * exp(c_val) + ...` to the letter to keep a fixed
+        // association; that pin is gone with the linear quantity itself, and
+        // the resulting shift is one ULP of a denominator, ~1e-16 relative.
+        const double lnW1   = std::log(TPR);
+        const double lnW0   = std::log1p(-TPR);
+        const double lnM1   = math::kLn2 + c_val;
+        const double lnM0   = std::log(p_cut);
+        const double lnDeno = math::logAddExp(lnW1 + lnM1, lnW0 + lnM0);
 
         SpaResult spa_s0 = spaGOneSnpHomoFromScalars(
-            R_dot_g, gSum, Nint, m_shared->outlier, m_shared->nNonOutlier,
-            m_shared->sumR_nonOutlier, m_shared->sumR2_nonOutlier,
+            R_dot_g, gSum, Nint, *m_shared,
             m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
             NaN::quiet_NaN(), 0.0, 0.0, 0.0, var_ratio0, m_shared->SPA_Cutoff);
-        const double qchi0 = math::qchisq(spa_s0.pval, 1.0, false, false);
+        // D2.  The conditional branches recover a variance by inverting the
+        // SPA p-value; when the saddlepoint failed, that p is now NaN with a
+        // status rather than a masked 1.0, so the failure must be intercepted
+        // here and reported rather than inverted.
+        //
+        // Stage 4: the inversion is `math::chisq1FromNegLog10P` of the
+        // magnitude, not `math::qchisq` of the linear p.  The df = 1 upper-tail
+        // quantile is analytic (it is the square of the two-sided normal
+        // quantile), so the recovered variance no longer bottoms out at the
+        // q = 1373.87 that qchisq's own 1e-300 argument clamp imposed on it.
+        // The guard now tests the magnitude, which is the quantity being
+        // inverted; it is NaN on exactly the markers whose p was NaN.
+        if (!std::isfinite(spa_s0.negLog10p))
+            return {NaN::quiet_NaN(), S_loc, NaN::quiet_NaN(), spa_s0.status};
+        const double qchi0 = math::chisq1FromNegLog10P(spa_s0.negLog10p);
         const double var_S = (qchi0 > 0.0)
             ? S_loc * S_loc / var_ratio0 / qchi0
             : std::numeric_limits<double>::quiet_NaN();
-        if (!std::isfinite(var_S) || var_S <= 0.0)
-            return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
+        if (!std::isfinite(var_S) || var_S <= 0.0) return wtDegenerate();
 
         // Closed-form var.int / cov from cached scalars (b = 0 ⇒ bm = meanR).
         const double bm_loc = m_shared->meanR;
@@ -1620,7 +1475,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
             + N_R * bm_loc * bm_loc;
         const double w1_dot_R_adj = m_shared->w1DotR - 0.5 * bm_loc;
         const double var_int_loc = R_adj_sq_sum * 2.0 * mu_loc * (1.0 - mu_loc);
-        if (var_int_loc <= 0.0) return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
+        if (var_int_loc <= 0.0) return wtDegenerate();
 
         double cov_val = w1_dot_R_adj * 2.0 * mu_loc * (1.0 - mu_loc);
         cov_val *= std::sqrt(var_S / var_int_loc);
@@ -1630,11 +1485,21 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         const double posInf =  std::numeric_limits<double>::infinity();
 
         // sigma² = 0: integrate over {S' ≤ -|s|} × ({S_bat ≤ lb_r0} ∪ {S_bat ≥ ub_r0}).
+        // The two half-infinite pieces are disjoint, so their sum is a
+        // logaddexp.  Branch A is where the switch to the log-domain integral
+        // changes the most: the linear routine sends a half-infinite Y range
+        // through math::bvnCdf, whose |r| < 0.925 arm is Genz's 6-point
+        // Plackett rule with ~1e-7 ABSOLUTE accuracy — no statement at all
+        // about a probability below 1e-7.  Measured against a long double
+        // Simpson reference it is wrong by twelve orders of magnitude at
+        // (h, rho, k) = (-8, -0.4, -6); pmvnorm2dHalfRectLog integrates the
+        // same conditional tail directly (RESULTS.md, Stage 1).
         const double s_bound  = -std::abs(S_loc / std::sqrt(var_ratio0));
         const double sb_lo    = lb / std::sqrt(var_ratio_w0);
         const double sb_hi    = ub / std::sqrt(var_ratio_w0);
-        const double p0 = math::pmvnorm2dHalfRect(s_bound, negInf, sb_lo, var_S, cov_val, var_Sbat)
-                       + math::pmvnorm2dHalfRect(s_bound, sb_hi, posInf, var_S, cov_val, var_Sbat);
+        const double lnP0 = math::logAddExp(
+            math::pmvnorm2dHalfRectLog(s_bound, negInf, sb_lo, var_S, cov_val, var_Sbat),
+            math::pmvnorm2dHalfRectLog(s_bound, sb_hi, posInf, var_S, cov_val, var_Sbat));
 
         // sigma² ≠ 0: inflate batch-test variance only; var_S and cov_val unchanged
         // (R LEAF.R branch 1 reuses var_S1 = var_S, cov_Sbat_S1 = cov_Sbat_S).
@@ -1642,11 +1507,19 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         const double s_bound1  = -std::abs(S_loc / std::sqrt(var_ratio1));
         const double sb_lo1    = lb / std::sqrt(var_ratio_w1);
         const double sb_hi1    = ub / std::sqrt(var_ratio_w1);
-        const double p1 = math::pmvnorm2dHalfRect(s_bound1, negInf, sb_lo1, var_S, cov_val, var_Sbat1)
-                       + math::pmvnorm2dHalfRect(s_bound1, sb_hi1, posInf, var_S, cov_val, var_Sbat1);
+        const double lnP1 = math::logAddExp(
+            math::pmvnorm2dHalfRectLog(s_bound1, negInf, sb_lo1, var_S, cov_val, var_Sbat1),
+            math::pmvnorm2dHalfRectLog(s_bound1, sb_hi1, posInf, var_S, cov_val, var_Sbat1));
 
-        const double p_con = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) / p_deno;
-        return {p_con, S_loc, z_loc};
+        // Both legs of Branch A are built from the same var_S and cov_val, so
+        // spa_s0 failing takes both (intercepted above) and the immaterial-leg
+        // rule can only ever fire here for a leg that
+        // math::pmvnorm2dHalfRectLog itself declined to integrate.
+        const ConditionalP con = conditionalP(
+            lnW1, lnM1, lnP1, spa_s0.status,
+            lnW0, lnM0, lnP0, spa_s0.status,
+            lnDeno);
+        return {con.negLog10p, S_loc, z_loc, con.status};
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -1664,18 +1537,45 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
     double ub = qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
 
-    double c_val = math::pnorm(ub / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true, true);
-    double d_val = math::pnorm(lb / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true, true);
-    double p_deno = TPR * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) * (1.0 - p_cut);
+    double c_val = math::pnormLog(ub / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true);
+    double d_val = math::pnormLog(lb / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true);
+    // m1 / m0: the conditioning mass P(S_bat in [lb, ub] | component) each
+    // mixture component carries.  m0 is 1 - p_cut exactly, because lb and ub
+    // ARE the +/-(1 - p_cut/2) quantiles of the sigma2 = 0 batch law; m1 is
+    // the same interval under the sigma2-inflated law, i.e. Phi(ub') - Phi(lb'),
+    // which the two pnormLog calls above already deliver as logarithms.
+    //
+    // Stage 6: they stop being exponentiated.  ln m1 = logSubExp(c_val, d_val)
+    // is the same difference of two CDFs, taken where the two are held; the
+    // linear spelling `exp(d)*(exp(c-d)-1)` had to reassociate around expm1
+    // for exactly the same reason and could still overflow for a wide enough
+    // acceptance interval.  p_deno follows as one logaddexp, and the pin that
+    // fixed its multiplication order goes with the linear quantity it was
+    // protecting; the shift is ~1e-16 relative on a denominator.
+    const double lnW1   = std::log(TPR);
+    const double lnW0   = std::log1p(-TPR);
+    const double lnM1   = math::logSubExp(c_val, d_val);
+    const double lnM0   = std::log1p(-p_cut);
+    const double lnDeno = math::logAddExp(lnW1 + lnM1, lnW0 + lnM0);
 
     // Internal SPA (no sigma2)
     SpaResult spa_s0 = spaGOneSnpHomoFromScalars(
-        R_dot_g, gSum, Nint, m_shared->outlier, m_shared->nNonOutlier,
-        m_shared->sumR_nonOutlier, m_shared->sumR2_nonOutlier,
+        R_dot_g, gSum, Nint, *m_shared,
         m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
         mu_ext, obs_ct, b, 0.0, var_ratio0, m_shared->SPA_Cutoff);
-    double qchi = math::qchisq(spa_s0.pval, 1.0, false, false);
-    double var_S = (qchi > 0.0) ? S * S / var_ratio0 / qchi : NaN::quiet_NaN();
+    // D2, as in Branch A: the conditional branches recover a variance by
+    // inverting the SPA p-value, so a failed saddlepoint must be intercepted
+    // before the inversion.  Unlike Branch A it does not abort the marker:
+    // leaving var_S non-finite makes this leg's joint probability non-finite,
+    // and conditionalP decides from the interval that leg spans whether the
+    // marker still has an answer.  Stage 4 inverts the magnitude analytically
+    // (`chisq1FromNegLog10P`) instead of the linear p through `qchisq`, whose
+    // 1e-300 argument clamp capped the recovered variance at q = 1373.87.
+    double var_S = NaN::quiet_NaN();
+    if (std::isfinite(spa_s0.negLog10p)) {
+        const double qchi = math::chisq1FromNegLog10P(spa_s0.negLog10p);
+        if (qchi > 0.0) var_S = S * S / var_ratio0 / qchi;
+    }
 
     // Covariance between S_bat and S — closed form from cached scalars.
     // sum((R - bm)²)  = sqSumR - 2·bm·sumR + N·bm²,  bm = (1-b)·meanR
@@ -1685,13 +1585,13 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     const double R_adj_sq_sum = m_shared->sqSumR - 2.0 * bm * m_shared->sumR + N_R * bm * bm;
     const double w1_dot_R_adj = m_shared->w1DotR - 0.5 * bm;
     double var_int_denom = R_adj_sq_sum * 2.0 * mu * (1.0 - mu) + 4.0 * b * b * m_shared->sumR * m_shared->sumR * var_mu_ext;
-    if (var_int_denom <= 0.0) return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
+    if (var_int_denom <= 0.0) return wtDegenerate();
 
     double cov_val = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_shared->sumR * var_mu_ext;
     cov_val *= std::sqrt(var_S / var_int_denom);
     double z = S / std::sqrt(var_S);
 
-    double p0 = math::pmvnorm2dHalfRect(
+    const double lnP0 = math::pmvnorm2dHalfRectLog(
         -std::abs(S / std::sqrt(var_ratio0)),
         lb / std::sqrt(var_ratio_w0),
         ub / std::sqrt(var_ratio_w0),
@@ -1702,16 +1602,26 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
 
     // External SPA (with sigma2)
     SpaResult spa_s1 = spaGOneSnpHomoFromScalars(
-        R_dot_g, gSum, Nint, m_shared->outlier, m_shared->nNonOutlier,
-        m_shared->sumR_nonOutlier, m_shared->sumR2_nonOutlier,
+        R_dot_g, gSum, Nint, *m_shared,
         m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
         mu_ext, obs_ct, b, sigma2, var_ratio1, m_shared->SPA_Cutoff);
-    double var_S1 = S * S / var_ratio1 / math::qchisq(spa_s1.pval, 1.0, false, false);
+    // As for spa_s0: a failed saddlepoint leaves var_S1 non-finite rather than
+    // aborting the marker, and the inversion is the analytic df = 1 quantile of
+    // the magnitude (Stage 4).
+    double var_S1 = NaN::quiet_NaN();
+    if (std::isfinite(spa_s1.negLog10p))
+        var_S1 = S * S / var_ratio1 / math::chisq1FromNegLog10P(spa_s1.negLog10p);
     double cov_val1 = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_shared->sumR * (var_mu_ext + sigma2);
     cov_val1 *= std::sqrt(var_S1 / var_int_denom);
     double var_Sbat1 = var_Sbat + sigma2;
 
-    double p1 = math::pmvnorm2dHalfRect(
+    // This is the call that loses the sigma2 > 0 leg on a degenerate batch
+    // fit.  cov_val1 carries sigma2 linearly while sd(S_bat1) carries it as a
+    // square root, so rho1 grows like sigma and passes 1: the triple is not a
+    // covariance matrix, math::pmvnorm2dHalfRectLog returns NaN, and the leg
+    // has no joint probability — with the saddlepoint that produced var_S1
+    // having converged perfectly well.  See the note on kImmaterialLeg.
+    const double lnP1 = math::pmvnorm2dHalfRectLog(
         -std::abs(S / std::sqrt(var_ratio1)),
         lb / std::sqrt(var_ratio_w1),
         ub / std::sqrt(var_ratio_w1),
@@ -1720,8 +1630,14 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         var_Sbat1
     );
 
-    double p_con = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) / p_deno;
-    return {p_con, S, z};
+    const ConditionalP con = conditionalP(
+        lnW1, lnM1, lnP1, spa_s1.status,
+        lnW0, lnM0, lnP0, spa_s0.status,
+        lnDeno);
+    // z is the plain normal statistic S/sd(S); it is not a saddlepoint output
+    // and is reported whether or not the conditional assembly succeeded, as
+    // the predecessor did.
+    return {con.negLog10p, S, z, con.status};
 }
 
 // ======================================================================

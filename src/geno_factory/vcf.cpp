@@ -265,7 +265,7 @@ void VcfCursor::getGenotypes(
     double &altFreq,
     double &altCounts,
     double &missingRate,
-    double &hweP,
+    double &log10pHwe,
     double &maf,
     double &mac,
     std::vector<uint32_t> &indexForMissing
@@ -313,11 +313,11 @@ void VcfCursor::getGenotypes(
         altFreq = gs.altFreq;
         altCounts = gs.altCounts;
         missingRate = gs.missingRate;
-        hweP = gs.hweP;
+        log10pHwe = gs.log10pHwe;
         maf = gs.maf;
         mac = gs.mac;
         // Dosage-aware AF from the DS sum (un-binned).  Hard-call DS reproduces
-        // the count-based values exactly; hweP comes from statsFromCounts on the
+        // the count-based values exactly; log10pHwe comes from statsFromCounts on the
         // plink2 hard-call-threshold classification, missingRate stays NaN-only.
         const uint32_t nNonMissing = nUsed - nMissing;
         if (nNonMissing > 0) {
@@ -383,7 +383,7 @@ void VcfCursor::getGenotypes(
     altFreq = gs.altFreq;
     altCounts = gs.altCounts;
     missingRate = gs.missingRate;
-    hweP = gs.hweP;
+    log10pHwe = gs.log10pHwe;
     maf = gs.maf;
     mac = gs.mac;
     // GT dosages are integral (0/1/2), so this reproduces the count-based AF

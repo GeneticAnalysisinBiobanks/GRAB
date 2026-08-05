@@ -19,6 +19,7 @@
 #include "engine/marker.hpp"
 #include "util/null_model.hpp"
 #include "util/outlier.hpp"
+#include "util/spa.hpp"
 
 class GenoMeta;
 class SparseGRM;
@@ -33,6 +34,13 @@ struct WtCoxGRefInfo {
     double TPR = std::numeric_limits<double>::quiet_NaN();
     double sigma2 = std::numeric_limits<double>::quiet_NaN();
     double pvalue_bat = std::numeric_limits<double>::quiet_NaN();
+    // -log10 of the same batch-effect p, taken in the log domain rather than
+    // as -log10(pvalue_bat): the linear form underflows to exactly zero past
+    // |z_adj| = 38.6 and its logarithm would be +Inf, which invariant C1
+    // forbids in a LOG10P-family column.  `pvalue_bat` itself stays linear
+    // because its consumers are the input-side comparisons against `p_cut`
+    // and the empirical pass-rate cutoffs (decision D8).
+    double log10p_bat = std::numeric_limits<double>::quiet_NaN();
     double w_ext = std::numeric_limits<double>::quiet_NaN();
     double var_ratio_w0 = 1.0;
     double var_ratio_int = 1.0;
@@ -71,6 +79,36 @@ struct WtCoxGShared {
     int nNonOutlier;
     double sumR_nonOutlier;
     double sumR2_nonOutlier;
+
+    // ── P7: the centred outlier residuals, precomputed per weight b ──
+    //
+    // The saddlepoint CGF is built from r_i = R_i − bm with bm = (1−b)·meanR.
+    // Neither `outlier.residOutlier` nor `meanR` depends on the marker, so
+    // `residCentered` is a pure function of (cluster, b) — yet it was rebuilt
+    // as an Eigen::ArrayXd of length nOutlier on every SPA-branch entry, once
+    // per EXT/NOEXT variant per marker, and twice more inside Branch B
+    // (01_findings.md P7).
+    //
+    // b takes only a handful of distinct values: 0 (every NOEXT call, the
+    // no-external fallback and the whole of Branch A) plus the per-MAF-group
+    // `w_ext` weights fitted in Phase 2, of which there is one per MAF group.
+    // They are all known once the reference map exists, i.e. in the
+    // WtCoxGMethod constructor, so the table is built there, on the main
+    // thread, and shared by every worker clone through the enclosing
+    // shared_ptr<const WtCoxGShared>.  Ascending in `first`.
+    //
+    // LEAF gets the per-cluster half for free: it owns one WtCoxGMethod, and
+    // therefore one WtCoxGShared, per k-means cluster.
+    std::vector<std::pair<double, Eigen::ArrayXd> > residCenteredByB;
+
+    // Centred outlier residuals for weight `b`.  Returns nullptr when `b` is
+    // absent from the table, which the caller must then handle by computing
+    // into its own scratch; in practice every reachable b is present.
+    const double *residCenteredFor(double b) const {
+        for (const auto &e : residCenteredByB)
+            if (e.first == b) return e.second.data();
+        return nullptr;
+    }
 };
 
 // ======================================================================
@@ -105,8 +143,68 @@ class WtCoxGMethod : public MethodBase {
 // ---- MethodBase interface ----
     std::unique_ptr<MethodBase> clone() const override;
 
+// LOG10P_EXT LOG10P_NOEXT Z_EXT Z_NOEXT Z_Norm_EXT Z_Norm_NOEXT
+// LOG10P_BAT PI_BAT VAR_BAT SPA_STATUS_EXT SPA_STATUS_NOEXT.
+//
+// LOG10P_* is −log10(P) and, since log10p_unify Stage 8, the sole p-value
+// column of its leg (decision D1); a consumer that needs the linear p takes
+// 10^(−LOG10P).  It is computed through spa::bnTailLog / spa::assemble so that
+// it stays meaningful past the point where the linear-scale tail underflows
+// (Φ(−38.5) flushes to zero, i.e. p ~ 1e-316).  On the two conditional
+// branches, where the reported quantity is a bivariate-normal integral rather
+// than a saddlepoint tail, it is the log-domain magnitude of that integral.
+//
+// LOG10P_BAT is the batch-effect test's own magnitude — the column was called
+// P_BAT and carried the linear p until Stage 8.  It is formed at its source
+// (wtcoxg.cpp) by spa::normalTwoSidedLog rather than as −log10 of the linear
+// p, which would be +Inf past |z_adj| = 38.6 and violate invariant C1.
+//
+// SPA_STATUS_* carries the spa::Status of the saddlepoint underlying that
+// p-value, as the integer enumerator rather than the token spa::statusName
+// spells: MethodBase hands the engine a std::vector<double> and every result
+// cell is formatted by numToChars, so a string column would require a new hook
+// in the MethodBase contract, which dev-notes/methods/spa_unify/02_design.md
+// places out of scope for the per-method migration stages.  The mapping is
+// spa::Status's own, and is the encoding Stages 3-5 gave the other six
+// methods:
+//
+//     0 SPA_OK               3 FALLBACK_MAXITER      7 NA_POST_FAIL
+//     1 NORMAL               4 FALLBACK_GUARD_TEMP   8 NA_NO_TEST
+//     2 SPA_W_SINGULAR       5 FALLBACK_GUARD_CURV
+//                            6 FALLBACK_NONFINITE
+//
+// The order is a contract (log10p_unify decision D4): SPA_STATUS <= 2 means
+// LOG10P is trustworthy, 3..6 that the saddlepoint failed and LOG10P is the
+// substituted two-sided normal tail -log10(2*Phi(-|Z_Norm|)) -- the estimator
+// the saddlepoint exists to correct, hence the less accurate one, so filter
+// with SPA_STATUS <= 2 before judging significance -- and >= 7 that LOG10P is
+// NA.  What is and is not measured about that substitution is recorded once,
+// on spa::statusIsFallback in src/util/spa.hpp; in particular it does NOT
+// concentrate at low MAC, which measurement refutes.
+//
+// log10p_unify Stage 2 split what used to be one NONFINITE code into the three
+// different events WtCoxG produced under it: a saddlepoint that left the reals
+// (6 FALLBACK_NONFINITE), a marker for which no test exists at all -- MAC below
+// 10, a non-positive score variance, an unmatched batch-effect p-value
+// (8 NA_NO_TEST), and a conditional branch whose bivariate-normal integral was
+// handed a covariance pair that is not positive semi-definite (7 NA_POST_FAIL,
+// 177 markers of the bundled Time_Event fixture).
+//
+// On the two conditional branches the reported p-value is a two-component
+// mixture, and the two components have separate saddlepoints.  When one
+// component cannot be evaluated but the interval its unknown contribution
+// spans is provably narrower than the precision the answer is printed to,
+// wtcoxg_cond::conditionalP (src/wtcoxg/conditional_p.hpp) drops it and
+// reports the SURVIVING component's status — which is the status of the
+// saddlepoint that actually produced the number in the P column, and which
+// keeps the invariant above intact.  A component whose loss can move the
+// answer still takes the marker to NA with a failure status.
+//
+// Since log10p_unify Stage 8 the linear P_EXT / P_NOEXT columns are gone
+// (decision D1) and LOG10P_EXT / LOG10P_NOEXT are the sole p-values; P_BAT is
+// renamed LOG10P_BAT and carries the magnitude of the batch-effect test.
     int resultSize() const override {
-        return 9;
+        return 11;
     }
 
     std::string getHeaderColumns() const override;
@@ -122,10 +220,13 @@ class WtCoxGMethod : public MethodBase {
 
 // For LEAF: compute ext/noext results with raw scores for meta-analysis.
     struct DualResult {
-        double p_ext, p_noext;
+        // −log10 of the two conditional p-values.  The linear pair went with
+        // the P column in log10p_unify Stage 8 (decision D1).
+        double log10p_ext, log10p_noext;
         double score_ext, score_noext;
         double gSum;     // ALT-allele count within this cluster's subjects
         int    N;        // number of subjects in this cluster
+        spa::Status status_ext, status_noext;
     };
 
     DualResult computeDual(
@@ -188,10 +289,22 @@ class WtCoxGMethod : public MethodBase {
 
   private:
     struct WtResult {
-        double pval;
+        double negLog10p;
         double score;
         double zscore;
+        spa::Status status;
     };
+
+// The all-NA result of a marker for which no test exists.
+    static WtResult wtDegenerate();
+
+// Push the 11 result cells in header order.
+    static void pushResult(
+        std::vector<double> &out,
+        const WtResult &ext,
+        const WtResult &noext,
+        const WtCoxGRefInfo &info
+    );
 
 // Core SPA test for one marker with external adjustment.
     WtResult wtCoxGTest(

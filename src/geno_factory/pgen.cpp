@@ -510,7 +510,7 @@ void PgenCursor::getGenotypes(
     double &altFreq,
     double &altCounts,
     double &missingRate,
-    double &hweP,
+    double &log10pHwe,
     double &maf,
     double &mac,
     std::vector<uint32_t> &indexForMissing
@@ -542,7 +542,7 @@ void PgenCursor::getGenotypes(
         altFreq = gs.altFreq;
         altCounts = gs.altCounts;
         missingRate = gs.missingRate;
-        hweP = gs.hweP;
+        log10pHwe = gs.log10pHwe;
         maf = gs.maf;
         mac = gs.mac;
         return;
@@ -553,7 +553,7 @@ void PgenCursor::getGenotypes(
     // the plink2 hard-call-threshold classification of the overlaid dosages,
     // which reproduces plink2's stored genovec hard-call track for a default-
     // threshold import (both apply the same rule to the same 1/16384-unit
-    // dosages), so hweP matches plink2 --hardy.
+    // dosages), so log10pHwe matches plink2 --hardy.
     double dosageSum = 0.0;
     uint32_t nNonMissing = 0;
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0;
@@ -573,7 +573,7 @@ void PgenCursor::getGenotypes(
         }
     }
     missingRate = static_cast<double>(sampleCt - nNonMissing) / sampleCt;
-    hweP = HweExact(nHet, nHomAlt, nHomRef);
+    log10pHwe = hweNegLog10P(nHet, nHomAlt, nHomRef);
     if (nNonMissing > 0) {
         const double n2 = 2.0 * static_cast<double>(nNonMissing);
         altCounts = dosageSum;

@@ -7,13 +7,16 @@
 //
 //     trait ~ [covar] + g + g:E          (model doc §4.2, R/SPAGxECCT.R:620)
 //
-// and reports  P = CCT(p_spa, p_wald)  (Cauchy combination; math::cauchyCombine).
+// and reports  P = CCT(p_spa, p_wald)  (Cauchy combination; the log-domain
+// math::cauchyCombineLog10, over the two magnitudes — both legs arrive as
+// magnitudes since log10p_unify Stage 7).
 //
 // No GRAB2 residual fitter exposes coefficient covariance, so the per-marker
 // Wald refit is net-new for every trait type.  The standard-model fitters that
-// return the Wald p-value of the last coefficient live in src/util/wald.hpp
-// (namespace wald), shared so that any method needing a per-marker Wald refit
-// can use them without depending on SPAGxE.  This header keeps only the G×E
+// return the Wald test of the last coefficient live in src/util/wald.hpp
+// (namespace wald), as L = −log10 P, shared so that any method needing a
+// per-marker Wald refit can use them without depending on SPAGxE.  This
+// header keeps only the G×E
 // dispatcher: it assembles the full-interaction design, filters to complete
 // cases, and calls the appropriate wald:: fitter.  The shared residual fitters
 // in src/util/regression.cpp are unrelated and left untouched.
@@ -49,7 +52,8 @@ struct WaldData {
     Eigen::VectorXd event;  // (n) Cox event indicator {0,1} (unused otherwise)
 };
 
-// Two-sided Wald p-value of the G:E interaction coefficient in the full model
+// Magnitude L = −log10 P of the two-sided Wald p-value of the G:E interaction
+// coefficient in the full model
 //   trait ~ [covar] + g + g:E ,
 // where the interaction regressor is the element-wise product g∘E.  Uses a
 // Student-t reference for Linear (matching lm) and a normal reference for
@@ -59,7 +63,7 @@ struct WaldData {
 // combination.  `trait == None` also returns NaN.
 // `ordInfo` selects the ordinal covariance estimator (default: observed
 // information, matching clm); it is ignored for the other trait types.
-double waldInteractionPval(
+double waldInteractionLog10P(
     const WaldData &wd,
     const Eigen::Ref<const Eigen::VectorXd> &g,
     const Eigen::Ref<const Eigen::VectorXd> &E,

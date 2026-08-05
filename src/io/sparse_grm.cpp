@@ -234,6 +234,13 @@ SparseGRM SparseGRM::fromGCTA(
 }
 
 void SparseGRM::buildDiagonal() {
+    // Range-check FIRST.  buildDiagonal uses NaN as its "no entry" sentinel,
+    // so a file whose diagonal VALUE is literally `nan` — strtod accepts the
+    // spelling — would otherwise be counted as a missing diagonal and
+    // reported as such, naming the wrong condition and making the non-finite
+    // check below unreachable for exactly the entries it matters most for.
+    checkValueRange();
+
     constexpr double kNoDiag = std::numeric_limits<double>::quiet_NaN();
     m_diagonal.assign(m_nSubj, kNoDiag);
     for (const auto &e : m_entries) {
@@ -245,6 +252,66 @@ void SparseGRM::buildDiagonal() {
         throw std::runtime_error("SparseGRM: " + std::to_string(missing) +
                                  " of " + std::to_string(m_nSubj) +
                                  " subjects have no diagonal entry");
+    }
+}
+
+// A non-finite value is fatal: strtod accepts "nan" and "inf" and every
+// consumer would propagate them silently into a quadratic form.
+//
+// Out-of-range values are reported rather than rejected, because a GRM that
+// violates its own convention is still arithmetically usable and refusing it
+// would be a policy decision about the user's data.  VALUE is the genomic
+// relationship 2*phi, so the convention bounds both ends:
+//
+//   off-diagonal  0 <= 2*phi <= 1     a monozygotic pair or duplicate sample
+//                                     sits exactly at 1
+//   diagonal      0 <= 1 + F <= 2     F is a probability
+//
+// Values outside those ranges mean the matrix is not a pedigree kinship
+// estimate; the usual causes are pooled allele frequencies across ancestries,
+// an LD-unpruned marker panel, or rare variants dominating the panel.  The
+// off-diagonal bound matters because SPAGRM's IBD model is undefined above it
+// (see the derivation in spagrm/ibd.hpp).  The diagonal bound matters because
+// the diagonal is load-bearing in every quadratic form: quadForm's diagonal
+// term is G_ii * R_i^2, so an out-of-range G_ii scales one subject's
+// contribution to the score variance by the same factor.
+void SparseGRM::checkValueRange() const {
+    uint32_t nOffOver = 0, nDiagOut = 0;
+    double maxOff = 0.0, minDiag = 0.0, maxDiag = 0.0;
+    bool haveDiag = false;
+    for (const auto &e : m_entries) {
+        if (!std::isfinite(e.value)) {
+            throw std::runtime_error(
+                "SparseGRM: non-finite value at entry (" +
+                std::to_string(e.row) + ", " + std::to_string(e.col) + ")");
+        }
+        if (e.row == e.col) {
+            if (!haveDiag) { minDiag = maxDiag = e.value; haveDiag = true; }
+            if (e.value < minDiag) minDiag = e.value;
+            if (e.value > maxDiag) maxDiag = e.value;
+            if (e.value < 0.0 || e.value > 2.0) ++nDiagOut;
+            continue;
+        }
+        if (e.value > maxOff) maxOff = e.value;
+        if (e.value > 1.0) ++nOffOver;
+    }
+    if (nOffOver > 0) {
+        warnMsg(
+            "  Sparse GRM: %u off-diagonal entries exceed 1.0 (max %.6g).  "
+            "VALUE is the genomic relationship 2*phi, which no relationship "
+            "can exceed.  Rebuild the GRM from LD-pruned common variants "
+            "within a single ancestry.",
+            nOffOver, maxOff
+        );
+    }
+    if (nDiagOut > 0) {
+        warnMsg(
+            "  Sparse GRM: %u diagonal entries lie outside [0, 2] "
+            "(range %.6g to %.6g).  A diagonal is 1 + F and F is a "
+            "probability.  The diagonal scales each subject's contribution "
+            "to every score variance.",
+            nDiagOut, minDiag, maxDiag
+        );
     }
 }
 
@@ -291,20 +358,24 @@ double SparseGRM::bilinearForm(
     return sum;
 }
 
-double SparseGRM::spaVariance(
-    const double *R,
-    uint32_t n
-) const {
-    if (n != m_nSubj) throw std::runtime_error("SparseGRM::spaVariance: size mismatch");
-    double covSum = 0.0;
-    for (const auto &e : m_entries)
-        covSum += e.value * R[e.row] * R[e.col];
-    // dot(R, R)
-    double dotRR = 0.0;
-    for (uint32_t i = 0; i < n; ++i)
-        dotRR += R[i] * R[i];
-    return 2.0 * covSum - dotRR;
-}
+// SparseGRM::spaVariance is deleted.  It computed
+//
+//     2 * sum_stored(v * R_i * R_j)  -  sum_i R_i^2
+//         =  R' G R  +  sum_i (G_ii - 1) * R_i^2
+//
+// which is the quadratic form R' G R its two call sites (SPAGxE+ and
+// SPAmixPlus) documented it as, but only when every diagonal entry is
+// exactly 1.  WtCoxG computed the same quantity through SparseGRM::quadForm,
+// so the repository carried two implementations of one procedure that
+// disagreed on any GRM whose diagonal is not unit — including the bundled
+// examples/1kg.grm.sp, whose diagonal spans 0.4597 to 3.8087, where the
+// per-subject overweight (2d-1)/d reaches 1.74x.  Per the unification rule
+// there is now one implementation, quadForm, and both call sites use it.
+//
+// A GCTA-convention diagonal is 1 + F, so retaining it is also the more
+// faithful model: under Hardy-Weinberg Var(G_i) = 2*mu*(1-mu)*(1 + F_i).
+// It is what SPAGRM's own quadratic forms already use (grm_null.cpp's
+// familyQuadForm and its singleton loop both read the stored diagonal).
 
 SparseGRM SparseGRM::load(
     const std::string &grabFile,

@@ -40,6 +40,7 @@ void markerEngine(
 ) {
     const size_t nTotalChunks = genoData.chunkIndices().size();
     const int effective_nthreads = std::min(nthreads, static_cast<int>(nTotalChunks));
+    const double hweLog10Cutoff = hweLog10CutoffOf(hweCutoff);
 
     infoMsg("Number of subjects in the input file: %u", genoData.nSubjInFile());
     infoMsg("Number of subjects to test: %u", genoData.nSubjUsed());
@@ -112,7 +113,7 @@ void markerEngine(
             const int batchB = meth.preferredBatchSize();
 
             struct MarkerMeta {
-                double altFreq, missingRate, mac, hweP;
+                double altFreq, missingRate, mac, log10pHwe;
                 std::string_view chr, ref, alt, marker;
                 uint32_t pos;
                 bool passQC;
@@ -155,25 +156,25 @@ void markerEngine(
                         for (size_t bi = 0; bi < blen; ++bi) {
                             const size_t i = bstart + bi;
                             double altFreq = NAN, altCounts = NAN;
-                            double missingRate = NAN, hweP = NAN;
+                            double missingRate = NAN, log10pHwe = NAN;
                             double maf = NAN, mac = NAN;
                             indexForMissing.clear();
 
                             cursor.getGenotypes(gIdx[i], GVec, altFreq, altCounts,
-                                                missingRate, hweP, maf, mac, indexForMissing);
+                                                missingRate, log10pHwe, maf, mac, indexForMissing);
 
                             auto &mi = batchMeta[bi];
                             mi.altFreq = altFreq;
                             mi.missingRate = missingRate;
                             mi.mac = mac;
-                            mi.hweP = hweP;
+                            mi.log10pHwe = log10pHwe;
                             mi.chr = gd.chr(gIdx[i]);
                             mi.ref = gd.ref(gIdx[i]);
                             mi.alt = gd.alt(gIdx[i]);
                             mi.marker = gd.markerId(gIdx[i]);
                             mi.pos = gd.pos(gIdx[i]);
                             mi.passQC = !(missingRate > missingCutoff || maf < minMafCutoff ||
-                                          mac < minMacCutoff || (hweCutoff > 0 && hweP < hweCutoff));
+                                          mac < minMacCutoff || (hweCutoff > 0 && log10pHwe > hweLog10Cutoff));
 
                             if (mi.passQC) {
                                 const double imputeG = 2.0 * altFreq;
@@ -197,11 +198,11 @@ void markerEngine(
                             if (!mi.passQC) {
                                 formatLineNA(out, fmtBuf, mi.chr, mi.pos, mi.marker,
                                              mi.ref, mi.alt, mi.missingRate, mi.altFreq,
-                                             mi.mac, mi.hweP, naSuffix);
+                                             mi.mac, mi.log10pHwe, naSuffix);
                             } else {
                                 formatLine(out, fmtBuf, mi.chr, mi.pos, mi.marker,
                                            mi.ref, mi.alt, mi.missingRate, mi.altFreq,
-                                           mi.mac, mi.hweP, batchResults[ri++]);
+                                           mi.mac, mi.log10pHwe, batchResults[ri++]);
                             }
                         }
                     }
@@ -209,11 +210,11 @@ void markerEngine(
                     // ── Original single-marker path ────────────────────────
                     for (size_t i = 0; i < gIdx.size(); ++i) {
                         double altFreq = NAN, altCounts = NAN;
-                        double missingRate = NAN, hweP = NAN;
+                        double missingRate = NAN, log10pHwe = NAN;
                         double maf = NAN, mac = NAN;
                         indexForMissing.clear();
 
-                        cursor.getGenotypes(gIdx[i], GVec, altFreq, altCounts, missingRate, hweP, maf, mac,
+                        cursor.getGenotypes(gIdx[i], GVec, altFreq, altCounts, missingRate, log10pHwe, maf, mac,
                                             indexForMissing);
 
                         const std::string_view chr = gd.chr(gIdx[i]);
@@ -223,11 +224,11 @@ void markerEngine(
                         const uint32_t pos = gd.pos(gIdx[i]);
 
                         const bool passQC = !(missingRate > missingCutoff || maf < minMafCutoff ||
-                                              mac < minMacCutoff || (hweCutoff > 0 && hweP < hweCutoff));
+                                              mac < minMacCutoff || (hweCutoff > 0 && log10pHwe > hweLog10Cutoff));
 
                         if (!passQC) {
                             formatLineNA(out, fmtBuf, chr, pos, marker, ref, alt,
-                                         missingRate, altFreq, mac, hweP, naSuffix);
+                                         missingRate, altFreq, mac, log10pHwe, naSuffix);
                             continue;
                         }
 
@@ -241,7 +242,7 @@ void markerEngine(
                         meth.getResultVec(GVec, altFreq, static_cast<int>(i), rv);
 
                         formatLine(out, fmtBuf, chr, pos, marker, ref, alt,
-                                   missingRate, altFreq, mac, hweP, rv);
+                                   missingRate, altFreq, mac, log10pHwe, rv);
                     }
                 }
 
@@ -390,6 +391,7 @@ void multiPhenoEngineRange(
     const size_t K = tasks.size();
     const size_t nChunks = chunkEnd - chunkStart;
     const int effective_nthreads = std::min(nthreads, static_cast<int>(nChunks));
+    const double hweLog10Cutoff = hweLog10CutoffOf(hweCutoff);
     const uint32_t nUnion = genoData.nSubjUsed();
     const auto &allChunks = genoData.chunkIndices();
 
@@ -726,7 +728,7 @@ void multiPhenoEngineRange(
             // Heap-allocated once per thread (was a [64] stack array), so the
             // fused GEMM window B is no longer capped at 64.
             struct FusedMarkerQC {
-                double missingRate, altFreq, mac, hweP;
+                double missingRate, altFreq, mac, log10pHwe;
                 bool pass;
             };
             std::vector<char> winIsDosage(B);    // per-marker dosage flag
@@ -906,13 +908,13 @@ void multiPhenoEngineRange(
                                 wmQC[bi].missingRate = gs.missingRate;
                                 wmQC[bi].altFreq = gs.altFreq;
                                 wmQC[bi].mac = gs.mac;
-                                wmQC[bi].hweP = gs.hweP;
+                                wmQC[bi].log10pHwe = gs.log10pHwe;
 
                                 double maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
                                 wmQC[bi].pass = !(maf < minMafCutoff ||
                                                   gs.mac < minMacCutoff ||
                                                   gs.missingRate > missingCutoff ||
-                                                  (hweCutoff > 0 && gs.hweP < hweCutoff));
+                                                  (hweCutoff > 0 && gs.log10pHwe > hweLog10Cutoff));
 
                                 if (wmQC[bi].pass) {
                                     passAltFreqs.push_back(gs.altFreq);
@@ -957,7 +959,7 @@ void multiPhenoEngineRange(
                                                    wmQC[bi].missingRate,
                                                    wmQC[bi].altFreq,
                                                    wmQC[bi].mac,
-                                                   wmQC[bi].hweP,
+                                                   wmQC[bi].log10pHwe,
                                                    fusedResultsBuf[ri++]);
                                     } else {
                                         formatLineNA(phenoOut[p], fmtBuf, wm.chr, wm.pos,
@@ -965,7 +967,7 @@ void multiPhenoEngineRange(
                                                      wmQC[bi].missingRate,
                                                      wmQC[bi].altFreq,
                                                      wmQC[bi].mac,
-                                                     wmQC[bi].hweP,
+                                                     wmQC[bi].log10pHwe,
                                                      naSuffixes[p]);
                                     }
                                 }
@@ -1009,7 +1011,7 @@ void multiPhenoEngineRange(
                                 const bool pass = !(gs.missingRate > missingCutoff ||
                                                     pMaf < minMafCutoff ||
                                                     gs.mac < minMacCutoff ||
-                                                    (hweCutoff > 0 && gs.hweP < hweCutoff));
+                                                    (hweCutoff > 0 && gs.log10pHwe > hweLog10Cutoff));
                                 nfWinPassQC[bi] = pass ? 1 : 0;
 
                                 if (pass) {
@@ -1042,7 +1044,7 @@ void multiPhenoEngineRange(
                                                    nfWinStats[bi].missingRate,
                                                    nfWinStats[bi].altFreq,
                                                    nfWinStats[bi].mac,
-                                                   nfWinStats[bi].hweP,
+                                                   nfWinStats[bi].log10pHwe,
                                                    nfBatchResultsBuf[ri++]);
                                     } else {
                                         formatLineNA(phenoOut[p], fmtBuf, wm.chr, wm.pos,
@@ -1050,7 +1052,7 @@ void multiPhenoEngineRange(
                                                      nfWinStats[bi].missingRate,
                                                      nfWinStats[bi].altFreq,
                                                      nfWinStats[bi].mac,
-                                                     nfWinStats[bi].hweP,
+                                                     nfWinStats[bi].log10pHwe,
                                                      naSuffixes[p]);
                                     }
                                 }

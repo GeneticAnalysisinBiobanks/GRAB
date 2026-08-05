@@ -14,9 +14,9 @@
 //   dev-notes/methods/SPAGxE_claude_impl_plan  phase-by-phase build plan
 //
 // Base vs +: a sparse GRM Φ enters only through the score variance, as a
-// retrospective quadratic form  xᵀΦx  evaluated by SparseGRM::spaVariance
-// (2·Σstored − Σx²).  The base (unrelated) path is exactly the Φ = identity
-// special case (spaVariance → Σx²), so a single code path serves both:
+// retrospective quadratic form  xᵀΦx  evaluated by SparseGRM::quadForm.
+// The base (unrelated) path is exactly the Φ = identity
+// special case (phiQuad → Σx²), so a single code path serves both:
 //   marginal   Var(S_G)      = 2q(1−q)·RᵀΦR
 //   Branch A   λ_GRM         = RᵀΦR_E / RᵀΦR ,  w = (E − λ_GRM)R
 //              Var(S_GxE)     = 2q(1−q)·wᵀΦw
@@ -70,20 +70,46 @@ struct AFData {
 // ══════════════════════════════════════════════════════════════════════
 //
 // Output schema (mirrors SAGELD's multi-env layout, src/spagrm/sageld.cpp):
-//   col 0..3        :  P_G  Z_G  BETA_G  SE_G        marginal genetic block
+//   col 0..4        :  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+//                                                    marginal genetic block
 //                                                    (always normal-approx)
-//   col 4 + 6·e+0   :  P_Gx<Ee>       final G×E p-value.  Branch A (and the
-//                                     SPAGxE+ GRM / residual-mode paths): the
+//   col 5 + 7·e+0   :  LOG10P_Gx<Ee>  final G×E p-value, as the magnitude
+//                                     −log10(P).  Branch A (and the SPAGxE+
+//                                     GRM / residual-mode paths): the
 //                                     SPA/normal score p.  Branch B, base path:
 //                                     CCT(p_spa, p_wald).
-//   col 4 + 6·e+1   :  P_Wald_Gx<Ee>  Branch-B Wald p of the G:E coefficient
-//                                     (NaN in Branch A, the GRM path, and
-//                                     residual mode — no Wald there).
-//   col 4 + 6·e+2   :  Z_Gx<Ee>       p-consistent z of P_Gx<Ee>: 2·pnorm(−|Z|)==P
-//   col 4 + 6·e+3   :  Z_Norm_Gx<Ee>  raw score z (Score/√Var, SPA-uncalibrated)
-//   col 4 + 6·e+4   :  BETA_Gx<Ee>    score-derived interaction effect
-//   col 4 + 6·e+5   :  SE_Gx<Ee>      score-derived interaction SE
-// resultSize() = 4 + 6·nEnv.
+//   col 5 + 7·e+1   :  LOG10P_Wald_Gx<Ee>  magnitude of the Branch-B Wald p of
+//                                     the G:E coefficient (NaN in Branch A, the
+//                                     GRM path, and residual mode — no Wald there).
+//   col 5 + 7·e+2   :  Z_Gx<Ee>       p-consistent z: 2·pnorm(−|Z|)==10^(−LOG10P)
+//   col 5 + 7·e+3   :  Z_Norm_Gx<Ee>  raw score z (Score/√Var, SPA-uncalibrated)
+//   col 5 + 7·e+4   :  BETA_Gx<Ee>    score-derived interaction effect
+//   col 5 + 7·e+5   :  SE_Gx<Ee>      score-derived interaction SE
+//   col 5 + 7·e+6   :  SPA_STATUS_Gx<Ee>  saddlepoint outcome, as
+//                                     static_cast<uint8_t>(spa::Status)
+// resultSize() = 5 + 7·nEnv.
+//
+// LOG10P_Gx is a magnitude on every path, never −log10 of a linear p.  Where
+// the reported p IS the saddlepoint p it comes from the log-domain tail
+// assembly (spa_unify L2/L3), so it survives past the point at which the
+// linear-scale sum of the two tails underflows to zero.  Where Branch B adds a
+// Wald leg and the reported p is CCT(p_spa, p_wald), the combination is taken
+// by math::cauchyCombineLog10 over the two magnitudes (log10p_unify Stage 5),
+// so the saddlepoint leg enters exactly and the Cauchy statistic — whose terms
+// are 1/(π p) and which therefore overflows for p ≤ 1e-308 — is never formed.
+// The linear P_Gx column was deleted in Stage 8 (decision D1); a consumer that
+// needs it takes 10^(−LOG10P_Gx).  The Wald leg arrives as a magnitude too
+// since Stage 7 (wald::lastCoef*Log10P), so no leg of the combination has an
+// underflow ceiling any more.
+//
+// The marginal block carries SPA_STATUS_G and, since Stage 8, LOG10P_G.  It is
+// always the normal approximation, never a saddlepoint, so the status is the
+// constant `1 NORMAL` wherever the block exists at all and `8 NA_NO_TEST`
+// where Var(S_G) ≤ 0 — which is exactly the distinction a bare row of NA does
+// not make, and the reason decision D4 gives every reported test a status.
+// LOG10P_G is formed by spa::normalTwoSidedLog rather than as −log10 of the
+// linear tail, so it keeps rising past |Z_G| = 38.6 where the linear p flushes
+// to exactly zero and its logarithm would be the +Inf invariant C1 forbids.
 class SPAGxEMethod : public MethodBase {
   public:
     // resid    — the null-model residual R (per-phenotype dense, length N).
@@ -115,7 +141,7 @@ class SPAGxEMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 4 + 6 * static_cast<int>(m_envNames.size());
+        return 5 + 7 * static_cast<int>(m_envNames.size());
     }
 
     std::string getHeaderColumns() const override;
@@ -138,8 +164,8 @@ class SPAGxEMethod : public MethodBase {
     ) override;
 
   private:
-    // Retrospective quadratic form  xᵀΦx: SparseGRM::spaVariance when a GRM is
-    // present (2·Σstored − Σx²), Σx² otherwise (Φ = identity → base path).
+    // Retrospective quadratic form  xᵀΦx: SparseGRM::quadForm when a GRM is
+    // present, Σx² otherwise (Φ = identity → base path).
     double phiQuad(const Eigen::VectorXd &x) const;
 
     // Per-environment precomputed Branch-A machinery.  In the base / SPAGxE+
@@ -197,6 +223,10 @@ class SPAGxEMethod : public MethodBase {
     Eigen::VectorXd m_afVec;
     Eigen::VectorXd m_wVec;
     Eigen::VectorXd m_wScratch; // per-marker Branch-A weight (E_e − λ_e)∘R
+    // Outlier-position gather of m_afVec, handed to spa_cgf::binomIndiv.  A
+    // per-clone buffer rather than a per-marker std::vector: the predecessor
+    // allocated one per marker per environment inside spaScorePvalMix.
+    std::vector<double> m_afOutlier;
 };
 
 // ══════════════════════════════════════════════════════════════════════

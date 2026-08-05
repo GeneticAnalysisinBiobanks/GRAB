@@ -11,8 +11,9 @@
 // Threading model: per-marker QR refit is driven through MethodBase /
 // multiPhenoEngine (no-LOCO) or locoEngine (LOCO) — identical to the
 // score-mode dispatch.  Output is plink2-style one-marker-per-line wide
-// format with P_CCT + P_tau* + Z_tau* + BETA_tau* + SE_tau* columns,
-// written via TextWriter honoring --compression {gz, zst}.
+// format with LOG10P_CCT + P_tau* + LOG10P_tau* + Z_tau* + BETA_tau* +
+// SE_tau* + SPA_STATUS_tau* columns, written via TextWriter honoring
+// --compression {gz, zst}.
 
 #include "spasqr/spasqr.hpp"
 #include "spasqr/qmme.hpp"
@@ -23,6 +24,7 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/spa.hpp"       // spa::normalTwoSidedLog, spa::Status
 
 #include <Eigen/Dense>
 
@@ -209,17 +211,33 @@ class SPAsqrWaldMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 1 + 4 * static_cast<int>(m_shared->taus.size());
+        return 1 + 5 * static_cast<int>(m_shared->taus.size());
     }
 
+    // LOG10P_CCT, then five per-tau groups: LOG10P, Z, BETA, SE, SPA_STATUS.
+    // The grouping (all taus of one quantity, then all taus of the next) is
+    // score mode's, and LOG10P / SPA_STATUS are placed exactly where score mode
+    // places them, so the two modes remain readable against each other.  The
+    // linear P group left in log10p_unify Stage 8 (decision D1): LOG10P_tau is
+    // the sole p-value per quantile level and a consumer that needs the linear
+    // p takes 10^(-LOG10P_tau).
+    //
+    // SPA_STATUS_tau is `1 NORMAL` on every tau that produced a test: this leg
+    // is a plain Wald z against the normal, so no saddlepoint is ever attempted
+    // and decision D4 assigns exactly that code to a test which does not use
+    // one.  A tau whose sandwich variance is not usable (the LDLT failed, or
+    // V[γγ] <= 0) has no statistic at all and takes `8 NA_NO_TEST` with
+    // LOG10P, Z, BETA and SE all NA.  There is no fallback in between, because
+    // a variance that does not exist leaves nothing to fall back to.
     std::string getHeaderColumns() const override {
         std::ostringstream oss;
         const auto &labels = m_shared->tauLabels;
-        oss << "\tP_CCT";
-        for (const auto &lab : labels) oss << "\tP_"    << lab;
-        for (const auto &lab : labels) oss << "\tZ_"    << lab;
-        for (const auto &lab : labels) oss << "\tBETA_" << lab;
-        for (const auto &lab : labels) oss << "\tSE_"   << lab;
+        oss << "\tLOG10P_CCT";
+        for (const auto &lab : labels) oss << "\tLOG10P_"     << lab;
+        for (const auto &lab : labels) oss << "\tZ_"          << lab;
+        for (const auto &lab : labels) oss << "\tBETA_"       << lab;
+        for (const auto &lab : labels) oss << "\tSE_"         << lab;
+        for (const auto &lab : labels) oss << "\tSPA_STATUS_" << lab;
         return oss.str();
     }
 
@@ -235,7 +253,9 @@ class SPAsqrWaldMethod : public MethodBase {
         std::vector<double> betas(ntaus, std::numeric_limits<double>::quiet_NaN());
         std::vector<double> ses  (ntaus, std::numeric_limits<double>::quiet_NaN());
         std::vector<double> zs   (ntaus, std::numeric_limits<double>::quiet_NaN());
-        std::vector<double> ps   (ntaus, std::numeric_limits<double>::quiet_NaN());
+        std::vector<double> Ls   (ntaus, std::numeric_limits<double>::quiet_NaN());
+        std::vector<double> sts  (ntaus,
+            static_cast<double>(static_cast<uint8_t>(spa::Status::NaNoTest)));
 
         // GVec is pheno-dense, NaN-imputed by the engine.
         const Eigen::VectorXd G = GVec;
@@ -255,19 +275,35 @@ class SPAsqrWaldMethod : public MethodBase {
                 betas[t] = wr.beta;
                 ses[t]   = wr.se;
                 zs[t]    = z;
-                ps[t]    = 2.0 * (1.0 - math::pnorm(std::fabs(z)));
+                // The magnitude first, the linear p from it.  This leg is a
+                // plain normal tail, so 2*pnorm(|z|, upper) through Boost's
+                // complement was already accurate wherever it was representable
+                // — but it stops being representable at |z| = 38.6, and it is
+                // what the Cauchy combination is taken over.  Carrying L and
+                // deriving P from it (log10p_unify Stage 5, the pattern Stage 3
+                // established for the tier's own P column) removes that ceiling
+                // from LOG10P_CCT.  Since Stage 7 the magnitude is also a
+                // column of its own, and since Stage 8 it is the only one: the
+                // derived P_tau group is gone.
+                Ls[t]    = -spa::normalTwoSidedLog(z) / math::kLn10;
+                sts[t]   = static_cast<double>(
+                    static_cast<uint8_t>(spa::Status::Normal));
             }
         }
 
-        const double pCCT = math::cauchyCombine(ps.data(), static_cast<int>(ps.size()));
+        // Over the magnitudes, not the linear p-values: the Cauchy statistic
+        // 1/(pi*p) overflows for p <= 1e-308 and the linear routine returned
+        // P_CCT = 0 there (01_numerics §2.1).
+        const double lCCT = math::cauchyCombineLog10(Ls.data(), static_cast<int>(Ls.size()));
 
         result.clear();
         result.reserve(resultSize());
-        result.push_back(pCCT);
-        for (double p : ps)    result.push_back(p);
+        result.push_back(lCCT);
+        for (double L : Ls)    result.push_back(L);
         for (double z : zs)    result.push_back(z);
         for (double b : betas) result.push_back(b);
         for (double s : ses)   result.push_back(s);
+        for (double s : sts)   result.push_back(s);
     }
 
     int preferredBatchSize() const override {

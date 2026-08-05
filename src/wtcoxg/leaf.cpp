@@ -9,6 +9,7 @@
 #include "util/meta_pvalue.hpp"
 #include "util/simd_dispatch.hpp"
 #include "wtcoxg/wtcoxg.hpp"
+#include "wtcoxg/wtcoxg_cgf.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -836,16 +837,41 @@ std::unique_ptr<MethodBase> LEAFMethod::clone() const {
 }
 
 int LEAFMethod::resultSize() const {
-    return 2 + 6 * m_nCluster;
+    return 4 + 8 * m_nCluster;
 }
 
+// meta_LOG10P_EXT meta_LOG10P_NOEXT meta_SPA_STATUS_EXT meta_SPA_STATUS_NOEXT,
+// then per cluster
+// clN_MAC clN_LOG10P_EXT clN_LOG10P_NOEXT
+// clN_LOG10P_BAT clN_PI_BAT clN_VAR_BAT clN_SPA_STATUS_EXT clN_SPA_STATUS_NOEXT.
+//
+// The linear meta_P_* and clN_P_* columns left in log10p_unify Stage 8
+// (decision D1); clN_P_BAT was renamed clN_LOG10P_BAT and now carries the
+// magnitude of the per-cluster batch-effect test, taken in the log domain at
+// its source in wtcoxg.cpp rather than as -log10 of the linear p, which would
+// be +Inf past |z_adj| = 38.6 and violate invariant C1.
+//
+// The per-cluster SPA_STATUS is the WtCoxG status of that cluster's test; see
+// wtcoxg.hpp for the encoding.  The META status is about the POOLING, not
+// about the clusters: it is the worst status among the clusters that actually
+// contributed to the pool, so it is <= 6 whenever meta_P is a number and 8
+// (NA_NO_TEST) when no cluster contributed and meta_P is NA.  A cluster that
+// failed contributes nothing and is visible in its own clN_SPA_STATUS column,
+// which is where a per-cluster failure belongs — folding it into the meta
+// status would mark almost every marker, since a cluster with no informative
+// subjects for a marker is the common case rather than the exception (2036 of
+// 3000 markers for cluster 1 on the bundled fixture).
 std::string LEAFMethod::getHeaderColumns() const {
     std::ostringstream oss;
-    oss << "\tmeta_P_EXT\tmeta_P_NOEXT";
+    oss << "\tmeta_LOG10P_EXT\tmeta_LOG10P_NOEXT"
+        << "\tmeta_SPA_STATUS_EXT\tmeta_SPA_STATUS_NOEXT";
     for (int i = 1; i <= m_nCluster; ++i)
         oss << "\tcl" << i << "_MAC"
-            << "\tcl" << i << "_P_EXT\tcl" << i << "_P_NOEXT\tcl" << i << "_P_BAT"
-            << "\tcl" << i << "_PI_BAT\tcl" << i << "_VAR_BAT";
+            << "\tcl" << i << "_LOG10P_EXT"
+            << "\tcl" << i << "_LOG10P_NOEXT"
+            << "\tcl" << i << "_LOG10P_BAT"
+            << "\tcl" << i << "_PI_BAT\tcl" << i << "_VAR_BAT"
+            << "\tcl" << i << "_SPA_STATUS_EXT\tcl" << i << "_SPA_STATUS_NOEXT";
     return oss.str();
 }
 
@@ -861,9 +887,10 @@ void LEAFMethod::getResultVec(
     std::vector<double> &result
 ) {
 
-    std::vector<double> pExt(m_nCluster), pNoext(m_nCluster);
+    std::vector<double> lExt(m_nCluster), lNoext(m_nCluster);
     std::vector<double> sExt(m_nCluster), sNoext(m_nCluster);
     std::vector<double> mac(m_nCluster);
+    std::vector<spa::Status> stExt(m_nCluster), stNoext(m_nCluster);
 
     for (int c = 0; c < m_nCluster; ++c) {
         // Gather cluster genotypes from full GVec
@@ -872,26 +899,64 @@ void LEAFMethod::getResultVec(
         for (size_t k = 0; k < idx.size(); ++k)
             gClu[static_cast<Eigen::Index>(k)] = GVec[idx[k]];
 
+        // A cluster in which this marker has no informative subject — the
+        // common case, not the exception — comes back with status 8
+        // NA_NO_TEST and NA p-values.  That status is set by NAME inside
+        // WtCoxGMethod (wtcoxg.cpp's spaDegenerate / wtDegenerate, on the
+        // shared `MAC < 10 or Var(S) <= 0` guard), not inferred here from a
+        // NaN, and there is deliberately no second copy of that threshold in
+        // LEAF: one guard, one place.  metaPvalueScorePool then leaves the
+        // cluster out of the pool because its p is NA.
         auto dr = m_clusterMethods[c]->computeDual(gClu, markerInChunkIdx);
-        pExt[c] = dr.p_ext;
-        pNoext[c] = dr.p_noext;
+        lExt[c] = dr.log10p_ext;
+        lNoext[c] = dr.log10p_noext;
         sExt[c] = dr.score_ext;
         sNoext[c] = dr.score_noext;
+        stExt[c] = dr.status_ext;
+        stNoext[c] = dr.status_noext;
         mac[c] = std::min(dr.gSum, 2.0 * static_cast<double>(dr.N) - dr.gSum);
     }
 
-    // Fixed-effects meta-analysis: pool scores across clusters.
-    // See src/util/meta_pvalue.hpp for the symmetric p-value clamp.
-    result.push_back(math::metaPvalueScorePool(sExt,   pExt));
-    result.push_back(math::metaPvalueScorePool(sNoext, pNoext));
+    pushResult(result, lExt, lNoext, sExt, sNoext, mac,
+               stExt, stNoext, markerInChunkIdx);
+}
+
+// Push the 4 + 8*K result cells in header order.  Shared by getResultVec and
+// the fused-GEMM processScoreBatch so the two cannot drift.
+void LEAFMethod::pushResult(
+    std::vector<double> &out,
+    const std::vector<double> &lExt,
+    const std::vector<double> &lNoext,
+    const std::vector<double> &sExt,
+    const std::vector<double> &sNoext,
+    const std::vector<double> &mac,
+    const std::vector<spa::Status> &stExt,
+    const std::vector<spa::Status> &stNoext,
+    int chunkIdx
+) const {
+    // Fixed-effects meta-analysis: pool scores across clusters.  Since
+    // log10p_unify Stage 4 the pool is fed the per-cluster MAGNITUDES rather
+    // than the linear p-values: the df = 1 chi-squared weight it recovers from
+    // each cluster is now the analytic `chisq1FromNegLog10P`, which does not
+    // saturate at 1373.87 as `qchisq` did, and the p-value floor that existed
+    // only to keep that saturation reachable is gone.  See
+    // src/util/meta_pvalue.hpp.
+    const math::MetaPooled mExt   = math::metaPvalueScorePool(sExt,   lExt,   stExt);
+    const math::MetaPooled mNoext = math::metaPvalueScorePool(sNoext, lNoext, stNoext);
+    out.push_back(mExt.negLog10p);      // meta_LOG10P_EXT
+    out.push_back(mNoext.negLog10p);    // meta_LOG10P_NOEXT
+    out.push_back(wtcoxg_cgf::statusCode(mExt.status));
+    out.push_back(wtcoxg_cgf::statusCode(mNoext.status));
     for (int c = 0; c < m_nCluster; ++c) {
-        const auto &ri = m_clusterMethods[c]->chunkRefInfoAt(markerInChunkIdx);
-        result.push_back(mac[c]);
-        result.push_back(pExt[c]);
-        result.push_back(pNoext[c]);
-        result.push_back(ri.pvalue_bat);
-        result.push_back(ri.TPR);
-        result.push_back(ri.sigma2);
+        const auto &ri = m_clusterMethods[c]->chunkRefInfoAt(chunkIdx);
+        out.push_back(mac[c]);
+        out.push_back(lExt[c]);
+        out.push_back(lNoext[c]);
+        out.push_back(ri.log10p_bat);   // cl<c>_LOG10P_BAT
+        out.push_back(ri.TPR);
+        out.push_back(ri.sigma2);
+        out.push_back(wtcoxg_cgf::statusCode(stExt[c]));
+        out.push_back(wtcoxg_cgf::statusCode(stNoext[c]));
     }
 }
 
@@ -955,7 +1020,9 @@ void LEAFMethod::processScoreBatch(
     const int K = m_nCluster;
     results.resize(B);
 
-    std::vector<double> pExt(K), pNoext(K), sExt(K), sNoext(K), mac(K);
+    std::vector<double> lExt(K), lNoext(K);
+    std::vector<double> sExt(K), sNoext(K), mac(K);
+    std::vector<spa::Status> stExt(K), stNoext(K);
 
     for (int b = 0; b < B; ++b) {
         const int chunkIdx = chunkIdxs[b];
@@ -964,29 +1031,25 @@ void LEAFMethod::processScoreBatch(
             const double R_dot_g = scores(c, b);
             const double gSum    = scores(K + c, b);
             const int    Nc      = m_geom->clusterN[c];
+            // Same contract as the scalar path above: a cluster with no
+            // informative subject for this marker returns 8 NA_NO_TEST by
+            // name from WtCoxGMethod's own MAC / Var(S) guard.
             auto dr = m_clusterMethods[c]->computeDualFromScalars(
                 R_dot_g, gSum, Nc, chunkIdx);
-            pExt[c]   = dr.p_ext;
-            pNoext[c] = dr.p_noext;
+            lExt[c]   = dr.log10p_ext;
+            lNoext[c] = dr.log10p_noext;
             sExt[c]   = dr.score_ext;
             sNoext[c] = dr.score_noext;
+            stExt[c]  = dr.status_ext;
+            stNoext[c] = dr.status_noext;
             mac[c]    = std::min(gSum, 2.0 * static_cast<double>(Nc) - gSum);
         }
 
         auto &r = results[b];
         r.clear();
-        r.reserve(2 + 6 * K);
-        r.push_back(math::metaPvalueScorePool(sExt,   pExt));
-        r.push_back(math::metaPvalueScorePool(sNoext, pNoext));
-        for (int c = 0; c < K; ++c) {
-            const auto &ri = m_clusterMethods[c]->chunkRefInfoAt(chunkIdx);
-            r.push_back(mac[c]);
-            r.push_back(pExt[c]);
-            r.push_back(pNoext[c]);
-            r.push_back(ri.pvalue_bat);
-            r.push_back(ri.TPR);
-            r.push_back(ri.sigma2);
-        }
+        r.reserve(4 + 8 * K);
+        pushResult(r, lExt, lNoext, sExt, sNoext, mac,
+                   stExt, stNoext, chunkIdx);
     }
 }
 

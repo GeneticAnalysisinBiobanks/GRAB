@@ -2,8 +2,8 @@
 //
 // Base (unrelated) and SPAGxE+ (sparse-GRM) share one code path: the GRM Φ
 // enters only through the retrospective score variance as a quadratic form
-// xᵀΦx = SparseGRM::spaVariance(x) = 2·Σstored − Σx², and the base path is the
-// Φ = identity special case (spaVariance → Σx²).  Per phenotype a single
+// xᵀΦx = SparseGRM::quadForm(x), and the base path is the
+// Φ = identity special case (phiQuad → Σx²).  Per phenotype a single
 // genotype-independent residual R is fit once (trait ~ X + E).  Per variant:
 //   1. marginal screen  S_G = Σ G_i R_i ,  Var = 2q(1−q)·RᵀΦR  (always normal;
 //      routes Branch A vs Branch B on p_marg vs ε).
@@ -13,7 +13,7 @@
 //       even for +), Ŝ_GxE = Σ G_i E_i R̃_i, Var = 2q(1−q)·(E∘R̃)ᵀΦ(E∘R̃).
 // The tail SPA rescales the statistic by √(indepVar/grmVar) (SAIGE variance
 // ratio, the paper's non-mix convention) and applies the independence-CGF SPA
-// via spa::getProbSpaG with the IQR outlier / Gaussian non-outlier split.  A
+// via spamix_cgf::twoSidedSpa with the IQR outlier / Gaussian split.  A
 // degenerate saddlepoint yields NaN, never 0 (GRAB2 convention).  Reference:
 // tmp/SPAGxECCT/.../R  (SPAGxE_CCT_one_SNP, SPA_G_one_SNP_homo_new,
 // SPAGxE_Plus_one_SNP, SPAGxE_Plus_Nullmodel).
@@ -23,11 +23,13 @@
 #include "geno_factory/geno_data.hpp" // parseGenoIIDs, makeGenoData, GenoMeta
 #include "io/sparse_grm.hpp"          // SparseGRM
 #include "io/subject_data.hpp"        // SubjectData, extractPhenoVec/Mat, PerPhenoInfo
-#include "spagxe/spagxe_wald.hpp"     // spagxe_wald::{WaldData, waldInteractionPval}
-#include "spamix/common.hpp"          // spa::getProbSpaG
+#include "spagxe/spagxe_wald.hpp"     // spagxe_wald::{WaldData, waldInteractionLog10P}
+#include "spamix/spamix_cgf.hpp"      // spamix_cgf::{Context, twoSidedSpa, statusCode}
 #include "spamix/indiv_af.hpp"        // AFContext, computeAFVec (SPAGxEmix)
+#include "util/outlier.hpp"           // OutlierData, detectOutliers
 #include "util/logging.hpp"           // infoMsg, warnMsg
-#include "util/math_helper.hpp"       // math::pnorm, zFromPval, cauchyCombine
+#include "util/math_helper.hpp"       // math::pnorm, zFromNegLog10P, cauchyCombineLog10
+#include "util/spa.hpp"               // spa::normalTwoSidedLog, spa::Status
 #include "util/null_model.hpp"        // nullmodel::fitAll and friends
 
 #include <algorithm>
@@ -44,17 +46,27 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 // homogeneous binomial law  G_i ~ Bin(2, q).  The GRM enters only through
 // grmQuad = wᵀΦw (== wSq = Σw² in the base / unrelated case), which sets the
 // score variance and — in the tail — a SAIGE-style variance-ratio rescaling of
-// the statistic before the independence-CGF SPA (spa::getProbSpaG with the IQR
-// outlier / Gaussian non-outlier split).  Mirrors SPA_G_one_SNP_homo_new /
+// the statistic before the independence-CGF SPA (spamix_cgf::twoSidedSpa with
+// the IQR outlier / Gaussian non-outlier split).  Mirrors SPA_G_one_SNP_homo_new /
 // SPAGxE_Plus_one_SNP: normal approximation when |z| ≤ spaCutoff, otherwise the
 // reflection-about-mean two-sided saddlepoint.
 //   part     — IQR partition of w  (residOutlier = w[outlier],
 //              resid2NonOutlier = w²[nonOutlier])
 //   wSum     — Σ w      wSq — Σ w²      grmQuad — wᵀΦw   (all over every i)
 //   rawScore — Σ G_i w_i
-// Sets zScore (raw score z) and outVar = Var(S); returns the p-value (NaN when
-// the variance is non-positive or the saddlepoint fails to converge).
-double spaScorePval(
+// Sets zScore (raw score z) and outVar = Var(S); returns the two-sided result
+// (p, −log10 p, spa::Status).  p is NaN, with a status naming the reason,
+// whenever the variance is non-positive or either tail's saddlepoint fails.
+//
+// spa_unify Stage 5.  The two `spa::getProbSpaG` calls whose sum was returned
+// unguarded are replaced by spamix_cgf::twoSidedSpa — the shared bracketed
+// solver, spa::bnTailLog's full guard set, and spa::combineTailsLog's single clamp and
+// NaN policy.  The genotype law here has ONE q for every subject, so the
+// binomial block is spa_cgf::binomUniform: 02_design.md lists SPAGxE under
+// binomIndiv, but that is only because the predecessor materialized
+// `std::vector<double> mafOut(nOut, q)` per marker per environment and passed
+// the constant vector to the per-individual kernel.  That allocation is gone.
+spa::Result spaScorePval(
     const OutlierData &part,
     double wSum,
     double wSq,
@@ -70,29 +82,44 @@ double spaScorePval(
     if (!(scoreVar > 0.0)) {             // monomorphic / degenerate weight
         zScore = 0.0;
         outVar = 0.0;
-        return kNaN;
+        return spa::Result{kNaN, spa::Status::NaNoTest};
     }
     const double sMean = 2.0 * q * wSum; // retrospective mean E[S] = 2q·Σw
     zScore = (rawScore - sMean) / std::sqrt(scoreVar);
     outVar = scoreVar;
-    if (std::abs(zScore) <= spaCutoff)
-        return 2.0 * math::pnorm(-std::abs(zScore));
+    if (!std::isfinite(zScore))
+        return spa::Result{kNaN, spa::Status::NaNoTest};
+    // spa::normalBranch reports -log10(2*Phi(-|z|)) in the log domain, so the
+    // branch keeps its magnitude past |z| ~ 38.5 where the predecessor's
+    // `2 * pnorm(-|z|)` was exactly zero (log10p_unify Stage 3).
+    if (std::abs(zScore) <= spaCutoff) return spa::normalBranch(zScore);
 
     // ── Saddlepoint tail: variance-ratio rescale + outlier / non-outlier split.
     // sqrtRatio = √(indepVar / grmVar) = √(wSq / grmQuad) (the 2q(1−q) cancels);
     // == 1 in the base case, so this reduces to the plain independence SPA.
     const double sqrtRatio = (grmQuad > 0.0) ? std::sqrt(wSq / grmQuad) : 1.0;
     const double absDev = std::abs(rawScore - sMean) * sqrtRatio;
-    const int nOut = static_cast<int>(part.posOutlier.size());
-    const double meanNon = 2.0 * q * part.residNonOutlier.sum();
-    const double varNon = f * part.resid2NonOutlier.sum();
-    std::vector<double> mafOut(static_cast<size_t>(nOut), q);
-    // Reflect about the fitted mean: upper = sMean + |Δ|, lower = sMean − |Δ|.
-    const double pUpper = spa::getProbSpaG(mafOut.data(), part.residOutlier.data(),
-                                           nOut, sMean + absDev, false, meanNon, varNon);
-    const double pLower = spa::getProbSpaG(mafOut.data(), part.residOutlier.data(),
-                                           nOut, sMean - absDev, true, meanNon, varNon);
-    return pUpper + pLower;
+
+    // Gaussian non-outlier block by complement: Σ_non w = wSum − Σ_out w and
+    // Σ_non w² = wSq − Σ_out w², both already available over the whole cohort.
+    // The predecessor reduced over the non-outlier sub-vectors instead, which is
+    // O(N) per marker per environment — and in Branch A those two reductions are
+    // marker-independent, so it was O(N) work repeated unchanged 20000 times.
+    // See the longer note in src/spamix/spamixplus.cpp::markerPvalFromAF.
+    const double outSum = part.residOutlier.sum();
+    const double outSq = part.residOutlier.squaredNorm();
+
+    spamix_cgf::Context cgf;
+    cgf.resid = part.residOutlier.data();
+    cgf.af = nullptr;                                // uniform q: binomUniform
+    cgf.nOutlier = static_cast<int>(part.posOutlier.size());
+    cgf.q = q;
+    cgf.mean = 2.0 * q * (wSum - outSum);
+    cgf.var = f * (wSq - outSq);
+    if (!(cgf.var > 0.0)) cgf.var = 0.0;
+
+    // f·wSq is the independence K''(0) and only sizes the initial abscissa.
+    return spamix_cgf::twoSidedSpa(cgf, sMean, absDev, f * wSq, zScore);
 }
 
 // Two-sided SPA p-value for the genotype score  S = Σ G_i w_i  under the
@@ -107,15 +134,22 @@ double spaScorePval(
 //   w      — the full weight vector (length N)
 //   afVec  — per-individual q̂_i    wVec — 2 q̂_i(1−q̂_i)
 //   s      — the observed score Σ G_i w_i
-// Sets zScore (raw score z) and outVar = Var(S); returns NaN on non-positive
-// variance (GRAB2 convention: never 0).
-double spaScorePvalMix(
+//   afOut  — caller-owned scratch, resized here to nOutlier and filled with
+//            the outlier-position gather of afVec (the per-clone buffer that
+//            replaces the predecessor's per-marker std::vector)
+// Sets zScore (raw score z) and outVar = Var(S); returns NaN with a naming
+// status on non-positive variance (GRAB2 convention: never 0).
+//
+// This is the per-individual genotype law, so the binomial block is
+// spa_cgf::binomIndiv.
+spa::Result spaScorePvalMix(
     const OutlierData &part,
     const Eigen::VectorXd &w,
     const Eigen::VectorXd &afVec,
     const Eigen::VectorXd &wVec,
     double s,
     double spaCutoff,
+    std::vector<double> &afOut,
     double &zScore,
     double &outVar
 ) {
@@ -124,36 +158,46 @@ double spaScorePvalMix(
     if (!(scoreVar > 0.0)) {
         zScore = 0.0;
         outVar = 0.0;
-        return kNaN;
+        return spa::Result{kNaN, spa::Status::NaNoTest};
     }
     zScore = (s - sMean) / std::sqrt(scoreVar);
     outVar = scoreVar;
-    if (std::abs(zScore) <= spaCutoff)
-        return 2.0 * math::pnorm(-std::abs(zScore));
+    if (!std::isfinite(zScore))
+        return spa::Result{kNaN, spa::Status::NaNoTest};
+    if (std::abs(zScore) <= spaCutoff) return spa::normalBranch(zScore);
 
+    // Gaussian non-outlier block with per-individual q̂_i, by complement:
+    // sMean and scoreVar above are the whole-cohort sums, so the block is the
+    // total minus an O(nOutlier) sum folded into the gather that has to run
+    // anyway.  The outlier variance terms use wVec[pos] rather than a
+    // recomputed 2*af*(1-af), so they are bit-identical to scoreVar's.  See the
+    // longer note in src/spamix/spamixplus.cpp::markerPvalFromAF.
     const int nOut = static_cast<int>(part.posOutlier.size());
-    std::vector<double> mafOut(static_cast<size_t>(nOut));
-    for (int i = 0; i < nOut; ++i)
-        mafOut[static_cast<size_t>(i)] = afVec[part.posOutlier[i]];
-
-    // Gaussian non-outlier block with per-individual q̂_i.
-    double meanNon = 0.0, varNon = 0.0;
-    const int nNon = static_cast<int>(part.posNonOutlier.size());
-    for (int i = 0; i < nNon; ++i) {
-        const double af = afVec[part.posNonOutlier[i]];
-        meanNon += part.residNonOutlier[i] * af;
-        varNon += part.resid2NonOutlier[i] * af * (1.0 - af);
+    if (static_cast<int>(afOut.size()) < nOut) afOut.resize(static_cast<size_t>(nOut));
+    double outMeanSum = 0.0, outVarSum = 0.0;
+    for (int i = 0; i < nOut; ++i) {
+        const uint32_t pos = part.posOutlier[i];
+        const double af = afVec[pos];
+        const double wi = part.residOutlier[i];
+        afOut[static_cast<size_t>(i)] = af;
+        outMeanSum += wi * af;
+        outVarSum += wi * wi * wVec[pos];
     }
-    meanNon *= 2.0;
-    varNon *= 2.0;
+
+    const double meanNon = sMean - 2.0 * outMeanSum;
+    double varNon = scoreVar - outVarSum;
+    if (!(varNon > 0.0)) varNon = 0.0;
+
+    spamix_cgf::Context cgf;
+    cgf.resid = part.residOutlier.data();
+    cgf.af = afOut.data();
+    cgf.nOutlier = nOut;
+    cgf.mean = meanNon;
+    cgf.var = varNon;
 
     // Reflect about the fitted mean: upper = sMean + |Δ|, lower = sMean − |Δ|.
-    const double absDev = std::abs(s - sMean);
-    const double pUpper = spa::getProbSpaG(mafOut.data(), part.residOutlier.data(),
-                                           nOut, sMean + absDev, false, meanNon, varNon);
-    const double pLower = spa::getProbSpaG(mafOut.data(), part.residOutlier.data(),
-                                           nOut, sMean - absDev, true, meanNon, varNon);
-    return pUpper + pLower;
+    // There is no GRM here, so scoreVar IS the independence K''(0).
+    return spamix_cgf::twoSidedSpa(cgf, sMean, std::abs(s - sMean), scoreVar, zScore);
 }
 
 // Resolve the trait family of one phenotype, matching nullmodel::fitAll's own
@@ -213,6 +257,65 @@ Eigen::VectorXd recodeResponse(const Eigen::VectorXd &col, spagxe_wald::TraitTyp
     return col; // Linear (affine-invariant); Cox uses time/event, not y
 }
 
+// Branch B's weight  u = E ∘ R̃, with the direction that contributes nothing to
+// the statistic removed.  `VR0` is V·R̃ up to any positive scalar, with V the
+// genotype covariance the caller's variance uses: Φ·R̃ under the uniform law
+// (R̃ itself when Φ = I), and 2q̂(1−q̂) ∘ R̃ under SPAGxEmix's per-individual law.
+//
+// WHY THIS IS NOT A TUNING KNOB.  The Branch-B projection solves the [1, G]
+// normal equations, so at the observed G
+//
+//     Σ_i R̃_i = 0        and        Σ_i G_i R̃_i = 0
+//
+// hold exactly, hence so does Σ_i (G_i − 2q) R̃_i = 0.  The score is therefore
+// the same number for every a:
+//
+//     S = Σ_i (G_i − 2q)·u_i = Σ_i (G_i − 2q)·(u_i − a·R̃_i)
+//
+// while the plug-in variance u'V u is not.  Every member of that family is a
+// representation of the SAME statistic, so choosing among them is not choosing
+// among tests; it is choosing which representation the plug-in is applied to.
+// The weight u = E ∘ R̃ generally has a component along R̃, and the plug-in
+// charges the statistic for that component's variance even though it
+// contributes exactly zero.  The minimiser over a,
+//
+//     a = (u' V R̃) / (R̃' V R̃)
+//
+// makes u ⊥_V R̃ and is therefore the tightest representation available.
+//
+// It is also the standard efficient-score correction for the nuisance
+// parameters (α, β) the projection estimates: the correct variance is
+// I_ββ − I_βη I_ηη⁻¹ I_ηβ and the naive plug-in is I_ββ, whose excess is a
+// non-negative rank-1 term.  Omitting it is therefore always CONSERVATIVE and
+// never anti-conservative, which is why the deficit had a consistent sign.
+//
+// HOW MUCH IT MOVES.  With E ⊥ R̃² the ratio of corrected to naive variance is
+// Var(E)/E[E²] = 1/(1 + (Ē/SD_E)²).  An already-centred environment loses
+// nothing; a 0/1 indicator of prevalence 0.5 has its Branch-B variance
+// overstated by exactly 2.  `examples/baseline.sh` uses `MALE`, so its
+// Branch-B columns sit at that end.  Shifting E by a constant leaves Y, R, R̃
+// and S untouched and moves only this variance, which makes the attribution
+// checkable: on chr22 of a 50 000-subject cohort λ_GC of the uncorrected
+// Branch B ran 0.936 / 0.505 / 0.212 for E shifted by 0 / 1 / 2 against the
+// predicted 1.000 / 0.500 / 0.200, while Branch A held at 0.945 throughout.
+//
+// On feat/sqrgxe this function is gxe_score::branchBWeight, shared with
+// --method sqrgxe; here it is file-local because that tier does not exist yet
+// on this branch.  Keep the two bodies identical.
+void branchBWeight(
+    const Eigen::Ref<const Eigen::VectorXd> &env,
+    const Eigen::Ref<const Eigen::VectorXd> &R0,
+    const Eigen::Ref<const Eigen::VectorXd> &VR0,
+    Eigen::VectorXd &u
+) {
+    u = env.array() * R0.array();
+    const double den = R0.dot(VR0);
+    if (!(den > 0.0)) return; // no usable metric: leave the naive weight
+    const double a = u.dot(VR0) / den;
+    if (!std::isfinite(a)) return;
+    u.noalias() -= a * R0;
+}
+
 } // namespace
 
 // ══════════════════════════════════════════════════════════════════════
@@ -221,7 +324,7 @@ Eigen::VectorXd recodeResponse(const Eigen::VectorXd &col, spagxe_wald::TraitTyp
 
 double SPAGxEMethod::phiQuad(const Eigen::VectorXd &x) const {
     if (m_grm)
-        return m_grm->spaVariance(x.data(), static_cast<uint32_t>(x.size()));
+        return m_grm->quadForm(x.data(), static_cast<uint32_t>(x.size()));
     return x.squaredNorm();
 }
 
@@ -310,17 +413,85 @@ std::unique_ptr<MethodBase> SPAGxEMethod::clone() const {
 }
 
 std::string SPAGxEMethod::getHeaderColumns() const {
-    // Leading marginal block P_G Z_G BETA_G SE_G (normal-approx, so its Z is
-    // already p-consistent and needs no Z_Norm), then a 6-wide G×E block per
-    // environment: the final p P_Gx (CCT in Branch B, SPA otherwise); the
-    // Branch-B Wald p P_Wald_Gx (NaN when no Wald ran); the p-consistent Z and
-    // the raw-score Z_Norm (which differ in the tails); and BETA/SE.
-    std::string h = "\tP_G\tZ_G\tBETA_G\tSE_G";
+    // Leading marginal block LOG10P_G Z_G BETA_G SE_G SPA_STATUS_G
+    // (normal-approx, so its Z is already p-consistent and needs no Z_Norm, and
+    // its status is the constant 1 NORMAL wherever a statistic exists), then a
+    // 7-wide G×E block per environment: the final p as the magnitude LOG10P_Gx
+    // (CCT in Branch B, SPA otherwise); the Branch-B Wald magnitude
+    // LOG10P_Wald_Gx (NaN when no Wald ran); the p-consistent Z and the
+    // raw-score Z_Norm (which differ in the tails); BETA/SE; and the
+    // saddlepoint outcome SPA_STATUS_Gx.  The linear P_G / P_Gx columns left in
+    // log10p_unify Stage 8 (decision D1).
+    std::string h = "\tLOG10P_G\tZ_G\tBETA_G\tSE_G\tSPA_STATUS_G";
     for (const auto &n : m_envNames)
-        h += "\tP_Gx" + n + "\tP_Wald_Gx" + n + "\tZ_Gx" + n + "\tZ_Norm_Gx" + n +
-             "\tBETA_Gx" + n + "\tSE_Gx" + n;
+        h += "\tLOG10P_Gx" + n + "\tLOG10P_Wald_Gx" + n + "\tZ_Gx" + n +
+             "\tZ_Norm_Gx" + n + "\tBETA_Gx" + n + "\tSE_Gx" + n +
+             "\tSPA_STATUS_Gx" + n;
     return h;
 }
+
+namespace {
+
+// The seven cells of one environment's G×E block.
+//
+// `ts` is the saddlepoint (or normal-branch) result for the score test; `lWald`
+// is the magnitude −log10 of the Branch-B prospective Wald p, NaN where no Wald
+// leg ran.  When a Wald leg is present the reported p is the Cauchy combination
+// of the two, and since log10p_unify Stage 5 that combination is taken in the
+// log domain (math::cauchyCombineLog10) rather than on the linear scale.
+// LOG10P_Gx is therefore the magnitude the CCT itself produces, NOT −log10 of a
+// linear combination: the saddlepoint leg enters as its own L and is no longer
+// truncated at the point where the linear p underflows.  Stage 8 removed the
+// derived P_Gx column, so the magnitude is now the only thing reported.
+//
+// Since Stage 7 the Wald leg is a magnitude at the source as well
+// (wald::lastCoef*Log10P through spagxe_wald::waldInteractionLog10P), so the
+// last ceiling in this path is gone: a Wald tail below the linear underflow
+// used to enter the combination as −log10(0) = +∞ and carry that infinity into
+// LOG10P_Gx, which was a C1 violation waiting on an input extreme enough to
+// trigger it.
+//
+// SPA_STATUS always describes the SADDLEPOINT, independently of what reached
+// the p-value column — which matters precisely because the combination skips a
+// NaN, so a failed saddlepoint with a successful Wald refit still yields a
+// finite LOG10P_Gx and the status is the only record that the SPA leg dropped
+// out.
+void writeEnvBlock(
+    std::vector<double> &out,
+    int base,
+    const spa::Result &ts,
+    double lWald,
+    bool waldEnabled,
+    double z,
+    double var,
+    double score
+) {
+    out[base + 6] = spamix_cgf::statusCode(ts.status);
+    if (!(var > 0.0)) return;
+
+    double negLog = ts.negLog10p;
+    if (waldEnabled) {
+        // The CCT in the log domain (Stage 5), over two magnitudes (Stage 7).
+        // The -0.0 normalization the linear form needed goes with it: the
+        // combination of n copies of one p is that p, so with the
+        // L >= -log10(0.999) clamp on every input the result is bounded below
+        // by 4.34e-4 and cannot come back as a zero.
+        const double Ls[2] = {ts.negLog10p, lWald};
+        negLog = math::cauchyCombineLog10(Ls, 2);
+    }
+    out[base + 0] = negLog;                      // LOG10P_Gx<E> (final)
+    out[base + 1] = lWald;                       // LOG10P_Wald_Gx<E> (NaN if none)
+    // Z from LOG10P_Gx, not from P_Gx (Stage 4): the linear inversion
+    // saturated at |Z| = 37.0470962993612 for every L >= 299.698970.  Since
+    // Stage 5, `negLog` is the CCT's own magnitude, so the saturation is gone
+    // from the combined branch as well rather than merely displaced onto it.
+    out[base + 2] = math::zFromNegLog10P(negLog, z);  // Z_Gx<E> (p-consistent)
+    out[base + 3] = z;                           // Z_Norm_Gx<E> (raw score z)
+    out[base + 4] = score / var;                 // BETA_Gx<E>
+    out[base + 5] = 1.0 / std::sqrt(var);        // SE_Gx<E>
+}
+
+}  // namespace
 
 void SPAGxEMethod::evalMarker(
     const Eigen::Ref<const Eigen::VectorXd> &GVec,
@@ -329,7 +500,10 @@ void SPAGxEMethod::evalMarker(
     std::vector<double> &out
 ) {
     const int nEnv = static_cast<int>(m_envNames.size());
-    out.assign(static_cast<size_t>(4 + 6 * nEnv), kNaN);
+    out.assign(static_cast<size_t>(5 + 7 * nEnv), kNaN);
+    // Pre-set so that a marker leaving the marginal block empty still says why
+    // (decision D4): no statistic exists there, it is not a failed one.
+    out[4] = spamix_cgf::statusCode(spa::Status::NaNoTest);   // SPA_STATUS_G
 
     const double q = altFreq;
 
@@ -343,10 +517,19 @@ void SPAGxEMethod::evalMarker(
         const double sdG = std::sqrt(varSG);
         const double zG = sG / sdG;
         pMarg = 2.0 * math::pnorm(-std::abs(zG));
-        out[0] = pMarg;       // P_G
+        // LOG10P_G in the log domain, not −log10(pMarg): the linear tail is
+        // exactly zero past |zG| = 38.6 and its logarithm would be the +Inf
+        // invariant C1 forbids.  pMarg itself stays linear because its only
+        // other consumer is the Branch A / Branch B routing against
+        // --spagxe-marginal-cutoff, an input threshold (decision D8).
+        out[0] = -spa::normalTwoSidedLog(zG) / math::kLn10;   // LOG10P_G
         out[1] = zG;          // Z_G (normal ⇒ p-consistent)
         out[2] = sG / varSG;  // BETA_G
         out[3] = 1.0 / sdG;   // SE_G
+        // 1 NORMAL: this block never attempts a saddlepoint, and decision D4
+        // covers exactly that case.  Var(S_G) <= 0 leaves the pre-set
+        // 8 NA_NO_TEST — there is no statistic to report, not a failed one.
+        out[4] = spamix_cgf::statusCode(spa::Status::Normal);   // SPA_STATUS_G
     }
 
     const bool branchB = (pMarg <= m_marginalCutoff);
@@ -356,6 +539,7 @@ void SPAGxEMethod::evalMarker(
     // R̃ is env-independent, so it is formed once per marker.  (Unweighted even
     // for +; the GRM re-enters only through the variance — paper eq. 3.)
     Eigen::VectorXd R0;
+    Eigen::VectorXd VR0; // V*R0, the metric branchBWeight orthogonalises in
     if (branchB) {
         const double n = static_cast<double>(m_resid.size());
         const double sg = GVec.sum();
@@ -367,6 +551,16 @@ void SPAGxEMethod::evalMarker(
             const double alpha = (sgg * sr - sg * sgr) / det;
             const double beta = (n * sgr - sg * sr) / det;
             R0 = m_resid.array() - alpha - beta * GVec.array();
+            // Φ·R̃, the metric branchBWeight projects in.  Env-independent like
+            // R̃ itself, so it costs one GRM multiply per marker rather than
+            // one per environment; Φ = I on the base path makes it a copy.
+            if (m_grm) {
+                VR0.resize(R0.size());
+                m_grm->multiply(R0.data(), VR0.data(),
+                                static_cast<uint32_t>(R0.size()));
+            } else {
+                VR0 = R0;
+            }
         }
         // det ≤ 0 (monomorphic G): leave R0 empty ⇒ per-env NaN below.
     }
@@ -378,43 +572,36 @@ void SPAGxEMethod::evalMarker(
                              m_wald->trait != spagxe_wald::TraitType::None;
 
     for (int e = 0; e < nEnv; ++e) {
-        const int base = 4 + 6 * e;
-        double z = 0.0, var = 0.0, pSpa, score;
-        double pWald = kNaN;
+        const int base = 5 + 7 * e;
+        // A marker that never reaches the score test still gets a status: a
+        // bare row of NA says nothing about why, and this family's NA are not
+        // hypothetical (see the SPAGxEmix note in evalMarkerMix).
+        out[base + 6] = spamix_cgf::statusCode(spa::Status::NaNoTest);
+
+        double z = 0.0, var = 0.0, score;
+        double lWald = kNaN;
+        spa::Result ts{kNaN, spa::Status::NaNoTest};
         if (!branchB) {
             // Branch A: precomputed λ-orthogonalised weight and its Φ-form.
             const EnvData &ed = m_envs[e];
             score = rawScores[1 + e]; // Σ G_i w_{e,i}
-            pSpa = spaScorePval(ed.wOutlier, ed.wSum, ed.wSq, ed.wPhiQuad, score, q,
-                                m_spaCutoff, z, var);
+            ts = spaScorePval(ed.wOutlier, ed.wSum, ed.wSq, ed.wPhiQuad, score, q,
+                              m_spaCutoff, z, var);
         } else {
             if (R0.size() == 0) continue; // degenerate G ⇒ leave NaN
             // Branch B per-marker weight u = E ∘ R̃; Ŝ_GxE = Σ G_i u_i.
-            const Eigen::VectorXd u = m_envs[e].E.array() * R0.array();
+            Eigen::VectorXd u;
+            branchBWeight(m_envs[e].E, R0, VR0, u);
             score = GVec.dot(u);
             const OutlierData ub = detectOutliers(u, m_outlierRatio);
-            pSpa = spaScorePval(ub, u.sum(), u.squaredNorm(), phiQuad(u), score, q,
-                                m_spaCutoff, z, var);
+            ts = spaScorePval(ub, u.sum(), u.squaredNorm(), phiQuad(u), score, q,
+                              m_spaCutoff, z, var);
             // Prospective Wald p of the G:E coefficient in trait ~ X+E+g+g:E,
             // over the same environment used for the score weight.
             if (waldEnabled)
-                pWald = spagxe_wald::waldInteractionPval(*m_wald, GVec, m_envs[e].E);
+                lWald = spagxe_wald::waldInteractionLog10P(*m_wald, GVec, m_envs[e].E);
         }
-        if (var > 0.0) {
-            // Branch B, base path: P = CCT(p_spa, p_wald).  cauchyCombine skips
-            // a NaN Wald p, so a failed refit degrades to the SPA p (never 0).
-            double finalP = pSpa;
-            if (waldEnabled) {
-                const double ps[2] = {pSpa, pWald};
-                finalP = math::cauchyCombine(ps, 2);
-            }
-            out[base + 0] = finalP;                      // P_Gx<E> (final)
-            out[base + 1] = pWald;                       // P_Wald_Gx<E> (NaN if none)
-            out[base + 2] = math::zFromPval(finalP, z);  // Z_Gx<E> (p-consistent)
-            out[base + 3] = z;                           // Z_Norm_Gx<E> (raw score z)
-            out[base + 4] = score / var;                 // BETA_Gx<E>
-            out[base + 5] = 1.0 / std::sqrt(var);        // SE_Gx<E>
-        }
+        writeEnvBlock(out, base, ts, lWald, waldEnabled, z, var, score);
     }
 }
 
@@ -435,7 +622,10 @@ void SPAGxEMethod::evalMarkerMix(
     std::vector<double> &out
 ) {
     const int nEnv = static_cast<int>(m_envNames.size());
-    out.assign(static_cast<size_t>(4 + 6 * nEnv), kNaN);
+    out.assign(static_cast<size_t>(5 + 7 * nEnv), kNaN);
+    // Pre-set so that a marker leaving the marginal block empty still says why
+    // (decision D4): no statistic exists there, it is not a failed one.
+    out[4] = spamix_cgf::statusCode(spa::Status::NaNoTest);   // SPA_STATUS_G
 
     const double q = altFreq;
 
@@ -454,6 +644,25 @@ void SPAGxEMethod::evalMarkerMix(
 
     // ── Marginal genetic block (always the normal approximation) ────────
     // S_G = Σ G_i R_i, re-centred: E[S_G] = 2·Σ R_i q̂_i, Var = Σ R_i²·2q̂(1−q̂).
+    // varSG = Σ R_i²·2q̂_i(1−q̂_i) can be exactly zero, and is so for three of
+    // the 3000 markers in examples/1kg — the whole row is NA in the pinned
+    // baseline, and has been since before this rework.  The cause is NOT the
+    // [0,1] clamp in computeAFVec's OLS branch, which is where both the audit
+    // and its re-verification place it; all three markers take the STATUS-2
+    // logistic branch (indiv_af.cpp:189).  Their ALT frequency is ~0.995, so
+    // the binarised response g0 = 1{G > 0.5} is one for essentially every
+    // subject, the logistic MLE is at +∞, and IRLS stops at its iteration cap
+    // having driven the intercept to ~101.2.  sigmoid(101.2) rounds to exactly
+    // 1.0 in double, so AF = 1 − sqrt(1 − μ) = 1.0 exactly for all 2504
+    // subjects, every q̂(1−q̂) is zero and varSG vanishes.  It is complete
+    // separation in the AF model, not a clamp.
+    //
+    // That is a modelling defect in the AF cascade, not a saddlepoint one — the
+    // saddlepoint is never reached on these markers — so this stage preserves
+    // the values exactly and only makes the failure legible: SPA_STATUS_Gx is
+    // 8 NA_NO_TEST rather than a bare unexplained NA.  Repairing it (a
+    // separation-aware AF fit, or a Firth penalty) changes the statistic for
+    // every high-frequency marker and belongs to whoever owns indiv_af.cpp.
     const double sG = rawScores[0];
     const double meanSG = 2.0 * m_resid.dot(m_afVec);
     const double varSG = m_resid2.dot(m_wVec);
@@ -462,16 +671,19 @@ void SPAGxEMethod::evalMarkerMix(
         const double sdG = std::sqrt(varSG);
         const double zG = (sG - meanSG) / sdG;
         pMarg = 2.0 * math::pnorm(-std::abs(zG));
-        out[0] = pMarg;                 // P_G
+        // The magnitude in the log domain; see the base path above.
+        out[0] = -spa::normalTwoSidedLog(zG) / math::kLn10;   // LOG10P_G
         out[1] = zG;                    // Z_G (normal ⇒ p-consistent)
         out[2] = (sG - meanSG) / varSG; // BETA_G
         out[3] = 1.0 / sdG;             // SE_G
+        out[4] = spamix_cgf::statusCode(spa::Status::Normal);   // SPA_STATUS_G
     }
 
     const bool branchB = (pMarg <= m_marginalCutoff);
 
     // Branch B: genotype-adjusted residual R̃ = R − α − β·G (env-independent).
     Eigen::VectorXd R0;
+    Eigen::VectorXd VR0; // V*R0, the metric branchBWeight orthogonalises in
     if (branchB) {
         const double n = static_cast<double>(m_resid.size());
         const double sg = GVec.sum();
@@ -483,6 +695,10 @@ void SPAGxEMethod::evalMarkerMix(
             const double alpha = (sgg * sr - sg * sgr) / det;
             const double beta = (n * sgr - sg * sr) / det;
             R0 = m_resid.array() - alpha - beta * GVec.array();
+            // V*R0 for the per-individual law, whose score variance is
+            // sum u_i^2 * 2 qhat_i (1-qhat_i); the metric is diag(m_wVec), not
+            // Phi (mix carries no GRM).
+            VR0 = (m_wVec.array() * R0.array()).matrix();
         }
     }
 
@@ -492,10 +708,13 @@ void SPAGxEMethod::evalMarkerMix(
                              m_wald->trait != spagxe_wald::TraitType::None;
 
     for (int e = 0; e < nEnv; ++e) {
-        const int base = 4 + 6 * e;
+        const int base = 5 + 7 * e;
+        out[base + 6] = spamix_cgf::statusCode(spa::Status::NaNoTest);
+
         const EnvData &ed = m_envs[e];
-        double z = 0.0, var = 0.0, pSpa, score;
-        double pWald = kNaN;
+        double z = 0.0, var = 0.0, score;
+        double lWald = kNaN;
+        spa::Result ts{kNaN, spa::Status::NaNoTest};
         if (!branchB) {
             // Branch A: variance-weighted λ (per marker) on the per-individual q̂.
             //   λ = Σ 2q̂(1−q̂) E R² / Σ 2q̂(1−q̂) R²
@@ -506,31 +725,21 @@ void SPAGxEMethod::evalMarkerMix(
             score = rawScores[1 + e] - lambda * sG;
             m_wScratch = (ed.E.array() - lambda) * m_resid.array(); // weight (E−λ)∘R
             const OutlierData part = detectOutliers(m_wScratch, m_outlierRatio);
-            pSpa = spaScorePvalMix(part, m_wScratch, m_afVec, m_wVec, score,
-                                   m_spaCutoff, z, var);
+            ts = spaScorePvalMix(part, m_wScratch, m_afVec, m_wVec, score,
+                                 m_spaCutoff, m_afOutlier, z, var);
         } else {
             if (R0.size() == 0) continue; // degenerate G ⇒ leave NaN
             // Branch B per-marker weight u = E ∘ R̃; Ŝ_GxE = Σ G_i u_i.
-            const Eigen::VectorXd u = ed.E.array() * R0.array();
+            Eigen::VectorXd u;
+            branchBWeight(ed.E, R0, VR0, u);
             score = GVec.dot(u);
             const OutlierData part = detectOutliers(u, m_outlierRatio);
-            pSpa = spaScorePvalMix(part, u, m_afVec, m_wVec, score, m_spaCutoff, z, var);
+            ts = spaScorePvalMix(part, u, m_afVec, m_wVec, score, m_spaCutoff,
+                                 m_afOutlier, z, var);
             if (waldEnabled)
-                pWald = spagxe_wald::waldInteractionPval(*m_wald, GVec, ed.E);
+                lWald = spagxe_wald::waldInteractionLog10P(*m_wald, GVec, ed.E);
         }
-        if (var > 0.0) {
-            double finalP = pSpa;
-            if (waldEnabled) {
-                const double ps[2] = {pSpa, pWald};
-                finalP = math::cauchyCombine(ps, 2);
-            }
-            out[base + 0] = finalP;                      // P_Gx<E> (final)
-            out[base + 1] = pWald;                       // P_Wald_Gx<E> (NaN if none)
-            out[base + 2] = math::zFromPval(finalP, z);  // Z_Gx<E> (p-consistent)
-            out[base + 3] = z;                           // Z_Norm_Gx<E> (raw score z)
-            out[base + 4] = score / var;                 // BETA_Gx<E>
-            out[base + 5] = 1.0 / std::sqrt(var);        // SE_Gx<E>
-        }
+        writeEnvBlock(out, base, ts, lWald, waldEnabled, z, var, score);
     }
 }
 

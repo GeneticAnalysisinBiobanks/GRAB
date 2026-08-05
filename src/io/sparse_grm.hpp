@@ -84,13 +84,6 @@ class SparseGRM {
         uint32_t n
     ) const;
 
-    // SPAmixPlus variance:  2 * sum(grm * R[i]*R[j]) - R·R
-    //   (summing over lower-tri + diagonal entries).
-    double spaVariance(
-        const double *R,
-        uint32_t n
-    ) const;
-
     const std::vector<Entry> &entries() const {
         return m_entries;
     }
@@ -142,6 +135,16 @@ class SparseGRM {
   private:
     SparseGRM() = default; // used by fromGCTA factory
     void buildDiagonal();  // populate m_diagonal from m_entries
+    // Throw on a non-finite value; warn on any off-diagonal above the
+    // monozygotic bound 2*phi = 1 or any diagonal outside [0, 2].  Called
+    // from the head of buildDiagonal — before its NaN "no entry" sentinel is
+    // written, so that a literal `nan` in the file is named as non-finite
+    // rather than as a missing diagonal entry.  That covers the text
+    // constructor, fromGCTA and fromEntries.  SparseGRM::load's no-GRM-file
+    // branch builds the identity in place and calls neither, which is
+    // correct in substance — the identity is trivially in range — but a
+    // future factory added beside it would inherit the omission silently.
+    void checkValueRange() const;
 
     uint32_t m_nSubj = 0;
     std::vector<Entry> m_entries;   // lower-tri + diagonal COO

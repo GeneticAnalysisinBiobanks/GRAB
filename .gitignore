@@ -1,1 +1,19 @@
 build/
+
+# Regression and benchmark artifacts.
+#
+# examples/baseline.sh writes examples_output/; successive runs are compared
+# with tests/regress.sh, which needs a preserved copy of the previous tree
+# (conventionally examples_output.base/).
+examples_output/
+examples_output.*/
+
+# Scratch directories created by the test binaries in tests/.  These are
+# written into the current working directory, which is the repository root
+# when the tests are invoked through `make test`.
+lanc_rt_tmp/
+lanc_conv_smoke_tmp/
+
+# Synthetic cohorts produced by tests/make_synthetic.py for end-to-end
+# benchmarking.  Regenerable from the seed, so never committed.
+bench_data/

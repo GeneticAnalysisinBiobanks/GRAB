@@ -173,7 +173,7 @@ class PgenCursor : public GenoCursor {
         double &altFreq,
         double &altCounts,
         double &missingRate,
-        double &hweP,
+        double &log10pHwe,
         double &maf,
         double &mac,
         std::vector<uint32_t> &indexForMissing

@@ -1161,7 +1161,7 @@ void BgenCursor::getGenotypes(
     double &altFreq,
     double &altCounts,
     double &missingRate,
-    double &hweP,
+    double &log10pHwe,
     double &maf,
     double &mac,
     std::vector<uint32_t> &indexForMissing
@@ -1196,14 +1196,14 @@ void BgenCursor::getGenotypes(
     altFreq = gs.altFreq;
     altCounts = gs.altCounts;
     missingRate = gs.missingRate;
-    hweP = gs.hweP;
+    log10pHwe = gs.log10pHwe;
     maf = gs.maf;
     mac = gs.mac;
 
     // Dosage-aware AF: compute the allele frequency from the dosage sum rather
     // than the thresholded hard-call counts.  For hard calls the dosage sum
     // equals 2*nHomAlt + nHet exactly, so altFreq/altCounts/mac are unchanged;
-    // for true dosages this is the correct (un-binned) frequency.  hweP retains
+    // for true dosages this is the correct (un-binned) frequency.  log10pHwe retains
     // the count-based value from statsFromCounts, where the counts are the
     // plink2 hard-call-threshold classification (dosageHardcall) — matching
     // plink2 --hardy; missingRate stays NaN-only.

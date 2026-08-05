@@ -320,7 +320,7 @@ void PlinkCursor::getGenotypesAllUsed(
     double &altFreq,
     double &altCounts,
     double &missingRate,
-    double &hweP,
+    double &log10pHwe,
     double &maf,
     double &mac,
     std::vector<uint32_t> &indexForMissing
@@ -351,7 +351,7 @@ void PlinkCursor::getGenotypesAllUsed(
     altFreq = gs.altFreq;
     altCounts = gs.altCounts;
     missingRate = gs.missingRate;
-    hweP = gs.hweP;
+    log10pHwe = gs.log10pHwe;
     maf = gs.maf;
     mac = gs.mac;
 }
@@ -366,7 +366,7 @@ void PlinkCursor::getGenotypesMasked(
     double &altFreq,
     double &altCounts,
     double &missingRate,
-    double &hweP,
+    double &log10pHwe,
     double &maf,
     double &mac,
     std::vector<uint32_t> &indexForMissing
@@ -410,7 +410,7 @@ void PlinkCursor::getGenotypesMasked(
     altFreq = gs.altFreq;
     altCounts = gs.altCounts;
     missingRate = gs.missingRate;
-    hweP = gs.hweP;
+    log10pHwe = gs.log10pHwe;
     maf = gs.maf;
     mac = gs.mac;
 }
@@ -423,7 +423,7 @@ void PlinkCursor::getGenotypes(
     double &altFreq,
     double &altCounts,
     double &missingRate,
-    double &hweP,
+    double &log10pHwe,
     double &maf,
     double &mac,
     std::vector<uint32_t> &indexForMissing
@@ -431,9 +431,9 @@ void PlinkCursor::getGenotypes(
     const uint8_t *raw = readMarkerPtr(gIndex);
 
     if (m_allUsed) {
-        getGenotypesAllUsed(raw, m_nSubjInFile, out, altFreq, altCounts, missingRate, hweP, maf, mac, indexForMissing);
+        getGenotypesAllUsed(raw, m_nSubjInFile, out, altFreq, altCounts, missingRate, log10pHwe, maf, mac, indexForMissing);
     } else {
-        getGenotypesMasked(raw, out, altFreq, altCounts, missingRate, hweP, maf, mac, indexForMissing);
+        getGenotypesMasked(raw, out, altFreq, altCounts, missingRate, log10pHwe, maf, mac, indexForMissing);
     }
 }
 

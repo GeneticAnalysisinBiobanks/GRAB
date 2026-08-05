@@ -376,6 +376,148 @@ dist: $(BIN)
 	cd $(DIST_DIR) && tar czf $(DIST_PKG).tar.gz $(DIST_PKG)
 	@echo "Created $(DIST_DIR)/$(DIST_PKG).tar.gz"
 
+# ── Tests and benchmarks ──────────────────────────────────────────────────────
+# Developer-only targets.  `tests/` is deliberately outside the rwildcard over
+# $(SRC_DIR), so nothing here is linked into the shipped binary and the
+# "binary is the deliverable" property is preserved.
+#
+# Each test/benchmark is a self-contained translation unit with its own main().
+# Those that exercise only header-level code (the SPA kernels, the reference
+# CGF) link against nothing; those that need compiled GRAB objects list them
+# explicitly in TEST_<name>_OBJS below.  There is no test-runner library and no
+# third-party framework: tests/tinytest.hpp is ~150 lines of header.
+#
+#   make test    build and run every test, stop at the first failing binary
+#   make bench   build and run every benchmark
+#
+# Tests are compiled with the same GRAB_CXXFLAGS as src/ so that the SIMD
+# dispatch, -march setting and optimization level under test match the shipped
+# configuration.  Assertions are wanted, so -DNDEBUG is filtered out.
+TEST_DIR       := tests
+TEST_BUILD_DIR := $(BUILD_DIR)/tests
+
+TEST_SRCS  := $(wildcard $(TEST_DIR)/*_test.cpp)
+TEST_BINS  := $(patsubst $(TEST_DIR)/%.cpp, $(TEST_BUILD_DIR)/%$(EXE), $(TEST_SRCS))
+
+BENCH_SRCS := $(wildcard $(TEST_DIR)/bench_*.cpp)
+BENCH_BINS := $(patsubst $(TEST_DIR)/%.cpp, $(TEST_BUILD_DIR)/%$(EXE), $(BENCH_SRCS))
+
+TEST_CXXFLAGS := $(filter-out -DNDEBUG,$(GRAB_CXXFLAGS))
+
+# Per-test object requirements.  A test that exercises only header-level code
+# declares nothing.  The lists below replace the hand-written g++ command lines
+# previously carried in each test's header comment, so `make test` is now the
+# single source of truth for how a test links.
+# The SPA CGF kernels live in a .cpp rather than a header: the
+# __attribute__((target(...))) SIMD variants and the static const dispatch
+# pointers must have exactly one definition.  Both the test and the benchmark
+# therefore link the object rather than including the implementation.
+TESTOBJS_spa_cgf_test  := $(BUILD_DIR)/util/spa_cgf.o
+TESTOBJS_bench_spa_cgf := $(BUILD_DIR)/util/spa_cgf.o
+# bench_spa_tail times the tail path against the linear tail log10p_unify
+# Stage 3 deleted; spa.hpp is header-only but reaches math_helper's pnorm and
+# pnormLog, which are out of line.
+TESTOBJS_bench_spa_tail := $(BUILD_DIR)/util/math_helper.o
+# bench_hwe times the deleted linear HWE test against plink2's HweLnP, which
+# reaches it through the geno_factory wrapper.
+TESTOBJS_bench_hwe := \
+    $(BUILD_DIR)/geno_factory/hwe.o \
+    $(BUILD_DIR)/pgenlib/plink2_stats.o \
+    $(BUILD_DIR)/pgenlib/plink2_base.o \
+    $(BUILD_DIR)/pgenlib/SFMT.o
+# spagrm_cgf.hpp is header-only but delegates its class-1 term to the dispatched
+# binomial kernels, so it needs the same object.
+TESTOBJS_spagrm_cgf_test := $(BUILD_DIR)/util/spa_cgf.o
+# spamix_cgf.hpp is likewise header-only over the dispatched binomial kernels.
+TESTOBJS_spamix_cgf_test := $(BUILD_DIR)/util/spa_cgf.o
+# spamixlocalp_cgf.hpp is header-only over spa_cgf's hapcount variant.
+TESTOBJS_spamixlocalp_cgf_test := $(BUILD_DIR)/util/spa_cgf.o
+# wtcoxg_cgf.hpp is header-only over the same kernels; its bivariate-normal
+# tests additionally need math_helper.o for pmvnorm2dHalfRect / bvnCdf.
+TESTOBJS_wtcoxg_cgf_test := \
+    $(BUILD_DIR)/util/spa_cgf.o \
+    $(BUILD_DIR)/util/math_helper.o
+# log10p_test covers the log-domain distribution tier of the log10p_unify
+# project (zFromNegLog10P, chisq1FromNegLog10P, cauchyCombineLog10, ptLog,
+# pmvnorm2dHalfRectLog), all of which live in math_helper.cpp.  The object is
+# listed from Stage 0, when the suite is still a skeleton, so that Stage 1 adds
+# assertions to a suite that already links rather than changing both at once.
+# Stage 9 additionally cross-checks LOG10P_HWE, so the suite links the HWE
+# wrapper and plink2's statistics object that supplies HweLnP behind it.
+# Stage 7 adds the shared Wald tier (src/util/wald.cpp): its four fitters now
+# return L = -log10 P, and § 9 of the suite checks that tail against Boost's
+# ibeta and against the closed-form 2x2-table Wald test.
+TESTOBJS_log10p_test := \
+    $(BUILD_DIR)/util/math_helper.o \
+    $(BUILD_DIR)/util/wald.o \
+    $(BUILD_DIR)/geno_factory/hwe.o \
+    $(BUILD_DIR)/pgenlib/plink2_stats.o \
+    $(BUILD_DIR)/pgenlib/plink2_base.o \
+    $(BUILD_DIR)/pgenlib/SFMT.o
+
+# spagrm_ibd_test exercises the two relatedness inputs SPAGRM does not build
+# in the same run — the pairwise-IBD table and the sparse GRM — so it links
+# the real loader and the real Chow-Liu builder rather than a copy of either.
+# grm_null.o pulls in SPAGRMClass (spagrm.o, and through it the saddlepoint
+# kernels) and the compressed-text reader (text_stream.o and the three
+# compression libraries).
+TESTOBJS_spagrm_ibd_test := \
+    $(BUILD_DIR)/spagrm/grm_null.o \
+    $(BUILD_DIR)/spagrm/spagrm.o \
+    $(BUILD_DIR)/io/sparse_grm.o \
+    $(BUILD_DIR)/util/spa_cgf.o \
+    $(BUILD_DIR)/util/math_helper.o \
+    $(BUILD_DIR)/util/text_stream.o \
+    $(ZSTD_OBJS) $(ZLIB_OBJS) $(DEFLATE_OBJS)
+
+TESTOBJS_lanc_simd_test := \
+    $(BUILD_DIR)/localplus/lanc_io.o \
+    $(BUILD_DIR)/geno_factory/variant_filter.o \
+    $(ZSTD_OBJS)
+
+TESTOBJS_lanc_roundtrip_test := $(TESTOBJS_lanc_simd_test)
+
+TESTOBJS_lanc_convert_rfmix_smoke_test := \
+    $(BUILD_DIR)/localplus/lanc_io.o \
+    $(BUILD_DIR)/localplus/lanc_convert_rfmix.o \
+    $(BUILD_DIR)/geno_factory/variant_filter.o \
+    $(BUILD_DIR)/io/subject_filter.o \
+    $(HTSLIB_OBJS) $(HTSCODEC_OBJS) \
+    $(ZSTD_OBJS) $(ZLIB_OBJS) $(DEFLATE_OBJS)
+
+# Second expansion lets the pattern rule name a per-target variable derived
+# from the stem, so each test pulls in exactly the objects it needs.
+.SECONDEXPANSION:
+
+$(TEST_BUILD_DIR)/%$(EXE): $(TEST_DIR)/%.cpp $$(TESTOBJS_$$*) | tmp
+	@mkdir -p $(@D)
+	$(CXX) $(TEST_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) -MMD -MP \
+	    -I$(TEST_DIR) $(INCLUDES) $< $(TESTOBJS_$*) -o $@ $(LINK_FLAGS) $(LDLIBS)
+
+# Header dependencies for tests and benchmarks.  Without these, editing a
+# header under tests/ (spa_reference.hpp, tinytest.hpp) would leave a stale
+# binary in place and a test run would silently exercise the previous code.
+TEST_DEPS := $(TEST_BINS:$(EXE)=.d) $(BENCH_BINS:$(EXE)=.d)
+-include $(TEST_DEPS)
+
+.PHONY: test bench
+test: $(TEST_BINS)
+	@fail=0; \
+	for t in $(TEST_BINS); do \
+	    echo "── $$t ─────────────────────────────────────────────"; \
+	    "$$t" || fail=1; \
+	    echo; \
+	done; \
+	if [ $$fail -ne 0 ]; then echo "TEST SUITE FAILED"; exit 1; fi; \
+	echo "ALL TESTS PASSED"
+
+bench: $(BENCH_BINS)
+	@for b in $(BENCH_BINS); do \
+	    echo "── $$b ─────────────────────────────────────────────"; \
+	    "$$b"; \
+	    echo; \
+	done
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 .PHONY: run
 run: all
