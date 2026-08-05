@@ -257,6 +257,65 @@ Eigen::VectorXd recodeResponse(const Eigen::VectorXd &col, spagxe_wald::TraitTyp
     return col; // Linear (affine-invariant); Cox uses time/event, not y
 }
 
+// Branch B's weight  u = E ∘ R̃, with the direction that contributes nothing to
+// the statistic removed.  `VR0` is V·R̃ up to any positive scalar, with V the
+// genotype covariance the caller's variance uses: Φ·R̃ under the uniform law
+// (R̃ itself when Φ = I), and 2q̂(1−q̂) ∘ R̃ under SPAGxEmix's per-individual law.
+//
+// WHY THIS IS NOT A TUNING KNOB.  The Branch-B projection solves the [1, G]
+// normal equations, so at the observed G
+//
+//     Σ_i R̃_i = 0        and        Σ_i G_i R̃_i = 0
+//
+// hold exactly, hence so does Σ_i (G_i − 2q) R̃_i = 0.  The score is therefore
+// the same number for every a:
+//
+//     S = Σ_i (G_i − 2q)·u_i = Σ_i (G_i − 2q)·(u_i − a·R̃_i)
+//
+// while the plug-in variance u'V u is not.  Every member of that family is a
+// representation of the SAME statistic, so choosing among them is not choosing
+// among tests; it is choosing which representation the plug-in is applied to.
+// The weight u = E ∘ R̃ generally has a component along R̃, and the plug-in
+// charges the statistic for that component's variance even though it
+// contributes exactly zero.  The minimiser over a,
+//
+//     a = (u' V R̃) / (R̃' V R̃)
+//
+// makes u ⊥_V R̃ and is therefore the tightest representation available.
+//
+// It is also the standard efficient-score correction for the nuisance
+// parameters (α, β) the projection estimates: the correct variance is
+// I_ββ − I_βη I_ηη⁻¹ I_ηβ and the naive plug-in is I_ββ, whose excess is a
+// non-negative rank-1 term.  Omitting it is therefore always CONSERVATIVE and
+// never anti-conservative, which is why the deficit had a consistent sign.
+//
+// HOW MUCH IT MOVES.  With E ⊥ R̃² the ratio of corrected to naive variance is
+// Var(E)/E[E²] = 1/(1 + (Ē/SD_E)²).  An already-centred environment loses
+// nothing; a 0/1 indicator of prevalence 0.5 has its Branch-B variance
+// overstated by exactly 2.  `examples/baseline.sh` uses `MALE`, so its
+// Branch-B columns sit at that end.  Shifting E by a constant leaves Y, R, R̃
+// and S untouched and moves only this variance, which makes the attribution
+// checkable: on chr22 of a 50 000-subject cohort λ_GC of the uncorrected
+// Branch B ran 0.936 / 0.505 / 0.212 for E shifted by 0 / 1 / 2 against the
+// predicted 1.000 / 0.500 / 0.200, while Branch A held at 0.945 throughout.
+//
+// On feat/sqrgxe this function is gxe_score::branchBWeight, shared with
+// --method sqrgxe; here it is file-local because that tier does not exist yet
+// on this branch.  Keep the two bodies identical.
+void branchBWeight(
+    const Eigen::Ref<const Eigen::VectorXd> &env,
+    const Eigen::Ref<const Eigen::VectorXd> &R0,
+    const Eigen::Ref<const Eigen::VectorXd> &VR0,
+    Eigen::VectorXd &u
+) {
+    u = env.array() * R0.array();
+    const double den = R0.dot(VR0);
+    if (!(den > 0.0)) return; // no usable metric: leave the naive weight
+    const double a = u.dot(VR0) / den;
+    if (!std::isfinite(a)) return;
+    u.noalias() -= a * R0;
+}
+
 } // namespace
 
 // ══════════════════════════════════════════════════════════════════════
@@ -480,6 +539,7 @@ void SPAGxEMethod::evalMarker(
     // R̃ is env-independent, so it is formed once per marker.  (Unweighted even
     // for +; the GRM re-enters only through the variance — paper eq. 3.)
     Eigen::VectorXd R0;
+    Eigen::VectorXd VR0; // V*R0, the metric branchBWeight orthogonalises in
     if (branchB) {
         const double n = static_cast<double>(m_resid.size());
         const double sg = GVec.sum();
@@ -491,6 +551,16 @@ void SPAGxEMethod::evalMarker(
             const double alpha = (sgg * sr - sg * sgr) / det;
             const double beta = (n * sgr - sg * sr) / det;
             R0 = m_resid.array() - alpha - beta * GVec.array();
+            // Φ·R̃, the metric branchBWeight projects in.  Env-independent like
+            // R̃ itself, so it costs one GRM multiply per marker rather than
+            // one per environment; Φ = I on the base path makes it a copy.
+            if (m_grm) {
+                VR0.resize(R0.size());
+                m_grm->multiply(R0.data(), VR0.data(),
+                                static_cast<uint32_t>(R0.size()));
+            } else {
+                VR0 = R0;
+            }
         }
         // det ≤ 0 (monomorphic G): leave R0 empty ⇒ per-env NaN below.
     }
@@ -520,7 +590,8 @@ void SPAGxEMethod::evalMarker(
         } else {
             if (R0.size() == 0) continue; // degenerate G ⇒ leave NaN
             // Branch B per-marker weight u = E ∘ R̃; Ŝ_GxE = Σ G_i u_i.
-            const Eigen::VectorXd u = m_envs[e].E.array() * R0.array();
+            Eigen::VectorXd u;
+            branchBWeight(m_envs[e].E, R0, VR0, u);
             score = GVec.dot(u);
             const OutlierData ub = detectOutliers(u, m_outlierRatio);
             ts = spaScorePval(ub, u.sum(), u.squaredNorm(), phiQuad(u), score, q,
@@ -612,6 +683,7 @@ void SPAGxEMethod::evalMarkerMix(
 
     // Branch B: genotype-adjusted residual R̃ = R − α − β·G (env-independent).
     Eigen::VectorXd R0;
+    Eigen::VectorXd VR0; // V*R0, the metric branchBWeight orthogonalises in
     if (branchB) {
         const double n = static_cast<double>(m_resid.size());
         const double sg = GVec.sum();
@@ -623,6 +695,10 @@ void SPAGxEMethod::evalMarkerMix(
             const double alpha = (sgg * sr - sg * sgr) / det;
             const double beta = (n * sgr - sg * sr) / det;
             R0 = m_resid.array() - alpha - beta * GVec.array();
+            // V*R0 for the per-individual law, whose score variance is
+            // sum u_i^2 * 2 qhat_i (1-qhat_i); the metric is diag(m_wVec), not
+            // Phi (mix carries no GRM).
+            VR0 = (m_wVec.array() * R0.array()).matrix();
         }
     }
 
@@ -654,7 +730,8 @@ void SPAGxEMethod::evalMarkerMix(
         } else {
             if (R0.size() == 0) continue; // degenerate G ⇒ leave NaN
             // Branch B per-marker weight u = E ∘ R̃; Ŝ_GxE = Σ G_i u_i.
-            const Eigen::VectorXd u = ed.E.array() * R0.array();
+            Eigen::VectorXd u;
+            branchBWeight(ed.E, R0, VR0, u);
             score = GVec.dot(u);
             const OutlierData part = detectOutliers(u, m_outlierRatio);
             ts = spaScorePvalMix(part, u, m_afVec, m_wVec, score, m_spaCutoff,
