@@ -8,6 +8,7 @@
 #include "engine/loco.hpp"
 #include "engine/marker.hpp"
 #include "geno_factory/geno_data.hpp"
+#include "spasqr/null_model.hpp"
 #include "spasqr/qmme.hpp"
 #include "io/sparse_grm.hpp"
 #include "io/subject_data.hpp"
@@ -25,6 +26,7 @@
 #include <memory>
 #include <numeric>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -35,6 +37,7 @@
 // five hand-written CGF copies that needed them are gone, and the scalar / AVX2
 // / AVX-512 triple now lives once in util/spa_cgf.cpp with its own dispatch
 // site.  See the block comment below.
+#include "util/empirical_cgf.hpp"
 
 // ══════════════════════════════════════════════════════════════════════
 // SPAsqr's saddlepoint — on the shared solver, tail kernel and CGF
@@ -92,14 +95,16 @@
 // ── D6, and why SPAsqr is exposed to it exactly as SPAGRM is ─────────
 //
 // The first-pass audit note claimed "EmpVar is non-negative by construction, so
-// SPAsqr is not exposed".  That is wrong.  EmpVar is built from
-// tau.R_GRM_R_nonOutlier, accumulated as
+// SPAsqr is not exposed".  At the time EmpVar was built from a sparse-GRM
+// quadratic form restricted to the non-outlier block, accumulated as
 // `e.factor * e.value * ResidMat(e.row, col) * ResidMat(e.col, col)` over a
-// thresholded sparse GRM read from a file, and such a matrix is not guaranteed
-// positive semidefinite.  A negative EmpVar makes Score_adj NaN, and a negative
-// `var` term makes the CGF's K'' negative — the most reachable route to
-// std::sqrt of a negative number in the old tail.  Both now surface as a named
-// spa::Status with P = NA.
+// thresholded GRM read from a file, and such a matrix is not guaranteed
+// positive semidefinite.  The CGF's non-outlier block is now the plain inner
+// product R_non^T R_non (see SPAsqrPerTau), which is non-negative, so that
+// route is closed; the GRM still enters Score_var = G_var * R^T Phi R, and a
+// non-positive Score_var surfaces as a named spa::Status with P = NA.
+
+using namespace spasqr_null;
 
 namespace {
 
@@ -109,14 +114,31 @@ struct SPAsqrPerTau {
     Eigen::VectorXd outlierResid;        // residuals of outlier subjects
     double sum_unrelated_outliers2;      // outlierResid.squaredNorm()
     double sum_R_nonOutlier;
-    double R_GRM_R_nonOutlier;
-    double R_GRM_R;                      // full variance term (all subjects)
+    // R_non^T R_non — plain residual inner product over non-outliers, per the
+    // manuscript's Var(S_non) = 2mu(1-mu)*R_non^T R_non.  The sparse GRM
+    // deliberately does NOT enter the CGF: the whole CGF is built under
+    // independence and all relatedness is carried by the variance-ratio
+    // denominator Var(S) = G_var * R_GRM_R.
+    double R_R_nonOutlier;
+    double R_GRM_R;                      // full variance term (all subjects), R^T Phi R
+
+    // Empirical CGF of this (chromosome, tau)'s residuals, used instead of the
+    // Binomial MGF below the MAC cutoff.  Empty when the branch is disabled.
+    ecgf::EmpiricalCgf empCgf;
 };
 
 // `zeta` is gone: it was assigned 0.01 in buildSPAsqrMethod and never read,
 // because both tails derived their initial abscissa from
 // min(|Score_adj|/Score_var, 1.2) instead.  See 01_findings.md D7's companion
 // note and the lower-tail convention comment in spagrm.cpp.
+
+// Below this minor-allele count the Binomial-MGF CGF is replaced by the
+// empirical residual CGF.  The Binomial branch approximates the whole
+// non-outlier block by a Gaussian, which is what makes rare variants
+// conservative; the empirical CGF is exact in the genotype configuration and
+// only assumes the residuals are exchangeable.
+constexpr double kEmpiricalMacCutoff = 100.0;
+
 struct SPAsqrSPAShared {
     std::vector<SPAsqrPerTau> perTau;    // one per tau
     double SPA_Cutoff;
@@ -183,7 +205,7 @@ inline spa::Result spaTwoSided(
     return spa::assemble(logp[0], logp[1], st[0], st[1], zNorm);
 }
 
-// ── Per-tau p-value — the single live implementation ───────────────────
+// ── Binomial-MGF branch ──────────────────────────────────────────────
 //
 // G_var = empirical Var(G) over post-impute genotypes, passed in by the caller,
 // drives the outer Score_var = G_var * R_GRM_R.  EmpVar = K''(0) uses the
@@ -192,33 +214,19 @@ inline spa::Result spaTwoSided(
 // Score_adj = Score * sqrt(K''(0) / Var(S)_observed) is the SAIGE-style
 // variance ratio that brings the score onto the CGF's natural scale, dropping
 // the implicit HWE assumption (G_var ~ 2p(1-p)) earlier code relied on.
+// EmpVar is built entirely under independence; the rescaling carries all of
+// the relatedness, matching the manuscript (Phi enters only via Var(S)).
 
-inline spa::Result tauPvalue(
+inline spa::Result binomTwoSided(
     double Score,
-    double altFreq,
-    double G_var,
-    double &zScore,
+    double MAF,
+    double Score_var,
+    double zNorm,
     const SPAsqrPerTau &tau,
     const SPAsqrSPAShared &spa_
 ) {
-    const double nan = std::numeric_limits<double>::quiet_NaN();
-    const double MAF       = std::min(altFreq, 1.0 - altFreq);
-    const double Score_var = G_var * tau.R_GRM_R;
-
-    if (Score_var <= 0.0 || MAF <= 0.0) {
-        zScore = 0.0;
-        return spa::Result{nan, spa::Status::NaNoTest};
-    }
-
-    zScore = Score / std::sqrt(Score_var);
-
-    if (!std::isfinite(zScore))
-        return spa::Result{nan, spa::Status::NaNoTest};
-
-    if (std::abs(zScore) <= spa_.SPA_Cutoff) return spa::normalBranch(zScore);
-
     const double EmpVar    = 2.0 * MAF * (1.0 - MAF) *
-                              (tau.R_GRM_R_nonOutlier + tau.sum_unrelated_outliers2);
+                              (tau.R_R_nonOutlier + tau.sum_unrelated_outliers2);
     const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
     const double absAdj    = std::abs(Score_adj);
 
@@ -230,8 +238,105 @@ inline spa::Result tauPvalue(
                        static_cast<int>(tau.outlierResid.size()),
                        MAF,
                        2.0 * MAF * tau.sum_R_nonOutlier,
-                       2.0 * MAF * (1.0 - MAF) * tau.R_GRM_R_nonOutlier,
-                       absAdj, initZeta, spa_.tol, zScore);
+                       2.0 * MAF * (1.0 - MAF) * tau.R_R_nonOutlier,
+                       absAdj, initZeta, spa_.tol, zNorm);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Empirical-CGF branch (MAC < kEmpiricalMacCutoff)
+// ══════════════════════════════════════════════════════════════════════
+//
+// Same solver, same tail kernel, same two-sided assembly as the Binomial
+// branch; all that changes is the source of K, K' and K'' — from the outlier
+// Binomial loop to one table lookup per genotype bucket (util/empirical_cgf).
+// The branch reports through the same spa::Status vocabulary, so a marker
+// that could not be solved here is visible as such rather than laundered.
+
+inline spa::Result empTwoSided(
+    const ecgf::EmpiricalCgf &tab,
+    const double *gt,
+    const double *ct,
+    int nb,
+    double resSS,
+    double absAdj,
+    double initZeta,
+    double tol,
+    double zNorm
+) {
+    double logp[2];
+    spa::Status st[2];
+
+    for (int k = 0; k < 2; ++k) {
+        const bool lowerTail = (k == 1);
+        const double s = lowerTail ? -absAdj : absAdj;
+
+        spa::SolveOpts opt;
+        opt.init = lowerTail ? -initZeta : initZeta;
+        opt.scoreSign = s;
+        opt.rtol = tol;
+
+        const spa::Saddle sd = spa::solveSaddlepoint(
+            s,
+            [&](double t) {
+                double k1, k2;
+                // bucketedK1K2 subtracts the target itself: k1 = K'(t) - s.
+                ecgf::bucketedK1K2(tab, gt, ct, nb, resSS, t, s, k1, k2);
+                return spa::K12{k1, k2};
+            },
+            [&](double t) {
+                double k1, k2;
+                ecgf::bucketedK1K2(tab, gt, ct, nb, resSS, t, s, k1, k2);
+                return spa::K012{ecgf::bucketedK0(tab, gt, ct, nb, resSS, t),
+                                 k1, k2};
+            },
+            opt);
+
+        spa::Status stLog = spa::Status::SpaOk;
+        logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
+        st[k] = spa::worseStatus(sd.status, stLog);
+    }
+
+    return spa::assemble(logp[0], logp[1], st[0], st[1], zNorm);
+}
+
+// Two-sided p-value from the empirical CGF.  Returns Status::NaNoTest when the
+// branch has no answer to give (degenerate variance, score outside the support
+// of the residual-randomised statistic); the caller then takes the Binomial
+// branch rather than dropping the marker.
+inline spa::Result empiricalTwoSided(
+    const ecgf::EmpiricalCgf &tab,
+    const double *gt,
+    const double *ct,
+    int nb,
+    double resSS,
+    double Score,
+    double Score_var,
+    double tol,
+    double zNorm
+) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+
+    // K''(0) = Var(R) * sum_i Gtilde_i^2, exact (the bucketiser carries the
+    // quantisation residue).  Score_adj puts the score on the CGF's own scale
+    // — the same variance-ratio step the Binomial branch performs with
+    // 2p(1-p)*||R||^2, so the two branches meet continuously at the cutoff.
+    const double K2at0 = ecgf::bucketedK2AtZero(tab, gt, ct, nb, resSS);
+    if (!(K2at0 > 0.0) || !(Score_var > 0.0))
+        return spa::Result{nan, spa::Status::NaNoTest};
+    const double absAdj = std::abs(Score) * std::sqrt(K2at0 / Score_var);
+    if (!std::isfinite(absAdj) || absAdj <= 0.0)
+        return spa::Result{nan, spa::Status::NaNoTest};
+
+    // K'(t) is bounded — the residual-randomised score has bounded support, so
+    // outside it the saddlepoint equation has no solution at all.  Reject here
+    // instead of letting the solver exhaust its budget on an unsolvable root.
+    double supLo, supHi;
+    ecgf::bucketedSupport(tab, gt, ct, nb, supLo, supHi);
+    if (!(absAdj < supHi) || !(-absAdj > supLo))
+        return spa::Result{nan, spa::Status::NaNoTest};
+
+    const double zeta0 = absAdj / K2at0;   // exact root of a quadratic CGF
+    return empTwoSided(tab, gt, ct, nb, resSS, absAdj, zeta0, tol, zNorm);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -253,13 +358,15 @@ class SPAsqrMethod : public MethodBase {
     )
         : m_ntaus(ntaus),
           m_spaShared(std::move(spaShared)),
-          m_tauLabels(std::move(tauLabels)),
-          m_hasLabels(true)
+          m_tauLabels(std::move(tauLabels))
     {
         auto sd = std::make_shared<SharedMethodData>();
         sd->residMat  = std::move(residMat);
         sd->residSums = std::move(residSums);
         m_methodShared = std::move(sd);
+        // Only ask the engine for genotypes if a table was actually built.
+        m_hasEmpCgf = !m_spaShared->perTau.empty() &&
+                      !m_spaShared->perTau[0].empCgf.empty();
     }
 
     std::unique_ptr<MethodBase> clone() const override {
@@ -305,63 +412,36 @@ class SPAsqrMethod : public MethodBase {
                                               "SPA_STATUS_"};
         for (const char *g : kGroups) {
             for (int i = 0; i < m_ntaus; ++i) {
-                oss << '\t' << g;
-                if (m_hasLabels) oss << m_tauLabels[i];
-                else             oss << "tau" << (i + 1);
+                oss << '\t' << g << m_tauLabels[i];
             }
         }
         return oss.str();
     }
 
+    // SPAsqr is unconditionally fuseable (see supportsFusedGemm below), and the
+    // engine routes purely on that flag, so every marker arrives through
+    // processScoreBatch and this per-marker entry point is unreachable.  It
+    // exists only because MethodBase declares it pure virtual.
+    //
+    // It is a throw rather than a second implementation on purpose.  A working
+    // copy here would have to duplicate the score centering, the empirical
+    // Var(G) and — since the low-MAC branch needs per-subject genotypes that
+    // this signature does happen to carry — the whole empirical-CGF path.  The
+    // version that used to live here did the first two and skipped the third,
+    // so it silently disagreed with the fused path below MAC 100, and no test
+    // could catch that because nothing calls it.  If SPAsqr ever needs a
+    // non-fused path, implement it against processScoreBatch's logic rather
+    // than reviving a parallel one.
     void getResultVec(
-        Eigen::Ref<Eigen::VectorXd> GVec,
-        double altFreq,
+        Eigen::Ref<Eigen::VectorXd> /*GVec*/,
+        double /*altFreq*/,
         int /*markerInChunkIdx*/,
-        std::vector<double> &result
+        std::vector<double> & /*result*/
     ) override {
-        result.clear();
-
-        const double n      = static_cast<double>(GVec.size());
-        const double gSum   = GVec.sum();
-        const double gMean  = gSum / n;
-        // Empirical Var(G) over post-impute genotypes: (Σg² − (Σg)²/n) / (n−1).
-        const double gSumSq = GVec.squaredNorm();
-        const double G_var  = (n > 1.0)
-            ? (gSumSq - gSum * gSum / n) / (n - 1.0)
-            : 0.0;
-
-        Eigen::VectorXd scores = m_methodShared->residMat.transpose() * GVec;
-        for (int i = 0; i < m_ntaus; ++i)
-            scores[i] -= gMean * m_methodShared->residSums[i];
-
-        processOneMarker(scores.data(), altFreq, G_var, result);
-    }
-
-    // ── Batched analysis: B markers at once ────────────────────────────
-    void getResultBatch(
-        const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
-        const std::vector<double> &altFreqs,
-        const std::vector<int> & /*chunkIdxs*/,
-        std::vector<std::vector<double> > &results
-    ) override {
-        const int B = static_cast<int>(GBatch.cols());
-        results.resize(B);
-
-        Eigen::MatrixXd scoreMatrix;
-        scoreMatrix.noalias() = m_methodShared->residMat.transpose() * GBatch;
-
-        const Eigen::VectorXd gMeans  = GBatch.colwise().mean();
-        const Eigen::VectorXd gSumSqs = GBatch.colwise().squaredNorm();
-        scoreMatrix.noalias() -= m_methodShared->residSums * gMeans.transpose();
-
-        const double n = static_cast<double>(GBatch.rows());
-        for (int b = 0; b < B; ++b) {
-            // Empirical Var(G) over post-impute genotypes: (Σg² − n·ḡ²) / (n−1).
-            const double G_var = (n > 1.0)
-                ? (gSumSqs[b] - n * gMeans[b] * gMeans[b]) / (n - 1.0)
-                : 0.0;
-            processOneMarker(scoreMatrix.col(b).data(), altFreqs[b], G_var, results[b]);
-        }
+        throw std::logic_error(
+            "SPAsqr::getResultVec: SPAsqr only runs through the fused-GEMM path "
+            "(processScoreBatch); reaching here means the engine's fuseable/"
+            "non-fuseable split changed.");
     }
 
     int preferredBatchSize() const override {
@@ -381,6 +461,9 @@ class SPAsqrMethod : public MethodBase {
         Eigen::Ref<Eigen::MatrixXd> dest,
         const std::vector<uint32_t> &unionToLocal
     ) const override {
+        // The low-MAC branch needs to pull this phenotype's genotypes out of
+        // the union-space matrix later; the mapping is only handed to us here.
+        m_unionToLocal = unionToLocal;
         const auto &residMat = m_methodShared->residMat;
         const uint32_t nUnion = static_cast<uint32_t>(unionToLocal.size());
         for (uint32_t i = 0; i < nUnion; ++i) {
@@ -402,6 +485,7 @@ class SPAsqrMethod : public MethodBase {
         uint32_t nUsed,
         const std::vector<double> &altFreqs,
         const std::vector<int> & /*chunkIdxs*/,
+        const UnionGenotypes &geno,
         std::vector<std::vector<double> > &results
     ) override {
         const int B = static_cast<int>(scores.cols());
@@ -417,35 +501,98 @@ class SPAsqrMethod : public MethodBase {
                 m_centeredBuf(t, b) -= gMean * m_methodShared->residSums[t];
         }
 
-        // ── C2: Tau-first SPA computation ──────────────────────────
-        // Process all B markers for one tau before moving to the next.
-        // This keeps the tau's outlierResid data hot in cache.
-        // Layout: buf[b * ntaus + t].
-        // Heap-backed per-thread buffers (was a [20*16] stack array) so the
-        // fused GEMM window B is not capped at 16/B·ntaus ≤ 320.
+        // Layout for the per-(marker, tau) buffers: [b * ntaus + t].  Heap-backed
+        // per-thread scratch (was a [20*16] stack array) so the fused GEMM
+        // window B is not capped at 16 / B·ntaus ≤ 320.
         const size_t nCell = static_cast<size_t>(B) * m_ntaus;
         m_zBuf.resize(nCell);
         m_lpBuf.resize(nCell);
         m_stBuf.resize(nCell);
+        m_slow.assign(nCell, 0);
 
+        // ── Pass 1: z, the normal branch, and who needs the saddlepoint ────
+        // Everything here is O(1) per cell.  Var(G) depends only on the marker,
+        // so it is computed once rather than once per tau.
+        m_gVar.resize(static_cast<size_t>(B));
+        m_wantBuckets.assign(static_cast<size_t>(B), 0);
+        const double cutoff = m_spaShared->SPA_Cutoff;
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+
+        auto put = [&](size_t c, double z, const spa::Result &r) {
+            m_zBuf[c]  = z;
+            m_lpBuf[c] = r.negLog10p;
+            m_stBuf[c] = static_cast<double>(static_cast<uint8_t>(r.status));
+        };
+
+        for (int b = 0; b < B; ++b) {
+            // Empirical Var(G) over post-impute genotypes:
+            //   Var(g) = (Σg² − (Σg)²/n) / (n−1)
+            const double gSum  = gSums[b];
+            const double G_var = (nUsedD > 1.0)
+                ? (gSumSqs[b] - gSum * gSum / nUsedD) / (nUsedD - 1.0)
+                : 0.0;
+            m_gVar[static_cast<size_t>(b)] = G_var;
+
+            const double MAF = std::min(altFreqs[b], 1.0 - altFreqs[b]);
+            for (int t = 0; t < m_ntaus; ++t) {
+                const double Svar = G_var * m_spaShared->perTau[t].R_GRM_R;
+                const size_t c = static_cast<size_t>(b) * m_ntaus + t;
+
+                if (Svar <= 0.0 || MAF <= 0.0) {
+                    put(c, 0.0, spa::Result{nan, spa::Status::NaNoTest});
+                    continue;
+                }
+                const double z = m_centeredBuf(t, b) / std::sqrt(Svar);
+                if (!std::isfinite(z)) {
+                    put(c, z, spa::Result{nan, spa::Status::NaNoTest});
+                } else if (std::abs(z) <= cutoff) {
+                    // Normal approximation.  The cutoff is not only a speed knob
+                    // — Lugannani-Rice is singular at the mean (w, v -> 0 as the
+                    // saddlepoint approaches 0), so every marker below it must
+                    // stay here.  Measured: routing |z| <= 2 through the SPA
+                    // drives the empirical branch to obs/exp 2.5 at 1e-3 and 16
+                    // at 1e-4.
+                    put(c, z, spa::normalBranch(z));
+                } else {
+                    m_zBuf[c] = z;
+                    m_slow[c] = 1;
+                    m_wantBuckets[static_cast<size_t>(b)] = 1;
+                }
+            }
+        }
+
+        // ── Pass 2: bucket genotypes, but only where they will be read ─────
+        prepareLowMacBuckets(B, gSums, invN, geno);
+
+        // ── Pass 3: saddlepoint, tau-first ─────────────────────────────────
+        // Only the cells flagged above reach here — a few percent under the
+        // null.  Tau-first so one tau's outlierResid and CGF table stay hot
+        // across all the markers that need them.
         for (int t = 0; t < m_ntaus; ++t) {
             const SPAsqrPerTau &tau = m_spaShared->perTau[t];
-
             for (int b = 0; b < B; ++b) {
-                // Empirical Var(G) over post-impute genotypes:
-                //   Var(g) = (Σg² − (Σg)²/n) / (n−1)
-                const double gSum  = gSums[b];
-                const double G_var = (nUsedD > 1.0)
-                    ? (gSumSqs[b] - gSum * gSum / nUsedD) / (nUsedD - 1.0)
-                    : 0.0;
+                const size_t c = static_cast<size_t>(b) * m_ntaus + t;
+                if (!m_slow[c]) continue;
 
-                double z;
-                const spa::Result ts = tauPvalue(m_centeredBuf(t, b), altFreqs[b],
-                                                   G_var, z, tau, *m_spaShared);
-                const size_t k = static_cast<size_t>(b) * m_ntaus + t;
-                m_zBuf[k]  = z;
-                m_lpBuf[k] = ts.negLog10p;
-                m_stBuf[k] = static_cast<double>(static_cast<uint8_t>(ts.status));
+                const double Score = m_centeredBuf(t, b);
+                const double G_var = m_gVar[static_cast<size_t>(b)];
+                const double Svar  = G_var * tau.R_GRM_R;
+                const double MAF   = std::min(altFreqs[b], 1.0 - altFreqs[b]);
+                const double z     = m_zBuf[c];
+
+                // Below the MAC cutoff the Binomial MGF is replaced by the
+                // empirical residual CGF; if that branch cannot deliver a
+                // usable saddlepoint (SPA_STATUS > 2) fall back to the
+                // Binomial branch rather than substitute or lose the marker.
+                spa::Result r{nan, spa::Status::NaNoTest};
+                const MarkerBuckets &bk = m_bk[static_cast<size_t>(b)];
+                if (bk.n > 0 && !tau.empCgf.empty())
+                    r = empiricalTwoSided(tau.empCgf, &m_bkGt[bk.off], &m_bkCt[bk.off],
+                                          bk.n, bk.resSS, Score, Svar,
+                                          m_spaShared->tol, z);
+                if (!spa::statusIsUsable(r.status))
+                    r = binomTwoSided(Score, MAF, Svar, z, tau, *m_spaShared);
+                put(c, z, r);
             }
         }
 
@@ -457,10 +604,60 @@ class SPAsqrMethod : public MethodBase {
     }
 
   private:
+    // Collapse a marker's genotype column into (centred value, multiplicity)
+    // buckets, shared across taus because the buckets depend only on the
+    // genotype.  n == 0 marks a marker that stays on the Binomial branch.
+    struct MarkerBuckets {
+        int off = 0;        // start index into m_bkGt / m_bkCt
+        int n = 0;          // bucket count
+        double resSS = 0.0; // within-bucket spread the evaluator adds back
+    };
+
+    // Bucket the markers that pass 1 flagged, and only those.
+    //
+    // Bucketing costs a pass over all nUnion subjects, so doing it for every
+    // marker under the MAC cutoff -- as this used to -- spends that pass on
+    // markers no tau will ever ask about.  Under the null only a few percent of
+    // (marker, tau) cells clear the SPA cutoff, and a marker needs buckets only
+    // if at least one of its taus does; on a 50k-subject exome scan the
+    // speculative version was ~12% of total runtime, most of it discarded.
+    void prepareLowMacBuckets(
+        int B,
+        const double *gSums,
+        double invN,
+        const UnionGenotypes &geno
+    ) {
+        m_bk.assign(static_cast<size_t>(B), MarkerBuckets{});
+        m_bkGt.clear();
+        m_bkCt.clear();
+        if (!m_hasEmpCgf || geno.empty()) return;
+
+        const uint32_t nUnion = static_cast<uint32_t>(m_unionToLocal.size());
+        if (static_cast<Eigen::Index>(nUnion) != geno.rows) return;
+
+        const int nMarkers = std::min(B, static_cast<int>(geno.nCols));
+        for (int b = 0; b < nMarkers; ++b) {
+            if (!m_wantBuckets[static_cast<size_t>(b)]) continue;
+            if (!(geno.macs[b] < kEmpiricalMacCutoff)) continue;
+            // One pass over the union column: bucketing only needs the multiset
+            // of genotype values, so there is no reason to materialise a
+            // scattered per-phenotype copy first.
+            const int nb = m_bz.buildMapped(geno.column(static_cast<uint32_t>(b)),
+                                            m_unionToLocal.data(), nUnion,
+                                            gSums[b] * invN);
+            if (nb <= 0) continue;
+            MarkerBuckets &bk = m_bk[static_cast<size_t>(b)];
+            bk.off   = static_cast<int>(m_bkGt.size());
+            bk.n     = nb;
+            bk.resSS = m_bz.residualSS();
+            m_bkGt.insert(m_bkGt.end(), m_bz.gtilde(), m_bz.gtilde() + nb);
+            m_bkCt.insert(m_bkCt.end(), m_bz.count(),  m_bz.count()  + nb);
+        }
+    }
+
     int m_ntaus;
     std::shared_ptr<const SPAsqrSPAShared> m_spaShared;
     std::vector<std::string> m_tauLabels;
-    bool m_hasLabels;
 
     struct SharedMethodData {
         Eigen::MatrixXd residMat;   // N × ntaus
@@ -468,9 +665,22 @@ class SPAsqrMethod : public MethodBase {
     };
 
     std::shared_ptr<const SharedMethodData> m_methodShared;
-    Eigen::MatrixXd m_centeredBuf;  // reused across processScoreBatch calls
-    // B × ntaus each, reused across processScoreBatch calls.
-    std::vector<double> m_zBuf, m_lpBuf, m_stBuf;
+    // Low-MAC branch state.  m_unionToLocal is filled by fillUnionResiduals
+    // (const, hence mutable); the genotype block itself arrives as a
+    // processScoreBatch argument and is not retained.
+    bool m_hasEmpCgf = false;
+    mutable std::vector<uint32_t> m_unionToLocal;
+    ecgf::GenoBucketizer m_bz;
+    std::vector<MarkerBuckets> m_bk;      // B
+    std::vector<double> m_bkGt, m_bkCt;   // concatenated bucket payloads
+
+
+    // Per-thread scratch, all reused across processScoreBatch calls.
+    Eigen::MatrixXd m_centeredBuf;
+    std::vector<double>  m_zBuf, m_lpBuf, m_stBuf;  // B × ntaus: Z_Norm, LOG10P, SPA_STATUS
+    std::vector<uint8_t> m_slow;          // B × ntaus: cell needs the saddlepoint
+    std::vector<double>  m_gVar;          // B
+    std::vector<uint8_t> m_wantBuckets;   // B: some tau of this marker is slow
 
     // Column assembly, shared by all three entry points so the header and the
     // row can only ever be built by the same code.
@@ -516,27 +726,6 @@ class SPAsqrMethod : public MethodBase {
         for (int i = 0; i < m_ntaus; ++i) result.push_back(stats[i]);    // SPA_STATUS
     }
 
-    void processOneMarker(
-        const double *centeredScores,
-        double altFreq,
-        double G_var,
-        std::vector<double> &result
-    ) {
-        // Stack arrays — ntaus is always small (≤20).
-        double zScores[20], lgs[20], stats[20];
-
-        for (int i = 0; i < m_ntaus; ++i) {
-            double z;
-            const spa::Result ts = tauPvalue(centeredScores[i], altFreq, G_var, z,
-                                               m_spaShared->perTau[i], *m_spaShared);
-            zScores[i] = z;
-            lgs[i]     = ts.negLog10p;
-            stats[i]   = static_cast<double>(static_cast<uint8_t>(ts.status));
-        }
-
-        assemble(lgs, zScores, stats, result);
-    }
-
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -547,8 +736,10 @@ class SPAsqrMethod : public MethodBase {
 // outlierIqrRatio  = multiplier for IQR (default 1.5)
 // outlierAbsBound  = absolute clamp for cutoffs (default 0.55)
 struct OutlierInfo {
-    // per-column: indices of outlier subjects
-    std::vector<std::vector<int> > outlierIdx;
+    // per-column: number of outlier subjects.  Only the count is ever wanted —
+    // callers that need the values themselves walk isOutlier — so the indices
+    // are not materialised.
+    std::vector<uint32_t> outlierCount;
     // per-column: boolean mask (size N)
     std::vector<std::vector<bool> > isOutlier;
 };
@@ -562,7 +753,7 @@ OutlierInfo detectOutliers(
     const Eigen::Index K = ResidMat.cols();
 
     OutlierInfo info;
-    info.outlierIdx.resize(K);
+    info.outlierCount.assign(static_cast<size_t>(K), 0);
     info.isOutlier.resize(K);
 
     // Scratch for sorting
@@ -598,20 +789,25 @@ OutlierInfo detectOutliers(
             const double v = ResidMat(i, col);
             if (v < cutLo || v > cutHi) {
                 info.isOutlier[col][i] = true;
-                info.outlierIdx[col].push_back(static_cast<int>(i));
+                ++info.outlierCount[col];
             }
         }
     }
     return info;
 }
 
-} // anonymous namespace
-
 // ══════════════════════════════════════════════════════════════════════
-// Shared pipeline: outlier detection → GRM → SPAGRM → marker engine
+// Shared pipeline: outlier detection → GRM → method → marker engine
 // ══════════════════════════════════════════════════════════════════════
 
-// GRMEntry is now declared in spasqr.hpp
+// One sparse-GRM entry, pre-multiplied by its symmetry weight: the file stores
+// only the lower triangle, so an off-diagonal pair contributes twice to
+// R^T Phi R.  Folding that into the entry keeps the quadratic form a plain sum.
+struct GRMEntry {
+    uint32_t row, col;
+    double value;
+    double factor; // 1 for diagonal, 2 for off-diagonal
+};
 
 // Load GRM entries from disk and convert to flat GRMEntry vector.
 std::vector<GRMEntry> loadGrmEntries(
@@ -637,8 +833,6 @@ std::unique_ptr<MethodBase> buildSPAsqrMethod(
     double spaCutoff,
     double outlierIqrRatio,
     double outlierAbsBound,
-    double /*minMafCutoff*/,
-    double /*minMacCutoff*/,
     std::vector<std::string> tauLabels,
     std::vector<double> *outlierRatiosOut
 )
@@ -654,7 +848,7 @@ std::unique_ptr<MethodBase> buildSPAsqrMethod(
     if (outlierRatiosOut) {
         outlierRatiosOut->resize(K);
         for (Eigen::Index c = 0; c < K; ++c)
-            (*outlierRatiosOut)[c] = static_cast<double>(outlierInfo.outlierIdx[c].size()) / N;
+            (*outlierRatiosOut)[c] = static_cast<double>(outlierInfo.outlierCount[c]) / N;
     }
 
     // ── 4. Compute per-column variance terms + build SPAsqrSPAShared ──
@@ -667,29 +861,41 @@ std::unique_ptr<MethodBase> buildSPAsqrMethod(
         const auto &isOut = outlierInfo.isOutlier[col];
         auto &pt = spaShared->perTau[col];
 
-        // R_GRM_R and R_GRM_R_nonOutlier
+        // R_GRM_R = R^T Phi R over all subjects.  This is the ONLY place the
+        // sparse GRM is used: it forms the normal-approximation variance
+        // Var(S) = G_var * R^T Phi R, which is also the denominator of the
+        // variance ratio.  The CGF itself never sees Phi.
         double rgrm_r = 0.0;
-        double rgrm_r_no = 0.0;
-        for (const auto &e : grmEntries) {
-            const double contrib = e.factor * e.value * ResidMat(e.row, col) * ResidMat(e.col, col);
-            rgrm_r += contrib;
-            if (!isOut[e.row] && !isOut[e.col]) rgrm_r_no += contrib;
-        }
-        pt.R_GRM_R            = rgrm_r;
-        pt.R_GRM_R_nonOutlier = rgrm_r_no;
+        for (const auto &e : grmEntries)
+            rgrm_r += e.factor * e.value * ResidMat(e.row, col) * ResidMat(e.col, col);
+        pt.R_GRM_R = rgrm_r;
 
-        // sum_R_nonOutlier and outlier residual values
-        double sumNO = 0.0;
+        // sum_R_nonOutlier, R_non^T R_non, and outlier residual values
+        double sumNO   = 0.0;
+        double sumSqNO = 0.0;
         std::vector<double> outVals;
-        outVals.reserve(outlierInfo.outlierIdx[col].size());
+        outVals.reserve(outlierInfo.outlierCount[col]);
         for (uint32_t i = 0; i < nUsed; ++i) {
-            if (!isOut[i]) sumNO += ResidMat(i, col);
-            else outVals.push_back(ResidMat(i, col));
+            const double r = ResidMat(i, col);
+            if (!isOut[i]) {
+                sumNO   += r;
+                sumSqNO += r * r;
+            } else {
+                outVals.push_back(r);
+            }
         }
         pt.sum_R_nonOutlier = sumNO;
+        pt.R_R_nonOutlier   = sumSqNO;
         pt.outlierResid =
             Eigen::Map<Eigen::VectorXd>(outVals.data(), static_cast<Eigen::Index>(outVals.size()));
         pt.sum_unrelated_outliers2 = pt.outlierResid.squaredNorm();
+
+        // Empirical residual CGF for the low-MAC branch.  buildSPAsqrMethod is
+        // invoked once per chromosome by the LOCO driver, so this yields one
+        // table per (chromosome, tau) — exactly what LOCO needs, the residuals
+        // being chromosome-specific.
+        pt.empCgf = ecgf::buildEmpiricalCgf(ResidMat.col(col).data(),
+                                            static_cast<int>(nUsed));
     }
 
     // ── 5. Build residMat / residSums for fused dot products ──────────
@@ -713,7 +919,7 @@ std::unique_ptr<MethodBase> buildSPAsqrMethod(
 // Re-index GRM entries from union-dense space to pheno-dense space
 // ══════════════════════════════════════════════════════════════════════
 
-static std::vector<GRMEntry> reindexGrm(
+std::vector<GRMEntry> reindexGrm(
     const std::vector<GRMEntry> &unionGrm,
     const std::vector<uint32_t> &unionToLocal, // union index → pheno index (UINT32_MAX = absent)
     uint32_t nUnion
@@ -730,176 +936,136 @@ static std::vector<GRMEntry> reindexGrm(
     return out;
 }
 
-// ── Phenotype pre-transform helper ──────────────────────────────────
-// Applied per-phenotype on the non-missing scope.
-//   raw         — Y unchanged
-//   int         — inverse normal transform (Blom, average-rank ties)
-//   standardize — (Y − mean) / sd  (sample sd, n−1 denom)
-// Caller is responsible for validating the mode string upstream
-// (dispatch.cpp); this function asserts on unknown modes.
-static void applyPhenoTransform(
-    Eigen::VectorXd &Y,
-    const std::string &mode
+// ══════════════════════════════════════════════════════════════════════
+// Shared null-model setup for score mode and LOCO mode
+// ══════════════════════════════════════════════════════════════════════
+
+// The analysis set, resolved.  Both score entry points open by doing exactly
+// this and then diverge: plain score mode fits the null model once here and
+// now, LOCO mode defers it to the per-chromosome callback.
+//
+// SubjectData is held by pointer only because the caller keeps using it after
+// the split (usedIIDs / usedMask / nFam all feed the genotype reader).
+struct ScoreSetup {
+    std::unique_ptr<SubjectData> sd;
+    std::vector<PhenoWork> pw;   // one per phenotype, already transformed
+    int nCov = 0;
+    double hScale = 0.0;
+};
+
+// Union = subjects with genotype ∩ GRM ∩ keep/remove.  Per-phenotype NA
+// filtering is deferred: each phenotype gets its own non-missing subset of the
+// union, its own transformed Y and its own bandwidth.  `label` only prefixes
+// the log lines and the error messages.
+ScoreSetup buildScoreSetup(const SPAsqrConfig &cfg, const char *label) {
+    ScoreSetup s;
+    infoMsg("%s: pheno-transform = %s, solver = qmme", label, cfg.phenoTransform.c_str());
+    infoMsg("%s: Loading phenotype and covariate data (%zu phenotypes, %zu taus)",
+            label, cfg.phenoNames.size(), cfg.taus.size());
+
+    s.sd = std::make_unique<SubjectData>(parseGenoIIDs(cfg.geno));
+    SubjectData &sd = *s.sd;
+    if (!cfg.phenoFile.empty()) sd.loadPhenoFile(cfg.phenoFile, cfg.phenoNames);
+    if (!cfg.covarFile.empty()) sd.loadCovar(cfg.covarFile, cfg.covarNames);
+    sd.setKeepRemove(cfg.keepFile, cfg.removeFile);
+    sd.setGrmSubjects(SparseGRM::parseSubjectIDs(cfg.spgrmGrabFile, cfg.spgrmGctaFile,
+                                                 sd.famIIDs()));
+    sd.setGenoLabel(cfg.geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(cfg.spgrmGrabFile, cfg.spgrmGctaFile));
+    sd.finalize();
+
+    const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
+    const Eigen::MatrixXd unionX = cfg.covarNames.empty()
+        ? (sd.hasCovar() ? Eigen::MatrixXd(sd.covar()) : Eigen::MatrixXd(N, 0))
+        : sd.getColumns(cfg.covarNames);
+    s.nCov = static_cast<int>(unionX.cols());
+
+    s.pw = buildPhenoWorkspaces(sd, unionX, cfg.phenoNames, cfg.phenoTransform, label);
+    s.hScale = (cfg.spasqrHScale >= 0.0) ? cfg.spasqrHScale : 3.0;
+    for (auto &p : s.pw)
+        p.h = (cfg.spasqrH >= 0.0) ? cfg.spasqrH
+                                   : iqrBandwidth(p.Y, s.hScale, s.nCov);
+    return s;
+}
+
+// Run `fit(k, t)` for every (phenotype, tau) pair across a work-stealing pool.
+//
+// The scaffolding is subtle enough to be worth having once: an exception must
+// not escape a std::thread (that calls terminate), so each fit's failure is
+// stashed by index, every thread is joined, and only then is the first failure
+// rethrown with the phenotype and tau that produced it.  `label` prefixes both
+// the progress line and that error.
+template <typename Fit>
+static void runQmmeFits(
+    int K,
+    int ntaus,
+    int nthreads,
+    const std::vector<std::string> &phenoNames,
+    const std::vector<double> &taus,
+    const std::string &label,
+    Fit &&fit
 ) {
-    if (mode == "raw") return;
-    if (mode == "int") {
-        Y = math::inverseRankNormal(Y);
-        return;
-    }
-    if (mode == "standardize") {
-        const Eigen::Index n = Y.size();
-        if (n <= 1) return;
-        const double mean = Y.mean();
-        const double ssq  = (Y.array() - mean).square().sum();
-        const double sd   = std::sqrt(ssq / static_cast<double>(n - 1));
-        if (sd > 0.0) Y = (Y.array() - mean) / sd;
-        return;
-    }
-    throw std::runtime_error("applyPhenoTransform: unknown mode '" + mode + "'");
+    const int totalFits = K * ntaus;
+    const int nWorkers  = std::min(nthreads, totalFits);
+    infoMsg("%s: Running %d QMME fits with %d threads", label.c_str(), totalFits, nWorkers);
+
+    std::atomic<int> nextFit{0};
+    std::vector<std::string> fitErrors(totalFits);
+
+    auto worker = [&]() {
+        for (;;) {
+            const int idx = nextFit.fetch_add(1, std::memory_order_relaxed);
+            if (idx >= totalFits) break;
+            try {
+                fit(idx / ntaus, idx % ntaus);
+            } catch (const std::exception &ex) {
+                fitErrors[idx] = ex.what();
+            }
+        }
+    };
+
+    std::vector<std::thread> threads;
+    threads.reserve(nWorkers - 1);
+    for (int w = 0; w < nWorkers - 1; ++w)
+        threads.emplace_back(worker);
+    worker();
+    for (auto &th : threads)
+        th.join();
+
+    for (int idx = 0; idx < totalFits; ++idx)
+        if (!fitErrors[idx].empty())
+            throw std::runtime_error(label + ": QMME failed for phenotype '" +
+                                     phenoNames[idx / ntaus] + "' tau=" +
+                                     std::to_string(taus[idx % ntaus]) + ": " + fitErrors[idx]);
 }
 
 // ══════════════════════════════════════════════════════════════════════
 // runSPAsqr — multi-phenotype entry point with parallel QMME fits
 // ══════════════════════════════════════════════════════════════════════
 
-void runSPAsqr(
-    const std::string &phenoFile,
-    const std::string &covarFile,
-    const std::vector<std::string> &phenoNames,
-    const std::vector<std::string> &covarNames,
-    const std::vector<double> &taus,
-    const std::string &spgrmGrabFile,
-    const std::string &spgrmGctaFile,
-    const GenoSpec &geno,
-    const std::string &outPrefix,
-    const std::string &compression,
-    int compressionLevel,
-    double spaCutoff,
-    double outlierIqrRatio,
-    double outlierAbsBound,
-    int nthreads,
-    int nSnpPerChunk,
-    double missingCutoff,
-    double minMafCutoff,
-    double minMacCutoff,
-    double hweCutoff,
-    double spasqrTol,
-    double spasqrH,
-    double spasqrHScale,
-    const std::string &keepFile,
-    const std::string &removeFile,
-    const std::string &phenoTransform
-) {
-    const int K = static_cast<int>(phenoNames.size());
-    const int ntaus = static_cast<int>(taus.size());
+} // anonymous namespace
 
-    // ── 1. Load phenotype/covariate data (union mask) ───────────────
-    // Union = subjects with genotype ∩ GRM ∩ keep/remove.  Per-phenotype
-    // NA filtering is deferred — each phenotype uses its own non-missing
-    // subset of the union.
-    infoMsg("SPAsqr: pheno-transform = %s, solver = qmme",
-            phenoTransform.c_str());
-    infoMsg("SPAsqr: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
+void runSPAsqr(const SPAsqrConfig &cfg) {
+    const auto &phenoNames = cfg.phenoNames;
+    const auto &taus       = cfg.taus;
+    const int K     = static_cast<int>(phenoNames.size());
+    const int ntaus = static_cast<int>(taus.size());
     // Score mode fits the null model once and reuses it for every marker, so
     // --spasqr-tol (default 1e-6) is tight enough; apply it directly.
-    const double qmmeTol = spasqrTol;
-    auto famIIDs = parseGenoIIDs(geno);
-    SubjectData sd(std::move(famIIDs));
-    if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile, phenoNames);
-    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
-    sd.setKeepRemove(keepFile, removeFile);
-    sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
-    sd.setGenoLabel(geno.flagLabel());
-    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
-    sd.finalize();
+    const double qmmeTol = cfg.spasqrTol;
 
+    // ── 1-3. Analysis set, covariates, per-phenotype split, bandwidth ──
+    ScoreSetup setup = buildScoreSetup(cfg, "SPAsqr");
+    SubjectData &sd = *setup.sd;
+    std::vector<PhenoWork> &pw = setup.pw;
     const uint32_t nUnion = sd.nUsed();
-    const Eigen::Index N = static_cast<Eigen::Index>(nUnion);
 
-    // ── 2. Extract union-space covariates ───────────────────────────
-    Eigen::MatrixXd unionX = covarNames.empty()
-        ? (sd.hasCovar() ? Eigen::MatrixXd(sd.covar()) : Eigen::MatrixXd(N, 0))
-        : sd.getColumns(covarNames);
-    const int nCov = static_cast<int>(unionX.cols());
+    // Score mode fits one residual matrix per phenotype up front.
+    std::vector<Eigen::MatrixXd> residMats(K);
+    for (int k = 0; k < K; ++k)
+        residMats[k].resize(static_cast<Eigen::Index>(pw[k].nk), ntaus);
 
-    // ── 3. Per-phenotype: build non-missing mask, extract Y/X ───────
-    struct PhenoWork {
-        std::vector<uint32_t> unionToLocal; // size nUnion; UINT32_MAX = absent
-        uint32_t nk;                        // non-missing count
-        Eigen::VectorXd Y;                  // nk
-        Eigen::MatrixXd X;                  // nk × nCov
-        double h;                           // bandwidth
-        Eigen::MatrixXd ResidMat;           // nk × ntaus (filled by QMME)
-    };
-
-    std::vector<PhenoWork> pw(K);
-
-    for (int k = 0; k < K; ++k) {
-        Eigen::VectorXd fullY = sd.getColumn(phenoNames[k]);
-        pw[k].unionToLocal.resize(nUnion, UINT32_MAX);
-        uint32_t localIdx = 0;
-        for (uint32_t i = 0; i < nUnion; ++i) {
-            if (!std::isnan(fullY[i])) {
-                pw[k].unionToLocal[i] = localIdx++;
-            }
-        }
-        pw[k].nk = localIdx;
-        if (pw[k].nk == 0)
-            throw std::runtime_error("SPAsqr: phenotype '" + phenoNames[k] + "' has no non-missing subjects");
-
-        const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
-        pw[k].Y.resize(Nk);
-        pw[k].X.resize(Nk, nCov);
-        for (uint32_t i = 0; i < nUnion; ++i) {
-            uint32_t li = pw[k].unionToLocal[i];
-            if (li == UINT32_MAX) continue;
-            pw[k].Y[li] = fullY[i];
-            if (nCov > 0) pw[k].X.row(li) = unionX.row(i);
-        }
-
-        // Apply pheno transform (raw / int / standardize) — per-phenotype non-missing scope.
-        applyPhenoTransform(pw[k].Y, phenoTransform);
-
-        // Per-phenotype bandwidth
-        if (spasqrH >= 0.0) {
-            pw[k].h = spasqrH;
-        } else {
-            std::vector<double> ysorted(Nk);
-            Eigen::VectorXd::Map(ysorted.data(), Nk) = pw[k].Y;
-            std::sort(ysorted.begin(), ysorted.end());
-            auto quantile = [&](double prob) -> double {
-                double idx = prob * (Nk - 1);
-                Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
-                Eigen::Index hi = std::min(lo + 1, Nk - 1);
-                double frac = idx - lo;
-                return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
-            };
-            double iqr = quantile(0.75) - quantile(0.25);
-            double scale = (spasqrHScale >= 0.0) ? spasqrHScale : 3.0;
-            pw[k].h = iqr / scale;
-            if (pw[k].h <= 0.0)
-                pw[k].h = std::max(std::pow((std::log(Nk) + nCov) / static_cast<double>(Nk), 0.4), 0.05);
-        }
-
-        pw[k].ResidMat.resize(Nk, ntaus);
-    }
-
-    // Log N/bandwidth table
-    {
-        infoMsg("Sample size and smooth bandwidth per phenotype:");
-        size_t nameW = 4;
-        for (int k = 0; k < K; ++k)
-            nameW = std::max(nameW, phenoNames[k].size());
-        nameW += 2;
-        char row[256];
-        std::snprintf(row, sizeof(row), "    %-*s %10s %12s\n", static_cast<int>(nameW), "", "N", "bandwidth");
-        fprintf(stderr, "%s", row);
-        for (int k = 0; k < K; ++k) {
-            std::snprintf(row, sizeof(row), "    %-*s %10u %12.6f\n",
-                          static_cast<int>(nameW), phenoNames[k].c_str(), pw[k].nk, pw[k].h);
-            fprintf(stderr, "%s", row);
-        }
-    }
+    logPhenoTable(phenoNames, pw, "bandwidth");
 
     // ── 4. Parallel QMME fits: K × ntaus ────────────────────────────
     // Pre-construct one QMME solver per phenotype (X^T X / n cached) and
@@ -911,76 +1077,30 @@ void runSPAsqr(
         qmmeSolvers[k]->prepareBandwidth(pw[k].h);
     }
 
-    const int totalFits = K * ntaus;
-    const int nWorkers = std::min(nthreads, totalFits);
-    infoMsg("SPAsqr: Running %d QMME fits with %d threads", totalFits, nWorkers);
+    runQmmeFits(K, ntaus, cfg.nthreads, phenoNames, taus, "SPAsqr", [&](int k, int t) {
+        const double h1 = 1.0 / pw[k].h;
+        Eigen::VectorXd resid;
+        qmme::SolverStatus st;
+        const Eigen::VectorXd beta = qmmeSolvers[k]->solve(
+            pw[k].Y, taus[t], &resid, qmmeTol, /*maxIter*/ 50000,
+            /*restartPeriod*/ 50, &st);
+        infoMsg("[%s] tau=%.4f intercept=%.6f", phenoNames[k].c_str(), taus[t], beta(0));
+        if (!st.converged)
+            warnMsg("[%s] tau=%.4f qmme did not converge: %d iters (||g||=%.3e); tol=%.3e",
+                    phenoNames[k].c_str(), taus[t], st.iter, st.finalGradNorm, qmmeTol);
 
-    std::atomic<int> nextFit{0};
-    std::vector<std::string> fitErrors(totalFits);
-
-    auto fitWorker = [&]() {
-        for (;;) {
-            int idx = nextFit.fetch_add(1, std::memory_order_relaxed);
-            if (idx >= totalFits) break;
-            int k = idx / ntaus;
-            int t = idx % ntaus;
-            const double h1 = 1.0 / pw[k].h;
-
-            try {
-                Eigen::VectorXd resid;
-                qmme::SolverStatus st;
-                Eigen::VectorXd beta = qmmeSolvers[k]->solve(
-                    pw[k].Y, taus[t], &resid,
-                    qmmeTol, /*maxIter*/ 50000,
-                    /*restartPeriod*/ 50, &st);
-                infoMsg("[%s] tau=%.4f intercept=%.6f", phenoNames[k].c_str(), taus[t], beta(0));
-                if (!st.converged) {
-                    warnMsg("[%s] tau=%.4f qmme did not converge: %d iters (||g||=%.3e); tol=%.3e",
-                            phenoNames[k].c_str(), taus[t],
-                            st.iter, st.finalGradNorm, qmmeTol);
-                }
-
-                const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
-                for (Eigen::Index i = 0; i < Nk; ++i)
-                    pw[k].ResidMat(i, t) = taus[t] - math::pnorm(-resid(i) * h1);
-            } catch (const std::exception &ex) {
-                fitErrors[idx] = ex.what();
-            }
-        }
-    };
-
-    {
-        std::vector<std::thread> threads;
-        threads.reserve(nWorkers - 1);
-        for (int t = 0; t < nWorkers - 1; ++t)
-            threads.emplace_back(fitWorker);
-        fitWorker();
-        for (auto &th : threads)
-            th.join();
-    }
-
-    for (int idx = 0; idx < totalFits; ++idx) {
-        if (!fitErrors[idx].empty()) {
-            int k = idx / ntaus;
-            int t = idx % ntaus;
-            throw std::runtime_error("SPAsqr: QMME failed for phenotype '" +
-                                     phenoNames[k] + "' tau=" + std::to_string(taus[t]) + ": " + fitErrors[idx]);
-        }
-    }
+        const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
+        for (Eigen::Index i = 0; i < Nk; ++i)
+            residMats[k](i, t) = taus[t] - math::pnorm(-resid(i) * h1);
+    });
 
     // ── 5. Build tau labels ────────────────────────────────────────────
-    std::vector<std::string> tauLabels;
-    tauLabels.reserve(ntaus);
-    for (double tau : taus) {
-        std::ostringstream oss;
-        oss << "tau" << tau;
-        tauLabels.push_back(oss.str());
-    }
+    const std::vector<std::string> tauLabels = makeTauLabels(taus);
 
     // ── 6. Load genotype data and GRM once (shared, union space) ────
-    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    auto genoData = makeGenoData(cfg.geno, sd.usedMask(), sd.nFam(), sd.nUsed(), cfg.nSnpPerChunk);
 
-    std::vector<GRMEntry> unionGrm = loadGrmEntries(sd.usedIIDs(), sd.famIIDs(), spgrmGrabFile, spgrmGctaFile);
+    std::vector<GRMEntry> unionGrm = loadGrmEntries(sd.usedIIDs(), sd.famIIDs(), cfg.spgrmGrabFile, cfg.spgrmGctaFile);
 
     // ── 7. Build per-phenotype SPAsqrMethod + PhenoTask ─────────────
     std::vector<PhenoTask> tasks(K);
@@ -994,14 +1114,12 @@ void runSPAsqr(
         auto phenoGrm = reindexGrm(unionGrm, pw[k].unionToLocal, nUnion);
 
         auto method = buildSPAsqrMethod(
-            pw[k].ResidMat,
+            residMats[k],
             phenoGrm,
             pw[k].nk,
-            spaCutoff,
-            outlierIqrRatio,
-            outlierAbsBound,
-            minMafCutoff,
-            minMacCutoff,
+            cfg.spaCutoff,
+            cfg.outlierIqrRatio,
+            cfg.outlierAbsBound,
             tauLabels,
             &allOutlierRatios[k]
         );
@@ -1012,38 +1130,17 @@ void runSPAsqr(
         tasks[k].nUsed = pw[k].nk;
     }
 
-    // Print outlier ratio table line-by-line
-    {
-        size_t nameW = 4;
-        for (int k = 0; k < K; ++k)
-            nameW = std::max(nameW, phenoNames[k].size());
-        nameW += 2;
-
-        infoMsg("Outlier ratios (IQR=%.2f, bound=%.2f):", outlierIqrRatio, outlierAbsBound);
-
-        std::ostringstream hdr;
-        hdr << "    " << std::setw(static_cast<int>(nameW)) << std::left << "";
-        for (const auto &tl : tauLabels)
-            hdr << std::setw(10) << std::right << tl;
-        fprintf(stderr, "%s\n", hdr.str().c_str());
-
-        for (int k = 0; k < K; ++k) {
-            std::ostringstream row;
-            row << "    " << std::setw(static_cast<int>(nameW)) << std::left << phenoNames[k];
-            for (double r : allOutlierRatios[k])
-                row << std::setw(10) << std::right << std::fixed << std::setprecision(4) << r;
-            fprintf(stderr, "%s\n", row.str().c_str());
-        }
-    }
+    logOutlierTable("Outlier ratios", phenoNames, tauLabels, allOutlierRatios,
+                    cfg.outlierIqrRatio, cfg.outlierAbsBound);
 
     // Free per-phenotype work data
     pw.clear();
 
     // ── 8. Run multi-phenotype engine ───────────────────────────────
-    infoMsg("SPAsqr: Starting multi-phenotype association (%d phenotypes, %d taus, %d threads)", K, ntaus, nthreads);
+    infoMsg("SPAsqr: Starting multi-phenotype association (%d phenotypes, %d taus, %d threads)", K, ntaus, cfg.nthreads);
     multiPhenoEngine(
-        *genoData, tasks, outPrefix, "SPAsqr", compression, compressionLevel,
-        nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff
+        *genoData, tasks, cfg.outPrefix, "SPAsqr", cfg.compression, cfg.compressionLevel,
+        cfg.nthreads, cfg.missingCutoff, cfg.minMafCutoff, cfg.minMacCutoff, cfg.hweCutoff
     );
 }
 
@@ -1054,7 +1151,7 @@ void runSPAsqr(
 //   - Y is pre-transformed once via applyPhenoTransform (raw/int/standardize).
 //   - For each chromosome, the buildTasks callback rebuilds the conquer fits
 //     using y_adj = Y_transformed - loco_chr (β=1, α=0).
-//   - All modes feed conquer with X = pw[k].baseX (original covariates only,
+//   - All modes feed conquer with X = pw[k].X (original covariates only,
 //     no LOCO augmentation).
 //   - Per-chr bandwidth h_chr[k] = IQR(y_adj) / scale (chr-specific).
 //   - locoEngine iterates chromosomes, testing each chromosome's markers via
@@ -1063,173 +1160,47 @@ void runSPAsqr(
 //     responsible for ensuring this (dispatch.cpp warns on raw + LOCO).
 // ══════════════════════════════════════════════════════════════════════
 
-void runSPAsqrLoco(
-    const std::string &phenoFile,
-    const std::string &covarFile,
-    const std::vector<std::string> &phenoNames,
-    const std::vector<std::string> &covarNames,
-    const std::vector<double> &taus,
-    const std::string &spgrmGrabFile,
-    const std::string &spgrmGctaFile,
-    const GenoSpec &geno,
-    const std::string &predListFile,
-    const std::string &outPrefix,
-    const std::string &compression,
-    int compressionLevel,
-    double spaCutoff,
-    double outlierIqrRatio,
-    double outlierAbsBound,
-    int nthreads,
-    int nSnpPerChunk,
-    double missingCutoff,
-    double minMafCutoff,
-    double minMacCutoff,
-    double hweCutoff,
-    double spasqrTol,
-    double spasqrH,
-    double spasqrHScale,
-    const std::string &keepFile,
-    const std::string &removeFile,
-    const std::string &phenoTransform
-) {
-    const int K = static_cast<int>(phenoNames.size());
+void runSPAsqrLoco(const SPAsqrConfig &cfg) {
+    const auto &phenoNames = cfg.phenoNames;
+    const auto &taus       = cfg.taus;
+    const int K     = static_cast<int>(phenoNames.size());
     const int ntaus = static_cast<int>(taus.size());
+    const double qmmeTol = cfg.spasqrTol;
 
-    // ── 1. Load phenotype/covariate data (union mask) ───────────────
-    // Union = subjects with genotype ∩ GRM ∩ keep/remove.  Per-phenotype
-    // NA filtering is deferred — each phenotype uses its own non-missing
-    // subset of the union.
-    infoMsg("SPAsqr-LOCO pheno-transform: %s, solver: qmme",
-            phenoTransform.c_str());
-    infoMsg("SPAsqr-LOCO: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
-    const double qmmeTol = spasqrTol;
-    auto famIIDs = parseGenoIIDs(geno);
-    SubjectData sd(std::move(famIIDs));
-    if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile, phenoNames);
-    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
-    sd.setKeepRemove(keepFile, removeFile);
-    sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
-    sd.setGenoLabel(geno.flagLabel());
-    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
-    sd.finalize();
-
+    // ── 1-3. Analysis set, covariates, per-phenotype split, bandwidth ──
+    // The bandwidth set here is only the global reference value; buildTasks
+    // recomputes it per chromosome from IQR(y_adj).
+    ScoreSetup setup = buildScoreSetup(cfg, "SPAsqr-LOCO");
+    SubjectData &sd = *setup.sd;
+    std::vector<PhenoWork> &pw = setup.pw;
     const uint32_t nUnion = sd.nUsed();
-    const Eigen::Index N = static_cast<Eigen::Index>(nUnion);
-
-    // ── 2. Extract union-space covariates ───────────────────────────
-    Eigen::MatrixXd unionX = covarNames.empty()
-        ? (sd.hasCovar() ? Eigen::MatrixXd(sd.covar()) : Eigen::MatrixXd(N, 0))
-        : sd.getColumns(covarNames);
-    const int nCov = static_cast<int>(unionX.cols());
-
-    // ── 3. Per-phenotype: build non-missing mask, extract Y/baseX ──
-    struct PhenoWork {
-        std::vector<uint32_t> unionToLocal; // size nUnion; UINT32_MAX = absent
-        uint32_t nk;                        // non-missing count
-        Eigen::VectorXd Y;                  // nk
-        Eigen::MatrixXd baseX;              // nk × nCov
-        double h;                           // bandwidth
-    };
-
-    std::vector<PhenoWork> pw(K);
-
-    for (int k = 0; k < K; ++k) {
-        Eigen::VectorXd fullY = sd.getColumn(phenoNames[k]);
-        pw[k].unionToLocal.resize(nUnion, UINT32_MAX);
-        uint32_t localIdx = 0;
-        for (uint32_t i = 0; i < nUnion; ++i) {
-            if (!std::isnan(fullY[i])) {
-                pw[k].unionToLocal[i] = localIdx++;
-            }
-        }
-        pw[k].nk = localIdx;
-        if (pw[k].nk == 0)
-            throw std::runtime_error("SPAsqr-LOCO: phenotype '" + phenoNames[k] + "' has no non-missing subjects");
-
-        const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
-        pw[k].Y.resize(Nk);
-        pw[k].baseX.resize(Nk, nCov);
-        for (uint32_t i = 0; i < nUnion; ++i) {
-            uint32_t li = pw[k].unionToLocal[i];
-            if (li == UINT32_MAX) continue;
-            pw[k].Y[li] = fullY[i];
-            if (nCov > 0) pw[k].baseX.row(li) = unionX.row(i);
-        }
-
-        // Apply pheno transform (raw / int / standardize) — per-phenotype non-missing scope.
-        // All downstream math (bandwidth, QMME fit, y_adj per chromosome) operates
-        // on the transformed Y. The LOCO PRS scale must match the chosen transform.
-        applyPhenoTransform(pw[k].Y, phenoTransform);
-
-        // Per-phenotype bandwidth
-        if (spasqrH >= 0.0) {
-            pw[k].h = spasqrH;
-        } else {
-            std::vector<double> ysorted(Nk);
-            Eigen::VectorXd::Map(ysorted.data(), Nk) = pw[k].Y;
-            std::sort(ysorted.begin(), ysorted.end());
-            auto quantile = [&](double prob) -> double {
-                double idx = prob * (Nk - 1);
-                Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
-                Eigen::Index hi = std::min(lo + 1, Nk - 1);
-                double frac = idx - lo;
-                return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
-            };
-            double iqr = quantile(0.75) - quantile(0.25);
-            double scale = (spasqrHScale >= 0.0) ? spasqrHScale : 3.0;
-            pw[k].h = iqr / scale;
-            if (pw[k].h <= 0.0)
-                pw[k].h = std::max(std::pow((std::log(Nk) + nCov) / static_cast<double>(Nk), 0.4), 0.05);
-        }
-    }
+    const int nCov        = setup.nCov;
+    const double hScale   = setup.hScale;
 
     // QMME solver per phenotype: caches X^T X / n once; per-chr Cholesky
     // rebuilt inside buildTasks below. Read-only on solve() so worker
     // threads can share the same instance per phenotype.
     std::vector<std::unique_ptr<qmme::SqrSolver> > qmmeSolvers(K);
     for (int k = 0; k < K; ++k)
-        qmmeSolvers[k] = std::make_unique<qmme::SqrSolver>(pw[k].baseX, /*delta*/ 1e-6);
+        qmmeSolvers[k] = std::make_unique<qmme::SqrSolver>(pw[k].X, /*delta*/ 1e-6);
 
-    // Log N/bandwidth table
     // Per-chr h_chr = IQR(y_adj)/scale is computed inside the chr loop; the value
     // shown here is the GLOBAL reference h derived from IQR(pw[k].Y) (post-transform).
     // Actual per-chr h is logged via "SPAsqr-LOCO chr%s [...]: per-chr h = ...".
-    {
-        const char *bwLabel = "global_h(ref)";
-        infoMsg("Sample size and smooth bandwidth per phenotype:");
-        size_t nameW = 4;
-        for (int k = 0; k < K; ++k)
-            nameW = std::max(nameW, phenoNames[k].size());
-        nameW += 2;
-        char row[256];
-        std::snprintf(row, sizeof(row), "    %-*s %10s %14s\n",
-                      static_cast<int>(nameW), "", "N", bwLabel);
-        fprintf(stderr, "%s", row);
-        for (int k = 0; k < K; ++k) {
-            std::snprintf(row, sizeof(row), "    %-*s %10u %14.6f\n",
-                          static_cast<int>(nameW), phenoNames[k].c_str(), pw[k].nk, pw[k].h);
-            fprintf(stderr, "%s", row);
-        }
-    }
+    logPhenoTable(phenoNames, pw, "global_h(ref)");
 
     // ── 4. Load LOCO predictions (union space) ─────────────────────
-    LocoData loco = LocoData::load(predListFile, phenoNames, sd.usedIIDs(), sd.famIIDs());
+    LocoData loco = LocoData::load(cfg.predListFile, phenoNames, sd.usedIIDs(), sd.famIIDs());
     auto locoChroms = loco.availableChromosomes();
     infoMsg("LOCO: %zu chromosomes available across all phenotypes", locoChroms.size());
 
     // ── 5. Build tau labels ─────────────────────────────────────────
-    std::vector<std::string> tauLabels;
-    tauLabels.reserve(ntaus);
-    for (double tau : taus) {
-        std::ostringstream oss;
-        oss << "tau" << tau;
-        tauLabels.push_back(oss.str());
-    }
+    const std::vector<std::string> tauLabels = makeTauLabels(taus);
 
     // ── 6. Load genotype data and GRM once (union space) ────────────
-    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    auto genoData = makeGenoData(cfg.geno, sd.usedMask(), sd.nFam(), sd.nUsed(), cfg.nSnpPerChunk);
 
-    std::vector<GRMEntry> unionGrm = loadGrmEntries(sd.usedIIDs(), sd.famIIDs(), spgrmGrabFile, spgrmGctaFile);
+    std::vector<GRMEntry> unionGrm = loadGrmEntries(sd.usedIIDs(), sd.famIIDs(), cfg.spgrmGrabFile, cfg.spgrmGctaFile);
 
     // Pre-compute per-phenotype re-indexed GRM (shared across chromosomes)
     std::vector<std::vector<GRMEntry> > phenoGrms(K);
@@ -1249,32 +1220,9 @@ void runSPAsqrLoco(
         std::vector<double> h_chr(K, 0.0);
 
         for (int k = 0; k < K; ++k) {
-            const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
-
-            // Map LOCO scores from union → pheno-dense (Nk-length) space.
-            const auto &locoVec = loco.scores.at(phenoNames[k]).at(chr);
-            Eigen::VectorXd loco_dense(Nk);
-            for (uint32_t i = 0; i < nUnion; ++i) {
-                uint32_t li = pw[k].unionToLocal[i];
-                if (li != UINT32_MAX)
-                    loco_dense[li] = locoVec[i];
-            }
-
-            // LDAK Step 1 / Regenie Step 1 output should include a PGS for every
-            // subject in the analysis set. If any non-missing-Y subject is absent
-            // from the LOCO file, parseLdakLocoFile / parseRegenieLocoFile leaves
-            // NaN at that position. Hard-fail instead of silently corrupting the
-            // per-chr QMME fit (NaN propagates through the QMME solve).
-            if (!loco_dense.allFinite()) {
-                const Eigen::Index nBad = Nk - loco_dense.array().isFinite().count();
-                throw std::runtime_error(
-                    "SPAsqr-LOCO: LOCO file for phenotype '" + phenoNames[k] +
-                    "' chr " + chr + " is missing " + std::to_string(nBad) +
-                    " subject(s) that have non-missing Y. The LOCO PGS file must "
-                    "contain every subject in the --pheno analysis set. Re-run "
-                    "LDAK / Regenie Step 1 on the same sample set, or remove "
-                    "those subjects from --pheno.");
-            }
+            const Eigen::VectorXd loco_dense = locoDense(
+                loco.scores.at(phenoNames[k]).at(chr), pw[k], phenoNames[k], chr,
+                "SPAsqr-LOCO");
 
             y_adjs[k] = pw[k].Y - loco_dense;
 
@@ -1293,29 +1241,12 @@ void runSPAsqrLoco(
             }
 
             // Per-chromosome bandwidth from IQR(y_adj).  --spasqr-h overrides auto-IQR.
-            if (spasqrH >= 0.0) {
-                h_chr[k] = spasqrH;
-            } else {
-                std::vector<double> ysorted(static_cast<size_t>(Nk));
-                Eigen::VectorXd::Map(ysorted.data(), Nk) = y_adjs[k];
-                std::sort(ysorted.begin(), ysorted.end());
-                auto quant = [&](double prob) -> double {
-                    double idx = prob * (Nk - 1);
-                    Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
-                    Eigen::Index hi = std::min(lo + 1, Nk - 1);
-                    double frac = idx - lo;
-                    return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
-                };
-                double iqr = quant(0.75) - quant(0.25);
-                double scale = (spasqrHScale >= 0.0) ? spasqrHScale : 3.0;
-                h_chr[k] = iqr / scale;
-                if (h_chr[k] <= 0.0)
-                    h_chr[k] = std::max(std::pow((std::log(Nk) + nCov) / static_cast<double>(Nk), 0.4), 0.05);
-            }
+            h_chr[k] = (cfg.spasqrH >= 0.0) ? cfg.spasqrH
+                                        : iqrBandwidth(y_adjs[k], hScale, nCov);
 
             infoMsg("SPAsqr-LOCO chr%s [%s][transform=%s]: per-chr h = IQR(y_adj)/scale = %.6f (Nk=%u),"
                     " corr(Y, loco)^2 = %.4f",
-                    chr.c_str(), phenoNames[k].c_str(), phenoTransform.c_str(),
+                    chr.c_str(), phenoNames[k].c_str(), cfg.phenoTransform.c_str(),
                     h_chr[k], pw[k].nk, r2_loco);
         }
 
@@ -1329,64 +1260,24 @@ void runSPAsqrLoco(
         for (int k = 0; k < K; ++k)
             ResidMats[k].resize(static_cast<Eigen::Index>(pw[k].nk), ntaus);
 
-        const int totalFits = K * ntaus;
-        const int nWorkers = std::min(nthreads, totalFits);
-        infoMsg("SPAsqr-LOCO chr%s: Running %d QMME fits with %d threads",
-                chr.c_str(), totalFits, nWorkers);
+        runQmmeFits(K, ntaus, cfg.nthreads, phenoNames, taus,
+                    "SPAsqr-LOCO chr" + chr, [&](int k, int t) {
+            const double h1 = 1.0 / h_chr[k];
+            Eigen::VectorXd resid;
+            qmme::SolverStatus st;
+            // SQR on (X, y_adjs[k]) with y_adjs[k] = Y_transformed - loco_chr.
+            // Y_transformed comes from §3 applyPhenoTransform (raw/int/standardize).
+            qmmeSolvers[k]->solve(y_adjs[k], taus[t], &resid, qmmeTol,
+                                  /*maxIter*/ 50000, /*restartPeriod*/ 50, &st);
+            if (!st.converged)
+                warnMsg("[%s] chr%s tau=%.4f qmme did not converge: %d iters (||g||=%.3e); tol=%.3e",
+                        phenoNames[k].c_str(), chr.c_str(), taus[t],
+                        st.iter, st.finalGradNorm, qmmeTol);
 
-        std::atomic<int> nextFit{0};
-        std::vector<std::string> fitErrors(totalFits);
-
-        auto fitWorker = [&]() {
-            for (;;) {
-                int idx = nextFit.fetch_add(1, std::memory_order_relaxed);
-                if (idx >= totalFits) break;
-                int k = idx / ntaus;
-                int t = idx % ntaus;
-                const double h_use = h_chr[k];
-                const double h1    = 1.0 / h_use;
-
-                try {
-                    Eigen::VectorXd resid;
-                    qmme::SolverStatus st;
-                    // SQR on (baseX, y_adjs[k]) with y_adjs[k] = Y_transformed - loco_chr.
-                    // Y_transformed comes from §3 applyPhenoTransform (raw/int/standardize).
-                    qmmeSolvers[k]->solve(y_adjs[k], taus[t], &resid,
-                                          qmmeTol, /*maxIter*/ 50000,
-                                          /*restartPeriod*/ 50, &st);
-                    if (!st.converged) {
-                        warnMsg("[%s] chr%s tau=%.4f qmme did not converge: %d iters (||g||=%.3e); tol=%.3e",
-                                phenoNames[k].c_str(), chr.c_str(), taus[t],
-                                st.iter, st.finalGradNorm, qmmeTol);
-                    }
-
-                    const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
-                    for (Eigen::Index i = 0; i < Nk; ++i)
-                        ResidMats[k](i, t) = taus[t] - math::pnorm(-resid(i) * h1);
-                } catch (const std::exception &ex) {
-                    fitErrors[idx] = ex.what();
-                }
-            }
-        };
-
-        {
-            std::vector<std::thread> threads;
-            threads.reserve(nWorkers - 1);
-            for (int t = 0; t < nWorkers - 1; ++t)
-                threads.emplace_back(fitWorker);
-            fitWorker();
-            for (auto &th : threads)
-                th.join();
-        }
-
-        for (int idx = 0; idx < totalFits; ++idx) {
-            if (!fitErrors[idx].empty()) {
-                int k = idx / ntaus;
-                int t = idx % ntaus;
-                throw std::runtime_error("SPAsqr-LOCO chr" + chr + ": QMME failed for phenotype '" +
-                                         phenoNames[k] + "' tau=" + std::to_string(taus[t]) + ": " + fitErrors[idx]);
-            }
-        }
+            const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
+            for (Eigen::Index i = 0; i < Nk; ++i)
+                ResidMats[k](i, t) = taus[t] - math::pnorm(-resid(i) * h1);
+        });
 
         // Build SPAsqrMethod for each phenotype (pheno-dense space)
         std::vector<std::vector<double> > allOutlierRatios(K);
@@ -1395,11 +1286,9 @@ void runSPAsqrLoco(
                 ResidMats[k],
                 phenoGrms[k],
                 pw[k].nk,
-                spaCutoff,
-                outlierIqrRatio,
-                outlierAbsBound,
-                minMafCutoff,
-                minMacCutoff,
+                cfg.spaCutoff,
+                cfg.outlierIqrRatio,
+                cfg.outlierAbsBound,
                 tauLabels,
                 &allOutlierRatios[k]
             );
@@ -1410,49 +1299,27 @@ void runSPAsqrLoco(
             tasks[k].nUsed = pw[k].nk;
         }
 
-        // Print outlier ratio table for this chromosome line-by-line
-        {
-            size_t nameW = 4;
-            for (int k = 0; k < K; ++k)
-                nameW = std::max(nameW, phenoNames[k].size());
-            nameW += 2;
-
-            infoMsg("chr%s outlier ratios (IQR=%.2f, bound=%.2f):",
-                    chr.c_str(), outlierIqrRatio, outlierAbsBound);
-
-            std::ostringstream hdr;
-            hdr << "    " << std::setw(static_cast<int>(nameW)) << std::left << "";
-            for (const auto &tl : tauLabels)
-                hdr << std::setw(10) << std::right << tl;
-            fprintf(stderr, "%s\n", hdr.str().c_str());
-
-            for (int k = 0; k < K; ++k) {
-                std::ostringstream row;
-                row << "    " << std::setw(static_cast<int>(nameW)) << std::left << phenoNames[k];
-                for (double r : allOutlierRatios[k])
-                    row << std::setw(10) << std::right << std::fixed << std::setprecision(4) << r;
-                fprintf(stderr, "%s\n", row.str().c_str());
-            }
-        }
+        logOutlierTable("chr" + chr + " outlier ratios", phenoNames, tauLabels,
+                        allOutlierRatios, cfg.outlierIqrRatio, cfg.outlierAbsBound);
     };
 
     // ── 8. Run LOCO engine ─────────────────────────────────────────
     const int nChroms = static_cast<int>(locoChroms.size());
     infoMsg("SPAsqr-LOCO: Starting LOCO association (%d phenotypes, %d taus, %d chroms, %d threads)",
-            K, ntaus, nChroms, nthreads);
+            K, ntaus, nChroms, cfg.nthreads);
     locoEngine(
         *genoData,
         locoChroms,
         phenoNames,
         buildTasks,
-        outPrefix,
+        cfg.outPrefix,
         "SPAsqr",
-        compression,
-        compressionLevel,
-        nthreads,
-        missingCutoff,
-        minMafCutoff,
-        minMacCutoff,
-        hweCutoff
+        cfg.compression,
+        cfg.compressionLevel,
+        cfg.nthreads,
+        cfg.missingCutoff,
+        cfg.minMafCutoff,
+        cfg.minMacCutoff,
+        cfg.hweCutoff
     );
 }

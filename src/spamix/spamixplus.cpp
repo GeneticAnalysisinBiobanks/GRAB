@@ -541,6 +541,7 @@ void SPAmixPlusMethod::processScoreBatch(
     uint32_t nUsed,
     const std::vector<double> &altFreqs,
     const std::vector<int> &chunkIdxs,
+    const MethodBase::UnionGenotypes & /*geno*/,
     std::vector<std::vector<double> > &results
 ) {
     (void)gSums; (void)gSumSqs; (void)nUsed;

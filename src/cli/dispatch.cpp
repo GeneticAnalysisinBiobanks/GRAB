@@ -1386,31 +1386,39 @@ int run(
                           << args.spasqrMode << "'\n";
                 return 1;
             }
+            // One settings bundle for all three modes; each reads the
+            // fields it needs and ignores the rest.
+            SPAsqrConfig cfg;
+            cfg.phenoFile       = args.phenoFile;
+            cfg.covarFile       = effectiveCovarFile;
+            cfg.phenoNames      = phenoNames;
+            cfg.covarNames      = covarNames;
+            cfg.taus            = taus;
+            cfg.geno            = geno;
+            cfg.spgrmGrabFile   = args.spGrmGrabFile;
+            cfg.spgrmGctaFile   = args.spGrmPlink2File;
+            cfg.predListFile    = args.predListFile;
+            cfg.keepFile        = args.keepFile;
+            cfg.removeFile      = args.removeFile;
+            cfg.outPrefix       = args.outPrefix;
+            cfg.compression     = args.compression;
+            cfg.compressionLevel= args.compressionLevel;
+            cfg.phenoTransform  = args.phenoTransform;
+            cfg.spaCutoff       = args.spaCutoff;
+            cfg.outlierIqrRatio = args.outlierRatio;
+            cfg.outlierAbsBound = args.outlierAbsBound;
+            cfg.spasqrTol       = args.spasqrTol;
+            cfg.spasqrH         = args.spasqrH;
+            cfg.spasqrHScale    = args.spasqrHScale;
+            cfg.missingCutoff   = args.missingCutoff;
+            cfg.minMafCutoff    = args.minMafCutoff;
+            cfg.minMacCutoff    = args.minMacCutoff;
+            cfg.hweCutoff       = args.hweCutoff;
+            cfg.nthreads        = args.nthread;
+            cfg.nSnpPerChunk    = args.nSnpPerChunk;
+
             if (args.spasqrMode == "wald") {
-                runSPAsqrWald(
-                    args.phenoFile,
-                    effectiveCovarFile,
-                    phenoNames,
-                    covarNames,
-                    taus,
-                    geno,
-                    args.predListFile,
-                    args.outPrefix,
-                    args.spasqrTol,
-                    args.spasqrH,
-                    args.spasqrHScale,
-                    args.missingCutoff,
-                    args.minMafCutoff,
-                    args.minMacCutoff,
-                    args.hweCutoff,
-                    args.keepFile,
-                    args.removeFile,
-                    args.phenoTransform,
-                    args.nthread,
-                    args.nSnpPerChunk,
-                    args.compression,
-                    args.compressionLevel
-                );
+                runSPAsqrWald(cfg);
                 printTimer();
                 return 0;
             }
@@ -1441,64 +1449,9 @@ int run(
                         }
                     }
                 }
-                runSPAsqrLoco(
-                    args.phenoFile,
-                    effectiveCovarFile,
-                    phenoNames,
-                    covarNames,
-                    taus,
-                    args.spGrmGrabFile,
-                    args.spGrmPlink2File,
-                    geno,
-                    args.predListFile,
-                    args.outPrefix,
-                    args.compression,
-                    args.compressionLevel,
-                    args.spaCutoff,
-                    args.outlierRatio,
-                    args.outlierAbsBound,
-                    args.nthread,
-                    args.nSnpPerChunk,
-                    args.missingCutoff,
-                    args.minMafCutoff,
-                    args.minMacCutoff,
-                    args.hweCutoff,
-                    args.spasqrTol,
-                    args.spasqrH,
-                    args.spasqrHScale,
-                    args.keepFile,
-                    args.removeFile,
-                    args.phenoTransform
-                );
+                runSPAsqrLoco(cfg);
             } else {
-                runSPAsqr(
-                    args.phenoFile,
-                    effectiveCovarFile,
-                    phenoNames,
-                    covarNames,
-                    taus,
-                    args.spGrmGrabFile,
-                    args.spGrmPlink2File,
-                    geno,
-                    args.outPrefix,
-                    args.compression,
-                    args.compressionLevel,
-                    args.spaCutoff,
-                    args.outlierRatio,
-                    args.outlierAbsBound,
-                    args.nthread,
-                    args.nSnpPerChunk,
-                    args.missingCutoff,
-                    args.minMafCutoff,
-                    args.minMacCutoff,
-                    args.hweCutoff,
-                    args.spasqrTol,
-                    args.spasqrH,
-                    args.spasqrHScale,
-                    args.keepFile,
-                    args.removeFile,
-                    args.phenoTransform
-                );
+                runSPAsqr(cfg);
             }
         }
 

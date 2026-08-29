@@ -52,17 +52,22 @@ static const double kBedDoublePairs[32] __attribute__((aligned(16))) =
     PAIR_TABLE16(2.0, std::numeric_limits<double>::quiet_NaN(), 1.0, 0.0);
 
 // ──────────────────────────────────────────────────────────────────────
-// Simple masked decode: bitmask scatter, no QC stats, missing → NaN.
+// Masked decode: bitmask scatter over the used subjects, missing → NaN.
+//
+// `CollectMissing` is a compile-time switch rather than a runtime flag so the
+// QC-free caller (getGenotypesSimple) keeps a branch-free inner loop; the
+// QC caller additionally records the dense indices it wrote NaN to.
 // ──────────────────────────────────────────────────────────────────────
 
 static const double kNaN = std::numeric_limits<double>::quiet_NaN();
 
-static void decodeMaskedSimple(
+template <bool CollectMissing>
+static void decodeMasked(
     const uint8_t *__restrict raw,
     const uint64_t *__restrict usedMask,
     uint32_t nFam,
-    const int *genoMap,
-    double *__restrict out
+    double *__restrict out,
+    std::vector<uint32_t> *indexForMissing
 ) {
     uint32_t denseIdx = 0;
     const uint32_t nWords = (nFam + 63) / 64;
@@ -73,8 +78,14 @@ static void decodeMaskedSimple(
             const uint32_t bit = static_cast<uint32_t>(__builtin_ctzll(mask));
             const uint32_t famIdx = w * 64 + bit;
             const int code = (raw[famIdx >> 2] >> ((famIdx & 3) << 1)) & 3;
-            const int g = genoMap[code];
-            out[denseIdx++] = g < 0 ? kNaN : static_cast<double>(g);
+            const int g = GENO_ALT[code];
+            if (g < 0) {
+                out[denseIdx] = kNaN;
+                if constexpr (CollectMissing) indexForMissing->push_back(denseIdx);
+            } else {
+                out[denseIdx] = static_cast<double>(g);
+            }
+            ++denseIdx;
             mask &= mask - 1;
         }
     }
@@ -313,16 +324,10 @@ const uint8_t *PlinkCursor::readMarkerPtr(uint64_t gIndex) {
 // ── All-used fast path ───────────────────────────────────────────────
 // All subjects in file order → plink2 SIMD decode + count.
 
-void PlinkCursor::getGenotypesAllUsed(
+GenoStats PlinkCursor::getGenotypesAllUsed(
     const uint8_t *raw,
     uint32_t n,
     Eigen::Ref<Eigen::VectorXd> out,
-    double &altFreq,
-    double &altCounts,
-    double &missingRate,
-    double &log10pHwe,
-    double &maf,
-    double &mac,
     std::vector<uint32_t> &indexForMissing
 ) {
     indexForMissing.clear();
@@ -347,28 +352,16 @@ void PlinkCursor::getGenotypesAllUsed(
     }
 
     // BED code mapping: [0]=homA1, [1]=miss, [2]=het, [3]=homA2
-    GenoStats gs = statsFromCounts(bedCounts[0], bedCounts[2], bedCounts[3], bedCounts[1], n);
-    altFreq = gs.altFreq;
-    altCounts = gs.altCounts;
-    missingRate = gs.missingRate;
-    log10pHwe = gs.log10pHwe;
-    maf = gs.maf;
-    mac = gs.mac;
+    return statsFromCounts(bedCounts[0], bedCounts[2], bedCounts[3], bedCounts[1], n);
 }
 
 // ── Bitmask path ─────────────────────────────────────────────────────
 // Subset selection via bitmask → plink2 vectorized counting +
 // scalar scatter for decode.
 
-void PlinkCursor::getGenotypesMasked(
+GenoStats PlinkCursor::getGenotypesMasked(
     const uint8_t *raw,
     Eigen::Ref<Eigen::VectorXd> out,
-    double &altFreq,
-    double &altCounts,
-    double &missingRate,
-    double &log10pHwe,
-    double &maf,
-    double &mac,
     std::vector<uint32_t> &indexForMissing
 ) {
     indexForMissing.clear();
@@ -383,58 +376,24 @@ void PlinkCursor::getGenotypesMasked(
     plink2::GenoarrCountSubsetFreqs2(m_alignedBed.data(), reinterpret_cast<const uintptr_t *>(m_usedMask.data()),
                                      m_nSubjInFile, m_nUsed, bedCounts);
 
-    // Scatter decode: write only used subjects into dense output.
-    const int *genoMap = GENO_ALT;
-    uint32_t denseIdx = 0;
-    const uint32_t nWords = (m_nSubjInFile + 63) / 64;
-    for (uint32_t w = 0; w < nWords; ++w) {
-        uint64_t mask = m_usedMask[w];
-        while (mask) {
-            const uint32_t bit = static_cast<uint32_t>(__builtin_ctzll(mask));
-            const uint32_t famIdx = w * 64 + bit;
-            const int code = (raw[famIdx >> 2] >> ((famIdx & 3) << 1)) & 3;
-            const int g = genoMap[code];
-            if (g < 0) {
-                out[denseIdx] = kNaN;
-                indexForMissing.push_back(denseIdx);
-            } else {
-                out[denseIdx] = static_cast<double>(g);
-            }
-            ++denseIdx;
-            mask &= mask - 1;
-        }
-    }
+    decodeMasked<true>(raw, m_usedMask.data(), m_nSubjInFile, out.data(), &indexForMissing);
 
     // BED code mapping: [0]=homA1, [1]=miss, [2]=het, [3]=homA2
-    GenoStats gs = statsFromCounts(bedCounts[0], bedCounts[2], bedCounts[3], bedCounts[1], m_nUsed);
-    altFreq = gs.altFreq;
-    altCounts = gs.altCounts;
-    missingRate = gs.missingRate;
-    log10pHwe = gs.log10pHwe;
-    maf = gs.maf;
-    mac = gs.mac;
+    return statsFromCounts(bedCounts[0], bedCounts[2], bedCounts[3], bedCounts[1], m_nUsed);
 }
 
 // ── Public entry point ───────────────────────────────────────────────
 
-void PlinkCursor::getGenotypes(
+GenoStats PlinkCursor::getGenotypes(
     uint64_t gIndex,
     Eigen::Ref<Eigen::VectorXd> out,
-    double &altFreq,
-    double &altCounts,
-    double &missingRate,
-    double &log10pHwe,
-    double &maf,
-    double &mac,
     std::vector<uint32_t> &indexForMissing
 ) {
     const uint8_t *raw = readMarkerPtr(gIndex);
 
-    if (m_allUsed) {
-        getGenotypesAllUsed(raw, m_nSubjInFile, out, altFreq, altCounts, missingRate, log10pHwe, maf, mac, indexForMissing);
-    } else {
-        getGenotypesMasked(raw, out, altFreq, altCounts, missingRate, log10pHwe, maf, mac, indexForMissing);
-    }
+    // BED carries hard calls only, so fromDosage is always false here.
+    return m_allUsed ? getGenotypesAllUsed(raw, m_nSubjInFile, out, indexForMissing)
+                     : getGenotypesMasked(raw, out, indexForMissing);
 }
 
 // ── Simple entry point: genotype vector only, missing → NaN ──────────
@@ -451,7 +410,7 @@ void PlinkCursor::getGenotypesSimple(
         std::memcpy(m_alignedBed.data(), raw, m_bytesPerMarker);
         plink2::GenoarrLookup16x8bx2(m_alignedBed.data(), kBedDoublePairs, m_nSubjInFile, out.data());
     } else {
-        decodeMaskedSimple(raw, m_usedMask.data(), m_nSubjInFile, GENO_ALT, out.data());
+        decodeMasked<false>(raw, m_usedMask.data(), m_nSubjInFile, out.data(), nullptr);
     }
 }
 

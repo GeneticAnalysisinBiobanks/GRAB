@@ -151,6 +151,7 @@ class LEAFMethod : public MethodBase {
         uint32_t nUsed,
         const std::vector<double> &altFreqs,
         const std::vector<int> &chunkIdxs,
+        const UnionGenotypes &geno,
         std::vector<std::vector<double> > &results
     ) override;
 

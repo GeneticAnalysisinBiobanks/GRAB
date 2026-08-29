@@ -36,6 +36,11 @@ class SqrSolver {
     // statusOut (if non-null) is populated with iteration count,
     // convergence flag, and final gradient norm.
     //
+    // const, and deliberately so: score mode fits all ntaus of a phenotype in
+    // parallel against one shared solver, which is only sound while solve()
+    // touches nothing but locals and the read-only caches.  Keep it that way —
+    // a single non-const member here is a data race across every tau.
+    //
     // initBetaOrig (optional): warm-start coefficients in ORIGINAL space
     // (size = p+1; layout = [intercept, β_X_1, ..., β_X_p]).  When non-null,
     // converted to standardized space and used as the QMME iterate start
@@ -51,13 +56,7 @@ class SqrSolver {
         int restartPeriod = 50,
         SolverStatus *statusOut = nullptr,
         const Eigen::VectorXd *initBetaOrig = nullptr
-    );
-
-    // Diagnostic: number of QMME iterations executed in the most recent
-    // solve(); -1 before any solve.
-    int lastIters() const {
-        return m_lastIters;
-    }
+    ) const;
 
   private:
     int m_n;                                // sample size
@@ -70,8 +69,6 @@ class SqrSolver {
 
     double m_currentH = -1.0;
     Eigen::LLT<Eigen::MatrixXd> m_chol;
-
-    int m_lastIters = -1;
 };
 
 } // namespace qmme

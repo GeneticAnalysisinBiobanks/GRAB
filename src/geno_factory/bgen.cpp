@@ -101,6 +101,12 @@ struct DosageSetter {
     uint32_t nHomAlt = 0;
     uint32_t nMissing = 0;
     double dosageSum = 0.0;  // Σ dosage over non-missing used samples (for dosage AF)
+    // Set when any decoded dosage is not exactly 0/1/2.  BGEN quantises
+    // probabilities to 8 bits, so a hard-call variant decodes to exact
+    // integers and this stays false; recording it here costs one test on a
+    // value already in a register, where the alternative is a second pass
+    // over the column further downstream.
+    bool anyFractional = false;
     // plink2 hard-call threshold: a non-missing dosage counts toward the HWE
     // hom/het buckets only when |dosage - round| <= hardCallThr; otherwise it
     // is HWE-uncertain and excluded (still summed into dosageSum for AF).
@@ -113,6 +119,7 @@ struct DosageSetter {
         outIdx = 0;
         nHomRef = nHet = nHomAlt = nMissing = 0;
         dosageSum = 0.0;
+        anyFractional = false;
     }
 
     bool set_sample(std::size_t i) {
@@ -150,6 +157,7 @@ struct DosageSetter {
             else if (dosage > 2.0) dosage = 2.0;
             out[outIdx] = dosage;
             dosageSum += dosage;
+            if (dosage != 0.0 && dosage != 1.0 && dosage != 2.0) anyFractional = true;
             const int hc = dosageHardcall(dosage, hardCallThr);
             if (hc == 0) ++nHomRef;
             else if (hc == 1) ++nHet;
@@ -522,6 +530,7 @@ inline bool fastParseV12DiploidBiallelic(
     std::vector<uint32_t> *const missingIdx = setter.missingIdx;
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
     double dosageSum = 0.0;
+    bool anyFractional = false;
 
     if (setter.allUsed) {
         if (setter.needStats) {
@@ -533,6 +542,7 @@ inline bool fastParseV12DiploidBiallelic(
                     continue;
                 }
                 dosageSum += d;
+                if (d != 0.0 && d != 1.0 && d != 2.0) anyFractional = true;
                 const int hc = dosageHardcall(d, setter.hardCallThr);
                 if (hc == 0) ++nHomRef;
                 else if (hc == 1) ++nHet;
@@ -553,6 +563,7 @@ inline bool fastParseV12DiploidBiallelic(
                     continue;
                 }
                 dosageSum += d;
+                if (d != 0.0 && d != 1.0 && d != 2.0) anyFractional = true;
                 const int hc = dosageHardcall(d, setter.hardCallThr);
                 if (hc == 0) ++nHomRef;
                 else if (hc == 1) ++nHet;
@@ -569,6 +580,7 @@ inline bool fastParseV12DiploidBiallelic(
     setter.nHomAlt = nHomAlt;
     setter.nMissing = nMissing;
     setter.dosageSum = dosageSum;
+    setter.anyFractional = anyFractional;
     return true;
 }
 
@@ -1155,15 +1167,9 @@ void BgenCursor::beginSequentialBlock(uint64_t /*firstMarker*/) {
     m_impl->winValid = 0;
 }
 
-void BgenCursor::getGenotypes(
+GenoStats BgenCursor::getGenotypes(
     uint64_t gIndex,
     Eigen::Ref<Eigen::VectorXd> out,
-    double &altFreq,
-    double &altCounts,
-    double &missingRate,
-    double &log10pHwe,
-    double &maf,
-    double &mac,
     std::vector<uint32_t> &indexForMissing
 ) {
     auto &impl = *m_impl;
@@ -1193,12 +1199,7 @@ void BgenCursor::getGenotypes(
     // or ref-unknown), so setter.nHomAlt is the count of subjects with
     // dosage ≈ 2 (hom ALT).
     GenoStats gs = statsFromCounts(setter.nHomAlt, setter.nHet, setter.nHomRef, setter.nMissing, nUsed);
-    altFreq = gs.altFreq;
-    altCounts = gs.altCounts;
-    missingRate = gs.missingRate;
-    log10pHwe = gs.log10pHwe;
-    maf = gs.maf;
-    mac = gs.mac;
+    gs.fromDosage = setter.anyFractional;
 
     // Dosage-aware AF: compute the allele frequency from the dosage sum rather
     // than the thresholded hard-call counts.  For hard calls the dosage sum
@@ -1209,12 +1210,13 @@ void BgenCursor::getGenotypes(
     // plink2 --hardy; missingRate stays NaN-only.
     const uint32_t nNonMissing = nUsed - setter.nMissing;
     if (nNonMissing > 0) {
-        const double n2 = 2.0 * static_cast<double>(nNonMissing);
-        altCounts = setter.dosageSum;
-        altFreq = setter.dosageSum / n2;
-        maf = std::min(altFreq, 1.0 - altFreq);
-        mac = maf * n2;
+        const AlleleFreq af = alleleFreqFromTotal(setter.dosageSum, nNonMissing);
+        gs.altCounts = setter.dosageSum;
+        gs.altFreq = af.altFreq;
+        gs.maf = af.maf;
+        gs.mac = af.mac;
     }
+    return gs;
 }
 
 void BgenCursor::getGenotypesSimple(

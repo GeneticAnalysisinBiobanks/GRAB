@@ -504,15 +504,9 @@ uint32_t PgenCursor::decodeDosageVec(
     return dosage_ct;
 }
 
-void PgenCursor::getGenotypes(
+GenoStats PgenCursor::getGenotypes(
     uint64_t gIndex,
     Eigen::Ref<Eigen::VectorXd> out,
-    double &altFreq,
-    double &altCounts,
-    double &missingRate,
-    double &log10pHwe,
-    double &maf,
-    double &mac,
     std::vector<uint32_t> &indexForMissing
 ) {
     const uint32_t sampleCt = m_impl->sampleCt;
@@ -538,14 +532,7 @@ void PgenCursor::getGenotypes(
                 ++nHomAlt;  // v == 2.0
             }
         }
-        GenoStats gs = statsFromCounts(nHomAlt, nHet, nHomRef, nMissing, sampleCt);
-        altFreq = gs.altFreq;
-        altCounts = gs.altCounts;
-        missingRate = gs.missingRate;
-        log10pHwe = gs.log10pHwe;
-        maf = gs.maf;
-        mac = gs.mac;
-        return;
+        return statsFromCounts(nHomAlt, nHet, nHomRef, nMissing, sampleCt);
     }
 
     // Dosage QC: AF from the dosage sum; missing = real NaN only (a sample with
@@ -572,20 +559,25 @@ void PgenCursor::getGenotypes(
             // else: HWE-uncertain — excluded (still in dosageSum for AF).
         }
     }
-    missingRate = static_cast<double>(sampleCt - nNonMissing) / sampleCt;
-    log10pHwe = hweNegLog10P(nHet, nHomAlt, nHomRef);
+    GenoStats gs;
+    // dosage_ct > 0 came straight from the pgen dosage track, so this is a
+    // dosage marker by the file's own account.
+    gs.fromDosage = true;
+    gs.missingRate = static_cast<double>(sampleCt - nNonMissing) / sampleCt;
+    gs.log10pHwe = hweNegLog10P(nHet, nHomAlt, nHomRef);
     if (nNonMissing > 0) {
-        const double n2 = 2.0 * static_cast<double>(nNonMissing);
-        altCounts = dosageSum;
-        altFreq = dosageSum / n2;
-        maf = std::min(altFreq, 1.0 - altFreq);
-        mac = maf * n2;
+        const AlleleFreq af = alleleFreqFromTotal(dosageSum, nNonMissing);
+        gs.altCounts = dosageSum;
+        gs.altFreq = af.altFreq;
+        gs.maf = af.maf;
+        gs.mac = af.mac;
     } else {
-        altCounts = 0.0;
-        altFreq = std::numeric_limits<double>::quiet_NaN();
-        maf = std::numeric_limits<double>::quiet_NaN();
-        mac = 0.0;
+        gs.altCounts = 0.0;
+        gs.altFreq = std::numeric_limits<double>::quiet_NaN();
+        gs.maf = std::numeric_limits<double>::quiet_NaN();
+        gs.mac = 0.0;
     }
+    return gs;
 }
 
 void PgenCursor::getGenotypesSimple(
@@ -595,7 +587,9 @@ void PgenCursor::getGenotypesSimple(
     using namespace plink2;
     auto &impl = *m_impl;
 
-    // Dosage files: decode true dosages so the engine sees them.
+    // Dosage files: decode true dosages so the engine sees them.  A dosage
+    // track has no difflist representation, so the sparse shortcut below does
+    // not apply.
     if (impl.fileHasDosage) {
         decodeDosageVec(gIndex, out);
         return;
@@ -603,63 +597,18 @@ void PgenCursor::getGenotypesSimple(
 
     const uint32_t sampleCt = impl.sampleCt;
 
-    PglErr err = PgrGet(impl.allUsed ? nullptr : impl.sampleInclude, impl.pssi, sampleCt,
-                        static_cast<uint32_t>(gIndex), &impl.pgr, impl.genovec);
-
-    if (err != kPglRetSuccess) throw std::runtime_error("pgen: PgrGet failed at variant " + std::to_string(gIndex));
-
-    const uintptr_t *gv = impl.genovec;
-    for (uint32_t i = 0; i < sampleCt; ++i) {
-        const uint32_t code = (gv[i / kBitsPerWordD2] >> (2 * (i % kBitsPerWordD2))) & 3;
-        switch (code) {
-        case 0:
-            out[i] = 0.0;
-            break;
-        case 1:
-            out[i] = 1.0;
-            break;
-        case 2:
-            out[i] = 2.0;
-            break;
-        default:
-            out[i] = std::numeric_limits<double>::quiet_NaN();
-            break;
-        }
-    }
-}
-
-uint32_t PgenCursor::getGenotypesMaybeSparse(
-    uint64_t gIndex,
-    Eigen::Ref<Eigen::VectorXd> out,
-    uint32_t maxLen,
-    uint32_t *diffSampleIds,
-    uint8_t *diffGenoCodes,
-    uint32_t &diffLen
-) {
-    using namespace plink2;
-    auto &impl = *m_impl;
-
-    // Dosage files: there is no difflist representation for a dosage track, so
-    // decode densely (returns UINT32_MAX) and let the engine's dosage-aware QC
-    // (statsFromUnionVec/statsFromGVec) handle the fractional values.
-    if (impl.fileHasDosage) {
-        decodeDosageVec(gIndex, out);
-        diffLen = 0;
-        return UINT32_MAX;
-    }
-
-    const uint32_t sampleCt = impl.sampleCt;
-
-    // Cap maxLen at our pre-allocated buffer size (sampleCt / 8)
-    const uint32_t bufMaxLen = sampleCt / 8;
-    if (maxLen > bufMaxLen) maxLen = bufMaxLen;
-
+    // Sparse shortcut: for a variant whose non-modal genotypes number at most
+    // sampleCt/8, pgenlib hands back the modal genotype plus a difflist instead
+    // of a full genotype vector.  Writing that straight into `out` — fill with
+    // the modal value, then patch the listed samples — replaces the branchy
+    // per-sample 2-bit decode below with a fill plus a handful of scattered
+    // stores.  This stays inside the cursor because the difflist encoding, the
+    // 2-bit missing code included, is a pgen detail.
     uint32_t commonGeno = UINT32_MAX;
-    diffLen = 0;
-
+    uint32_t diffLen = 0;
     PglErr err = PgrGetDifflistOrGenovec(
         impl.allUsed ? nullptr : impl.sampleInclude,
-        impl.pssi, sampleCt, maxLen,
+        impl.pssi, sampleCt, sampleCt / 8,
         static_cast<uint32_t>(gIndex), &impl.pgr,
         impl.genovec, &commonGeno,
         impl.diffRaregeno, impl.diffSampleIdsRaw.data(), &diffLen);
@@ -668,24 +617,26 @@ uint32_t PgenCursor::getGenotypesMaybeSparse(
         throw std::runtime_error("pgen: PgrGetDifflistOrGenovec failed at variant " +
                                  std::to_string(gIndex));
 
-    if (commonGeno == UINT32_MAX) {
-        // Dense: expand genovec to doubles
-        const uintptr_t *gv = impl.genovec;
-        for (uint32_t i = 0; i < sampleCt; ++i) {
-            const uint32_t code = (gv[i / kBitsPerWordD2] >> (2 * (i % kBitsPerWordD2))) & 3;
-            out[i] = (code < 3) ? static_cast<double>(code)
-                                : std::numeric_limits<double>::quiet_NaN();
+    if (commonGeno != UINT32_MAX) {
+        out.setConstant(static_cast<double>(commonGeno));
+        const uintptr_t *rg = impl.diffRaregeno;
+        for (uint32_t j = 0; j < diffLen; ++j) {
+            const uint32_t code =
+                (rg[j / kBitsPerWordD2] >> (2 * (j % kBitsPerWordD2))) & 3;
+            const uint32_t sid = impl.diffSampleIdsRaw[j];
+            if (sid < sampleCt)
+                out[sid] = (code < 3) ? static_cast<double>(code)
+                                      : std::numeric_limits<double>::quiet_NaN();
         }
-        return UINT32_MAX;
+        return;
     }
 
-    // Sparse: unpack 2-bit raregeno to uint8 + copy sample IDs
-    const uintptr_t *rg = impl.diffRaregeno;
-    for (uint32_t j = 0; j < diffLen; ++j) {
-        diffGenoCodes[j] = static_cast<uint8_t>(
-            (rg[j / kBitsPerWordD2] >> (2 * (j % kBitsPerWordD2))) & 3);
-        diffSampleIds[j] = impl.diffSampleIdsRaw[j];
+    // Dense: expand genovec to doubles.
+    const uintptr_t *gv = impl.genovec;
+    for (uint32_t i = 0; i < sampleCt; ++i) {
+        const uint32_t code = (gv[i / kBitsPerWordD2] >> (2 * (i % kBitsPerWordD2))) & 3;
+        out[i] = (code < 3) ? static_cast<double>(code)
+                            : std::numeric_limits<double>::quiet_NaN();
     }
-
-    return commonGeno;
 }
+

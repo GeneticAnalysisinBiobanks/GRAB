@@ -73,6 +73,7 @@ GenoStats statsFromCounts(
     GenoStats gs;
     gs.altCounts = 2 * nHomAlt + nHet; // count of ALT allele
     gs.missingRate = static_cast<double>(nMissing) / nSamples;
+    gs.fromDosage = false;             // this overload is the hard-call path
 
     if (nonMissing == 0) {
         gs.altFreq = std::numeric_limits<double>::quiet_NaN();
@@ -82,9 +83,10 @@ GenoStats statsFromCounts(
         return gs;
     }
 
-    gs.altFreq = static_cast<double>(gs.altCounts) / (2.0 * nonMissing);
-    gs.maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
-    gs.mac = std::min(gs.altCounts, 2 * nonMissing - gs.altCounts);
+    const AlleleFreq af = alleleFreqFromTotal(gs.altCounts, nonMissing);
+    gs.altFreq = af.altFreq;
+    gs.maf = af.maf;
+    gs.mac = af.mac;
     gs.log10pHwe = hweNegLog10P(nHet, nHomAlt, nHomRef);
     return gs;
 }
