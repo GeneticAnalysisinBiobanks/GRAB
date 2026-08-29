@@ -136,8 +136,13 @@ struct SPAsqrPerTau {
 // empirical residual CGF.  The Binomial branch approximates the whole
 // non-outlier block by a Gaussian, which is what makes rare variants
 // conservative; the empirical CGF is exact in the genotype configuration and
-// only assumes the residuals are exchangeable.
-constexpr double kEmpiricalMacCutoff = 100.0;
+// only assumes the residuals are exchangeable.  Measured on i.i.d. synthetic
+// null markers (50k subjects, 9 taus, obs/exp at p < 1e-3): the Binomial
+// branch sits at 0.57 for MAC 10-15, 0.8-0.9 for 20-50, 0.93 for 50-100 and
+// 0.86-0.9 for 100-140, and is calibrated from MAC ~150 on; the empirical
+// branch is calibrated at every MAC tried (10-2000).  200 is where the two
+// agree to within noise, and the carrier sum is cheap up to there.
+constexpr double kEmpiricalMacCutoff = 200.0;
 
 struct SPAsqrSPAShared {
     std::vector<SPAsqrPerTau> perTau;    // one per tau
