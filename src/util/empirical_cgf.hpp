@@ -16,37 +16,30 @@
 // interpolation is piecewise linear with constant extrapolation outside the
 // grid, matching SPACox_Null_Model()'s approxfun(..., rule = 2).
 //
-// Two departures from src/spacox/spacox.cpp's buildCumulantTable, both driven
-// by SPAsqr needing one table per chromosome AND per quantile (22 x ntaus)
-// where SPACox needs one per phenotype:
+// One departure from src/spacox/spacox.cpp's buildCumulantTable, driven by
+// SPAsqr needing one table per chromosome AND per quantile (22 x ntaus) where
+// SPACox needs one per phenotype: the table is built from a *binned* residual
+// histogram, turning the O(L*N) double loop into O(N) binning + O(L*B).  Each
+// bin contributes through its own mean, which makes the approximation second
+// order: the relative error on M0 is about (1/2) * s_b^2 * v^2 with s_b the
+// within-bin sd (bin width / sqrt(12)).  With the default 4096 bins over the
+// residual range and the |v| <~ 10 region the saddlepoint actually visits,
+// that is below 1e-7.  The exact residual min/max are kept separately so the
+// K1 asymptotes (and hence the support bound) stay exact.
 //
-//   1. The table is built from a *binned* residual histogram, turning the
-//      O(L*N) double loop into O(N) binning + O(L*B).  Each bin contributes
-//      through its own mean, which makes the approximation second order: the
-//      relative error on M0 is about (1/2) * s_b^2 * v^2 with s_b the
-//      within-bin sd (bin width / sqrt(12)).  With the default 4096 bins over
-//      the residual range and the |v| <~ 10 region the saddlepoint actually
-//      visits, that is below 1e-7.  The exact residual min/max are kept
-//      separately so the K1 asymptotes (and hence the support bound) stay
-//      exact.
-//
-//   2. The per-grid-point reduction ships the scalar / AVX2 / AVX-512 triple
-//      required by CLAUDE.md, dispatched through simdLevel().  SPACox's
-//      scalar-only loop is a one-off per phenotype; 22 x ntaus tables is not.
-//
-// Evaluation buckets subjects by quantised genotype rather than iterating
-// over non-zero entries, so a Newton step costs O(#occupied buckets) instead
-// of O(#non-zero).  Hard calls collapse to at most four values (0, 1, 2 and
-// the mean-imputed 2*altFreq); dosages collapse onto the quantisation grid.
-// There is deliberately no hard-call/dosage branch — quantisation subsumes
-// both, and it is what makes the empirical CGF affordable for common
-// variants, where SPACox's non-zero loop degenerates to O(N).
+// Evaluation follows SPACox: a marker below the MAC cutoff has few carriers
+// (subjects with a non-zero genotype), so K and its derivatives are summed
+// over the carriers one by one, while the non-carriers all share the same
+// centred value -gMean and enter as a single closed-form term n0 * K0(-t*gMean).
+// A dosage genotype needs nothing extra: any subject with a non-zero dosage is
+// a carrier.
 #pragma once
 
 #include "util/math_helper.hpp" // M_PI fallback
 
 #include <Eigen/Dense>
 #include <cmath>
+#include <cstdint>
 #include <vector>
 
 namespace ecgf {
@@ -120,227 +113,95 @@ EmpiricalCgf buildEmpiricalCgf(
 );
 
 // ══════════════════════════════════════════════════════════════════════
-// Per-marker genotype bucketing
+// Per-marker carrier set
 // ══════════════════════════════════════════════════════════════════════
 //
-// Collapses a post-impute genotype column into (centred value, multiplicity)
-// pairs on a quantisation grid of step 1/qScale over the dosage range [0, 2].
-// Reused across markers: the histogram is cleared through a touched-key list,
-// so the per-marker cost is O(n) plus O(#occupied buckets), never O(qScale).
-//
-// Two details make the collapse accurate rather than merely cheap:
-//
-//   * a bucket is represented by the *mean* of the genotypes it holds, not by
-//     its grid point, so the first-order quantisation error cancels;
-//   * the leftover within-bucket spread is returned as residualSS() =
-//     sum_i Gtilde_i^2 - sum_b n_b * Gtilde_b^2, which the evaluator adds back
-//     as a closed-form quadratic.  That makes K''(0) exactly
-//     Var(R) * sum_i Gtilde_i^2 no matter how coarse the grid is, and leaves
-//     only the (negligible) within-bucket cubic term.
-//
-// Hard calls put every subject on an exact grid point, so both corrections
-// vanish identically and the collapse is bit-exact with at most four buckets
-// (0, 1, 2 and the mean-imputed value).
-class GenoBucketizer {
-  public:
-    explicit GenoBucketizer(int qScale = 256)
-        : m_q(qScale),
-          m_cnt(static_cast<size_t>(2 * qScale) + 1, 0.0),
-          m_sum(static_cast<size_t>(2 * qScale) + 1, 0.0) {
-        m_touched.reserve(64);
-        m_gt.reserve(64);
-        m_ct.reserve(64);
+// The score S = sum_i R_i * (G_i - gMean) splits into the carriers, kept one
+// by one, and the non-carriers, who all sit at the same centred value -gMean
+// and contribute n0 * K0(-t*gMean) in closed form.  Mean-imputed missing
+// genotypes are non-zero and therefore land among the carriers, which keeps
+// the sum exact.
+struct CarrierSet {
+    std::vector<double> gt;   // centred genotype of each carrier, G_i - gMean
+    double g0 = 0.0;          // centred genotype of a non-carrier, -gMean
+    double n0 = 0.0;          // number of non-carriers
+
+    bool empty() const {
+        return gt.empty() && n0 == 0.0;
     }
 
-    // `g` is the post-impute genotype column (length n), `gMean` its mean.
-    // Values are clamped into [0, 2] before quantisation; the readers already
-    // clamp dosages, but a degenerate imputed value would otherwise index out
-    // of bounds.
-    int build(const double *g, int n, double gMean) {
-        const double qd  = static_cast<double>(m_q);
-        const int    hiK = 2 * m_q;
-        double sumSq = 0.0;
-        for (int i = 0; i < n; ++i) {
-            double v = g[i];
-            if (!(v > 0.0)) v = 0.0;       // also maps NaN to 0
-            else if (v > 2.0) v = 2.0;
-            sumSq += v * v;
-            int k = static_cast<int>(v * qd + 0.5);
-            if (k < 0) k = 0;
-            else if (k > hiK) k = hiK;
-            const size_t uk = static_cast<size_t>(k);
-            if (m_cnt[uk] == 0.0) m_touched.push_back(k);
-            m_cnt[uk] += 1.0;
-            m_sum[uk] += v;
-        }
-
-        return finalise(n, sumSq, gMean);
-    }
-
-    // Same as build(), but reads straight out of a union-space column and
-    // skips subjects absent from this phenotype.  Bucketing needs only the
-    // multiset of genotype values, not the local ordering, so this avoids
-    // materialising a scattered per-phenotype copy first — one pass over the
-    // column instead of two.
-    int buildMapped(
+    // Gather from a union-space column, skipping subjects absent from this
+    // phenotype (unionToLocal[i] == UINT32_MAX).
+    void gather(
         const double *gUnion,
         const uint32_t *unionToLocal,
         uint32_t nUnion,
         double gMean
     ) {
-        const double qd  = static_cast<double>(m_q);
-        const int    hiK = 2 * m_q;
-        double sumSq = 0.0;
-        int    nSeen = 0;
+        gt.clear();
+        g0 = -gMean;
+        n0 = 0.0;
         for (uint32_t i = 0; i < nUnion; ++i) {
             if (unionToLocal[i] == UINT32_MAX) continue;
-            double v = gUnion[i];
-            if (!(v > 0.0)) v = 0.0;
-            else if (v > 2.0) v = 2.0;
-            sumSq += v * v;
-            ++nSeen;
-            int k = static_cast<int>(v * qd + 0.5);
-            if (k < 0) k = 0;
-            else if (k > hiK) k = hiK;
-            const size_t uk = static_cast<size_t>(k);
-            if (m_cnt[uk] == 0.0) m_touched.push_back(k);
-            m_cnt[uk] += 1.0;
-            m_sum[uk] += v;
+            const double v = gUnion[i];
+            if (v == 0.0) n0 += 1.0;
+            else          gt.push_back(v - gMean);
         }
-        return finalise(nSeen, sumSq, gMean);
     }
-
-  private:
-    int finalise(int n, double sumSq, double gMean) {
-        m_gt.clear();
-        m_ct.clear();
-        double bucketSS = 0.0;
-        for (int k : m_touched) {
-            const size_t uk = static_cast<size_t>(k);
-            const double c  = m_cnt[uk];
-            const double gt = m_sum[uk] / c - gMean;   // bucket mean, centred
-            m_gt.push_back(gt);
-            m_ct.push_back(c);
-            bucketSS += c * gt * gt;
-            m_cnt[uk] = 0.0;
-            m_sum[uk] = 0.0;
-        }
-        m_touched.clear();
-
-        // sum_i (g_i - gMean)^2 computed exactly from the raw column.
-        const double exactSS = sumSq - static_cast<double>(n) * gMean * gMean;
-        m_residSS = exactSS - bucketSS;
-        if (m_residSS < 0.0) m_residSS = 0.0;   // guard rounding
-        return static_cast<int>(m_gt.size());
-    }
-
-  public:
-    const double *gtilde() const {
-        return m_gt.data();
-    }
-
-    const double *count() const {
-        return m_ct.data();
-    }
-
-    int size() const {
-        return static_cast<int>(m_gt.size());
-    }
-
-    // Within-bucket sum of squares not captured by the bucket means.
-    double residualSS() const {
-        return m_residSS;
-    }
-
-  private:
-    int m_q;
-    std::vector<double> m_cnt, m_sum;
-    std::vector<int>    m_touched;
-    std::vector<double> m_gt, m_ct;
-    double m_residSS = 0.0;
 };
 
 // ══════════════════════════════════════════════════════════════════════
-// Bucketed CGF evaluation
+// CGF of the residual-randomised score for one marker
 // ══════════════════════════════════════════════════════════════════════
 
-// The within-bucket spread left over by quantisation enters as a pure
-// quadratic: for |v| small, K0(v) = (1/2) Var(R) v^2 + O(v^3) because the
-// residuals are centred (K0'(0) = mean R = 0).  `resSS` is
-// GenoBucketizer::residualSS(); it is identically zero for hard calls.
-
-// K'(t) - target and K''(t) in one pass (one table lookup per bucket).
-inline void bucketedK1K2(
+// K'(t) - target and K''(t) in one pass.
+inline void empK1K2(
     const EmpiricalCgf &tab,
-    const double *gt,
-    const double *ct,
-    int nb,
-    double resSS,
+    const CarrierSet &cs,
     double t,
     double target,
     double &outK1,
     double &outK2
 ) {
-    double s1 = 0.0, s2 = 0.0;
-    for (int b = 0; b < nb; ++b) {
-        const double gtb = gt[b];
-        double v1, v2;
-        tab.k1k2(t * gtb, v1, v2);
-        const double w = ct[b] * gtb;
-        s1 += w * v1;
-        s2 += w * gtb * v2;
+    double s1 = 0.0, s2 = 0.0, v1, v2;
+    for (const double g : cs.gt) {
+        tab.k1k2(t * g, v1, v2);
+        s1 += g * v1;
+        s2 += g * g * v2;
     }
-    const double q = tab.varResid * resSS;
-    outK1 = s1 + q * t - target;
-    outK2 = s2 + q;
+    tab.k1k2(t * cs.g0, v1, v2);
+    outK1 = s1 + cs.n0 * cs.g0 * v1 - target;
+    outK2 = s2 + cs.n0 * cs.g0 * cs.g0 * v2;
 }
 
-inline double bucketedK0(
-    const EmpiricalCgf &tab,
-    const double *gt,
-    const double *ct,
-    int nb,
-    double resSS,
-    double t
-) {
+inline double empK0(const EmpiricalCgf &tab, const CarrierSet &cs, double t) {
     double s = 0.0;
-    for (int b = 0; b < nb; ++b)
-        s += ct[b] * tab.k0(t * gt[b]);
-    return s + 0.5 * tab.varResid * resSS * t * t;
+    for (const double g : cs.gt) s += tab.k0(t * g);
+    return s + cs.n0 * tab.k0(t * cs.g0);
 }
 
-// K''(0) = Var(R) * sum_i Gtilde_i^2 — the variance the CGF encodes.  With the
-// residual term included this is exact regardless of the quantisation grid.
-inline double bucketedK2AtZero(
-    const EmpiricalCgf &tab,
-    const double *gt,
-    const double *ct,
-    int nb,
-    double resSS
-) {
-    double s = resSS;
-    for (int b = 0; b < nb; ++b)
-        s += ct[b] * gt[b] * gt[b];
+// K''(0) = Var(R) * sum_i (G_i - gMean)^2 — the variance the CGF encodes.
+inline double empK2AtZero(const EmpiricalCgf &tab, const CarrierSet &cs) {
+    double s = cs.n0 * cs.g0 * cs.g0;
+    for (const double g : cs.gt) s += g * g;
     return tab.varResid * s;
 }
 
 // Support of the residual-randomised score: K'(t) is bounded, so the
-// saddlepoint equation K'(zeta) = q has no solution outside
-// [lower, upper].  O(#buckets), used to reject before Newton spins.
-inline void bucketedSupport(
+// saddlepoint equation K'(zeta) = q has no solution outside [lower, upper].
+inline void empSupport(
     const EmpiricalCgf &tab,
-    const double *gt,
-    const double *ct,
-    int nb,
+    const CarrierSet &cs,
     double &lower,
     double &upper
 ) {
+    auto add = [&](double g, double w, double &up, double &lo) {
+        up += w * g * (g > 0.0 ? tab.rMax : tab.rMin);
+        lo += w * g * (g > 0.0 ? tab.rMin : tab.rMax);
+    };
     double up = 0.0, lo = 0.0;
-    for (int b = 0; b < nb; ++b) {
-        const double w = ct[b] * gt[b];
-        up += w * (gt[b] > 0.0 ? tab.rMax : tab.rMin);
-        lo += w * (gt[b] > 0.0 ? tab.rMin : tab.rMax);
-    }
+    for (const double g : cs.gt) add(g, 1.0, up, lo);
+    add(cs.g0, cs.n0, up, lo);
     upper = up;
     lower = lo;
 }

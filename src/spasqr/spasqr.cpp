@@ -248,16 +248,13 @@ inline spa::Result binomTwoSided(
 //
 // Same solver, same tail kernel, same two-sided assembly as the Binomial
 // branch; all that changes is the source of K, K' and K'' — from the outlier
-// Binomial loop to one table lookup per genotype bucket (util/empirical_cgf).
+// Binomial loop to the carrier sum of util/empirical_cgf.
 // The branch reports through the same spa::Status vocabulary, so a marker
 // that could not be solved here is visible as such rather than laundered.
 
 inline spa::Result empTwoSided(
     const ecgf::EmpiricalCgf &tab,
-    const double *gt,
-    const double *ct,
-    int nb,
-    double resSS,
+    const ecgf::CarrierSet &cs,
     double absAdj,
     double initZeta,
     double tol,
@@ -279,15 +276,14 @@ inline spa::Result empTwoSided(
             s,
             [&](double t) {
                 double k1, k2;
-                // bucketedK1K2 subtracts the target itself: k1 = K'(t) - s.
-                ecgf::bucketedK1K2(tab, gt, ct, nb, resSS, t, s, k1, k2);
+                // empK1K2 subtracts the target itself: k1 = K'(t) - s.
+                ecgf::empK1K2(tab, cs, t, s, k1, k2);
                 return spa::K12{k1, k2};
             },
             [&](double t) {
                 double k1, k2;
-                ecgf::bucketedK1K2(tab, gt, ct, nb, resSS, t, s, k1, k2);
-                return spa::K012{ecgf::bucketedK0(tab, gt, ct, nb, resSS, t),
-                                 k1, k2};
+                ecgf::empK1K2(tab, cs, t, s, k1, k2);
+                return spa::K012{ecgf::empK0(tab, cs, t), k1, k2};
             },
             opt);
 
@@ -305,10 +301,7 @@ inline spa::Result empTwoSided(
 // branch rather than dropping the marker.
 inline spa::Result empiricalTwoSided(
     const ecgf::EmpiricalCgf &tab,
-    const double *gt,
-    const double *ct,
-    int nb,
-    double resSS,
+    const ecgf::CarrierSet &cs,
     double Score,
     double Score_var,
     double tol,
@@ -316,11 +309,10 @@ inline spa::Result empiricalTwoSided(
 ) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
 
-    // K''(0) = Var(R) * sum_i Gtilde_i^2, exact (the bucketiser carries the
-    // quantisation residue).  Score_adj puts the score on the CGF's own scale
+    // K''(0) = Var(R) * sum_i Gtilde_i^2.  Score_adj puts the score on the CGF's own scale
     // — the same variance-ratio step the Binomial branch performs with
     // 2p(1-p)*||R||^2, so the two branches meet continuously at the cutoff.
-    const double K2at0 = ecgf::bucketedK2AtZero(tab, gt, ct, nb, resSS);
+    const double K2at0 = ecgf::empK2AtZero(tab, cs);
     if (!(K2at0 > 0.0) || !(Score_var > 0.0))
         return spa::Result{nan, spa::Status::NaNoTest};
     const double absAdj = std::abs(Score) * std::sqrt(K2at0 / Score_var);
@@ -331,12 +323,12 @@ inline spa::Result empiricalTwoSided(
     // outside it the saddlepoint equation has no solution at all.  Reject here
     // instead of letting the solver exhaust its budget on an unsolvable root.
     double supLo, supHi;
-    ecgf::bucketedSupport(tab, gt, ct, nb, supLo, supHi);
+    ecgf::empSupport(tab, cs, supLo, supHi);
     if (!(absAdj < supHi) || !(-absAdj > supLo))
         return spa::Result{nan, spa::Status::NaNoTest};
 
     const double zeta0 = absAdj / K2at0;   // exact root of a quadratic CGF
-    return empTwoSided(tab, gt, ct, nb, resSS, absAdj, zeta0, tol, zNorm);
+    return empTwoSided(tab, cs, absAdj, zeta0, tol, zNorm);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -514,7 +506,7 @@ class SPAsqrMethod : public MethodBase {
         // Everything here is O(1) per cell.  Var(G) depends only on the marker,
         // so it is computed once rather than once per tau.
         m_gVar.resize(static_cast<size_t>(B));
-        m_wantBuckets.assign(static_cast<size_t>(B), 0);
+        m_needCarriers.assign(static_cast<size_t>(B), 0);
         const double cutoff = m_spaShared->SPA_Cutoff;
         const double nan = std::numeric_limits<double>::quiet_NaN();
 
@@ -556,13 +548,13 @@ class SPAsqrMethod : public MethodBase {
                 } else {
                     m_zBuf[c] = z;
                     m_slow[c] = 1;
-                    m_wantBuckets[static_cast<size_t>(b)] = 1;
+                    m_needCarriers[static_cast<size_t>(b)] = 1;
                 }
             }
         }
 
-        // ── Pass 2: bucket genotypes, but only where they will be read ─────
-        prepareLowMacBuckets(B, gSums, invN, geno);
+        // ── Pass 2: gather carriers, but only where they will be read ──────
+        gatherCarriers(B, gSums, invN, geno);
 
         // ── Pass 3: saddlepoint, tau-first ─────────────────────────────────
         // Only the cells flagged above reach here — a few percent under the
@@ -585,10 +577,9 @@ class SPAsqrMethod : public MethodBase {
                 // usable saddlepoint (SPA_STATUS > 2) fall back to the
                 // Binomial branch rather than substitute or lose the marker.
                 spa::Result r{nan, spa::Status::NaNoTest};
-                const MarkerBuckets &bk = m_bk[static_cast<size_t>(b)];
-                if (bk.n > 0 && !tau.empCgf.empty())
-                    r = empiricalTwoSided(tau.empCgf, &m_bkGt[bk.off], &m_bkCt[bk.off],
-                                          bk.n, bk.resSS, Score, Svar,
+                const ecgf::CarrierSet &cs = m_carriers[static_cast<size_t>(b)];
+                if (!cs.empty() && !tau.empCgf.empty())
+                    r = empiricalTwoSided(tau.empCgf, cs, Score, Svar,
                                           m_spaShared->tol, z);
                 if (!spa::statusIsUsable(r.status))
                     r = binomTwoSided(Score, MAF, Svar, z, tau, *m_spaShared);
@@ -604,32 +595,20 @@ class SPAsqrMethod : public MethodBase {
     }
 
   private:
-    // Collapse a marker's genotype column into (centred value, multiplicity)
-    // buckets, shared across taus because the buckets depend only on the
-    // genotype.  n == 0 marks a marker that stays on the Binomial branch.
-    struct MarkerBuckets {
-        int off = 0;        // start index into m_bkGt / m_bkCt
-        int n = 0;          // bucket count
-        double resSS = 0.0; // within-bucket spread the evaluator adds back
-    };
-
-    // Bucket the markers that pass 1 flagged, and only those.
+    // Gather the carrier sets of the markers pass 1 flagged, and only those.
     //
-    // Bucketing costs a pass over all nUnion subjects, so doing it for every
-    // marker under the MAC cutoff -- as this used to -- spends that pass on
-    // markers no tau will ever ask about.  Under the null only a few percent of
-    // (marker, tau) cells clear the SPA cutoff, and a marker needs buckets only
-    // if at least one of its taus does; on a 50k-subject exome scan the
-    // speculative version was ~12% of total runtime, most of it discarded.
-    void prepareLowMacBuckets(
+    // Reading a genotype column costs a pass over all nUnion subjects, so doing
+    // it for every marker under the MAC cutoff would spend that pass on markers
+    // no tau will ever ask about; under the null only a few percent of
+    // (marker, tau) cells clear the SPA cutoff.
+    void gatherCarriers(
         int B,
         const double *gSums,
         double invN,
         const UnionGenotypes &geno
     ) {
-        m_bk.assign(static_cast<size_t>(B), MarkerBuckets{});
-        m_bkGt.clear();
-        m_bkCt.clear();
+        m_carriers.resize(static_cast<size_t>(B));
+        for (auto &cs : m_carriers) { cs.gt.clear(); cs.n0 = 0.0; }
         if (!m_hasEmpCgf || geno.empty()) return;
 
         const uint32_t nUnion = static_cast<uint32_t>(m_unionToLocal.size());
@@ -637,21 +616,11 @@ class SPAsqrMethod : public MethodBase {
 
         const int nMarkers = std::min(B, static_cast<int>(geno.nCols));
         for (int b = 0; b < nMarkers; ++b) {
-            if (!m_wantBuckets[static_cast<size_t>(b)]) continue;
+            if (!m_needCarriers[static_cast<size_t>(b)]) continue;
             if (!(geno.macs[b] < kEmpiricalMacCutoff)) continue;
-            // One pass over the union column: bucketing only needs the multiset
-            // of genotype values, so there is no reason to materialise a
-            // scattered per-phenotype copy first.
-            const int nb = m_bz.buildMapped(geno.column(static_cast<uint32_t>(b)),
-                                            m_unionToLocal.data(), nUnion,
-                                            gSums[b] * invN);
-            if (nb <= 0) continue;
-            MarkerBuckets &bk = m_bk[static_cast<size_t>(b)];
-            bk.off   = static_cast<int>(m_bkGt.size());
-            bk.n     = nb;
-            bk.resSS = m_bz.residualSS();
-            m_bkGt.insert(m_bkGt.end(), m_bz.gtilde(), m_bz.gtilde() + nb);
-            m_bkCt.insert(m_bkCt.end(), m_bz.count(),  m_bz.count()  + nb);
+            m_carriers[static_cast<size_t>(b)].gather(
+                geno.column(static_cast<uint32_t>(b)),
+                m_unionToLocal.data(), nUnion, gSums[b] * invN);
         }
     }
 
@@ -670,9 +639,7 @@ class SPAsqrMethod : public MethodBase {
     // processScoreBatch argument and is not retained.
     bool m_hasEmpCgf = false;
     mutable std::vector<uint32_t> m_unionToLocal;
-    ecgf::GenoBucketizer m_bz;
-    std::vector<MarkerBuckets> m_bk;      // B
-    std::vector<double> m_bkGt, m_bkCt;   // concatenated bucket payloads
+    std::vector<ecgf::CarrierSet> m_carriers;   // B, filled by gatherCarriers
 
 
     // Per-thread scratch, all reused across processScoreBatch calls.
@@ -680,7 +647,7 @@ class SPAsqrMethod : public MethodBase {
     std::vector<double>  m_zBuf, m_lpBuf, m_stBuf;  // B × ntaus: Z_Norm, LOG10P, SPA_STATUS
     std::vector<uint8_t> m_slow;          // B × ntaus: cell needs the saddlepoint
     std::vector<double>  m_gVar;          // B
-    std::vector<uint8_t> m_wantBuckets;   // B: some tau of this marker is slow
+    std::vector<uint8_t> m_needCarriers;  // B: some tau of this marker is slow
 
     // Column assembly, shared by all three entry points so the header and the
     // row can only ever be built by the same code.
