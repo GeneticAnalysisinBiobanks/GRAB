@@ -154,17 +154,11 @@ class PlinkCursor : public GenoCursor {
     // Prepare sequential reading starting from a given marker index.
     void beginSequentialBlock(uint64_t firstMarker) override;
 
-    // Decode genotype for marker gIndex into caller-owned Eigen vector.
-    // Returns QC statistics through the output parameters.
-    void getGenotypes(
+    // Decode genotype for marker gIndex into caller-owned Eigen vector,
+    // returning its QC statistics.
+    GenoStats getGenotypes(
         uint64_t gIndex,
         Eigen::Ref<Eigen::VectorXd> out,
-        double &altFreq,
-        double &altCounts,
-        double &missingRate,
-        double &log10pHwe,
-        double &maf,
-        double &mac,
         std::vector<uint32_t> &indexForMissing
     ) override;
 
@@ -180,29 +174,17 @@ class PlinkCursor : public GenoCursor {
     const uint8_t *readMarkerPtr(uint64_t gIndex);
 
     // ---- All-used fast path (identity decode, no scatter) ----
-    void getGenotypesAllUsed(
+    GenoStats getGenotypesAllUsed(
         const uint8_t *raw,
         uint32_t n,
         Eigen::Ref<Eigen::VectorXd> out,
-        double &altFreq,
-        double &altCounts,
-        double &missingRate,
-        double &log10pHwe,
-        double &maf,
-        double &mac,
         std::vector<uint32_t> &indexForMissing
     );
 
     // ---- Bitmask path (decode only set-bit subjects) ----
-    void getGenotypesMasked(
+    GenoStats getGenotypesMasked(
         const uint8_t *raw,
         Eigen::Ref<Eigen::VectorXd> out,
-        double &altFreq,
-        double &altCounts,
-        double &missingRate,
-        double &log10pHwe,
-        double &maf,
-        double &mac,
         std::vector<uint32_t> &indexForMissing
     );
 

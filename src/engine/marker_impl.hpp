@@ -187,6 +187,48 @@ struct alignas(64) PaddedFlag {
 static_assert(sizeof(PaddedFlag) == 64, "PaddedFlag must be 64 bytes");
 
 // ──────────────────────────────────────────────────────────────────────
+// Mean imputation
+// ──────────────────────────────────────────────────────────────────────
+//
+// Every engine path replaces missing genotypes with the column's mean ALT
+// dose, but they disagree — deliberately — on which population that mean is
+// taken over:
+//
+//   * the per-phenotype paths use 2 * altFreq for the phenotype being written,
+//     which is the frequency their own QC just computed;
+//   * the fused path imputes once per union column (Phase 1b) so that a single
+//     decoded column can feed every phenotype in the window, and therefore has
+//     to use the union-level mean.  The resulting per-phenotype discrepancy is
+//     bounded by (m_p/n_p)*4*(p_u - p_p)*(p_u + p_p) and is accepted: making it
+//     per-phenotype would mean re-imputing per phenotype, which defeats the
+//     shared GEMM.
+//
+// The value is therefore always passed in by the caller rather than derived
+// here, so that choice stays visible where it is made.
+
+// Impute the entries listed in `missingIdx`.  Used where QC already produced
+// an index list as a by-product of decoding.
+inline void imputeMissingAt(
+    double *g,
+    const std::vector<uint32_t> &missingIdx,
+    double value
+) {
+    for (uint32_t j : missingIdx) g[j] = value;
+}
+
+// Impute by scanning for NaN.  Used on the fused path, where no per-marker
+// index list exists — building one would cost more than the rescan, which is
+// already warm in cache from the sum that produced `value`.
+inline void imputeMissingNaN(
+    double *g,
+    size_t n,
+    double value
+) {
+    for (size_t i = 0; i < n; ++i)
+        if (std::isnan(g[i])) g[i] = value;
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Per-phenotype genotype stats and extraction
 // ──────────────────────────────────────────────────────────────────────
 
@@ -336,11 +378,9 @@ inline void statsFromUnionVecMultiGroup(
             s.mac = 0.0;
             s.fromDosage = true;
         } else {
-            const uint32_t altCounts = 2 * nHomAlt + nHet;
-            const double n2 = 2.0 * nonMissing;
-            s.altFreq = altCounts / n2;
-            const double maf = std::min(s.altFreq, 1.0 - s.altFreq);
-            s.mac = maf * n2;
+            const AlleleFreq af = alleleFreqFromTotal(2.0 * nHomAlt + nHet, nonMissing);
+            s.altFreq = af.altFreq;
+            s.mac = af.mac;
             s.fromDosage = false;
         }
     }
@@ -387,23 +427,17 @@ inline PhenoGenoStats statsFromGVec(
         s.log10pHwe = NAN;
         return s;
     }
-    double n2 = 2.0 * nNonMissing;
     // HWE from the thresholded hard-call counts (plink2 --hardy); genuine-missing
     // (NaN) is already excluded, and HWE-uncertain dosages were excluded above.
     // Computed for dosage markers too (previously skipped as NaN).
     s.log10pHwe = hweNegLog10P(nHet, nHomAlt, nHomRef);
     s.missingRate = static_cast<double>(indexForMissing.size()) / n;
-    if (isDosage) {
-        // Dosage marker: AF/MAC from the un-binned dosage sum.
-        s.altFreq = dosageSum / n2;
-        double maf = std::min(s.altFreq, 1.0 - s.altFreq);
-        s.mac = maf * n2;
-    } else {
-        uint32_t altCounts = 2 * nHomAlt + nHet;
-        s.altFreq = altCounts / n2;
-        double maf = std::min(s.altFreq, 1.0 - s.altFreq);
-        s.mac = maf * n2;
-    }
+    // Dosage markers take the ALT total from the un-binned dosage sum, hard
+    // calls from the genotype counts; the frequency arithmetic is the same.
+    const AlleleFreq af = alleleFreqFromTotal(
+        isDosage ? dosageSum : (2.0 * nHomAlt + nHet), nNonMissing);
+    s.altFreq = af.altFreq;
+    s.mac = af.mac;
     return s;
 }
 
@@ -596,11 +630,10 @@ inline void extractAndStatsBatched(
             s.log10pHwe = NAN;
         } else {
             const uint32_t nP = nPhenoArr[p];
-            const uint32_t altCounts = 2 * acc[p].nHomAlt + acc[p].nHet;
-            const double n2 = 2.0 * nonMissing;
-            s.altFreq = altCounts / n2;
-            const double maf = std::min(s.altFreq, 1.0 - s.altFreq);
-            s.mac = maf * n2;
+            const AlleleFreq af =
+                alleleFreqFromTotal(2.0 * acc[p].nHomAlt + acc[p].nHet, nonMissing);
+            s.altFreq = af.altFreq;
+            s.mac = af.mac;
             s.missingRate = static_cast<double>(outMissings[p].size()) / nP;
             s.log10pHwe = hweNegLog10P(acc[p].nHet, acc[p].nHomAlt, acc[p].nHomRef);
         }
@@ -662,11 +695,9 @@ inline PhenoGenoStats sparseExtractAndStats(
         s.log10pHwe = NAN;
         return s;
     }
-    const uint32_t altCounts = 2 * counts[2] + counts[1];
-    const double n2 = 2.0 * nonMissing;
-    s.altFreq = altCounts / n2;
-    const double maf = std::min(s.altFreq, 1.0 - s.altFreq);
-    s.mac = maf * n2;
+    const AlleleFreq af = alleleFreqFromTotal(2.0 * counts[2] + counts[1], nonMissing);
+    s.altFreq = af.altFreq;
+    s.mac = af.mac;
     s.missingRate = static_cast<double>(counts[3]) / nPheno;
     s.log10pHwe = hweNegLog10P(counts[1], counts[2], counts[0]);
     return s;
