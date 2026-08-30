@@ -167,9 +167,15 @@ class PgenCursor : public GenoCursor {
 
     void beginSequentialBlock(uint64_t firstMarker) override;
 
-    GenoStats getGenotypes(
+    void getGenotypes(
         uint64_t gIndex,
         Eigen::Ref<Eigen::VectorXd> out,
+        double &altFreq,
+        double &altCounts,
+        double &missingRate,
+        double &log10pHwe,
+        double &maf,
+        double &mac,
         std::vector<uint32_t> &indexForMissing
     ) override;
 
@@ -178,6 +184,14 @@ class PgenCursor : public GenoCursor {
         Eigen::Ref<Eigen::VectorXd> out
     ) override;
 
+    uint32_t getGenotypesMaybeSparse(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out,
+        uint32_t maxLen,
+        uint32_t *diffSampleIds,
+        uint8_t *diffGenoCodes,
+        uint32_t &diffLen
+    ) override;
 
   private:
     // Decode one variant into out[] (dosage where present, else hard call,

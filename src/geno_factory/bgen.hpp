@@ -188,9 +188,15 @@ class BgenCursor : public GenoCursor {
 
     void beginSequentialBlock(uint64_t firstMarker) override;
 
-    GenoStats getGenotypes(
+    void getGenotypes(
         uint64_t gIndex,
         Eigen::Ref<Eigen::VectorXd> out,
+        double &altFreq,
+        double &altCounts,
+        double &missingRate,
+        double &log10pHwe,
+        double &maf,
+        double &mac,
         std::vector<uint32_t> &indexForMissing
     ) override;
 

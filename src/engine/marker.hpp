@@ -136,41 +136,6 @@ class MethodBase {
         (void)dest;
     }
 
-    // ── Per-subject genotypes travelling with the scores ───────────────
-    //
-    // The fused GEMM exists precisely so that a method never has to look at the
-    // genotype matrix, and every method but one is happy with that.  SPAsqr's
-    // low-MAC branch evaluates an empirical CGF of the form
-    // Σ_i K0(t·(G_i − Ḡ)), which needs the column itself.
-    //
-    // The block therefore travels with the scores rather than arriving through
-    // a separate setter: a setter cannot express "valid only for the next
-    // call", so the callee ends up copying geometry by hand and guarding every
-    // field against never having been set.  Methods that do not want genotypes
-    // simply ignore the argument.
-    //
-    // Described as a buffer plus geometry rather than an Eigen::Ref because a
-    // Ref binds to its argument's lifetime; this is a plain descriptor of the
-    // engine's per-thread GBatch_union, valid for the duration of the
-    // processScoreBatch call it is passed to.
-    struct UnionGenotypes {
-        const double *data = nullptr;   // column-major, mean-imputed (Phase 1b)
-        Eigen::Index rows = 0;          // N_union
-        Eigen::Index colStride = 0;     // outer stride, in doubles
-        const uint32_t *cols = nullptr; // cols[k] = column of batch marker k
-        const double *macs = nullptr;   // macs[k] = minor-allele count of marker k
-        uint32_t nCols = 0;             // number of batch markers described
-
-        bool empty() const {
-            return data == nullptr;
-        }
-
-        // Union-space genotype column of batch marker k.
-        const double *column(uint32_t k) const {
-            return data + cols[k] * colStride;
-        }
-    };
-
     // Process pre-computed raw scores (from the fused GEMM).
     //   scores    — fusedGemmColumns() × B matrix of raw scores
     //   gSums     — per-phenotype genotype sums, length B (post-impute Σ G)
@@ -181,8 +146,6 @@ class MethodBase {
     //               (length B). Methods that index per-chunk per-marker state
     //               (e.g. m_chunkGenoIndices built in prepareChunk) MUST use
     //               chunkIdxs[b], never b.
-    //   geno      — per-subject genotypes for the window; see UnionGenotypes.
-    //               Empty on paths that do not build a union matrix.
     //   results   — output: results[b] = method-specific result values
     virtual void processScoreBatch(
         const Eigen::Ref<const Eigen::MatrixXd> &scores,
@@ -191,42 +154,10 @@ class MethodBase {
         uint32_t nUsed,
         const std::vector<double> &altFreqs,
         const std::vector<int> &chunkIdxs,
-        const UnionGenotypes &geno,
         std::vector<std::vector<double> > &results
     ) {
         (void)scores; (void)gSums; (void)gSumSqs; (void)nUsed;
-        (void)altFreqs; (void)chunkIdxs; (void)geno; (void)results;
-    }
-
-    // ── Optional: per-subject genotypes inside the fused path ──────────
-    //
-    // The fused GEMM exists precisely so that a method never has to look at
-    // the genotype matrix, and every method but one is happy with that.
-    // SPAsqr's low-MAC branch evaluates an empirical CGF of the form
-    // Σ_i K0(t·(G_i − Ḡ)), which needs the column itself.
-    //
-    // A method that returns true here gets setUnionGenotypes() called
-    // immediately before each processScoreBatch(); everyone else keeps the
-    // default no-ops and is completely unaffected.
-    virtual bool needsUnionGenotypes() const {
-        return false;
-    }
-
-    // GUnion      — the window's union-space genotype matrix, already
-    //               mean-imputed (engine Phase 1b), so it matches the scores
-    //               and gSums handed to processScoreBatch.
-    // unionCols   — unionCols[k] is the GUnion column holding the k-th
-    //               QC-passing marker, i.e. batch column k of processScoreBatch.
-    // macs        — macs[k], the k-th passing marker's minor-allele count.
-    //
-    // Valid only for the duration of the processScoreBatch() call that
-    // follows; the callee must not retain the references.
-    virtual void setUnionGenotypes(
-        const Eigen::Ref<const Eigen::MatrixXd> &GUnion,
-        const std::vector<uint32_t> &unionCols,
-        const double *macs
-    ) {
-        (void)GUnion; (void)unionCols; (void)macs;
+        (void)altFreqs; (void)chunkIdxs; (void)results;
     }
 
 };

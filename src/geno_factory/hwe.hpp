@@ -16,51 +16,19 @@
 // plink2 version.
 #pragma once
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
 
-// Genotype class counts + derived QC stats.  altCounts and mac are doubles
-// rather than counts because the same struct describes dosage markers, where
-// the ALT total is not integral; for hard calls both stay exactly integral.
+// Genotype class counts + derived QC stats.
 struct GenoStats {
     double altFreq;
-    double altCounts;
+    uint32_t altCounts;
     double missingRate;
     double log10pHwe;
     double maf;
-    double mac;
-    // True when the decoded column carried a fractional dosage.  The reader
-    // knows this from the file (a pgen dosage track, BGEN probabilities, a VCF
-    // DS field), so consumers must not re-derive it by testing genotypes
-    // against 0/1/2 — that costs a scan and misfires whenever a dosage marker
-    // happens to be integral for every subject in the window.
-    bool fromDosage;
+    uint32_t mac;
 };
-
-// Allele frequency, MAF and MAC from the ALT-allele total over the non-missing
-// subjects.  `altTotal` is the integer count 2*nHomAlt + nHet for hard calls
-// and the dosage sum otherwise — the arithmetic does not differ between the
-// two, which is why this is one function and not a hard-call/dosage pair.
-//
-// MAC is min(altTotal, 2n - altTotal) rather than maf * 2n: for hard calls
-// that keeps the count exactly integral, and for dosages it avoids the
-// divide-then-multiply round trip.
-struct AlleleFreq {
-    double altFreq;
-    double maf;
-    double mac;
-};
-
-inline AlleleFreq alleleFreqFromTotal(double altTotal, uint32_t nNonMissing) {
-    const double n2 = 2.0 * static_cast<double>(nNonMissing);
-    AlleleFreq a;
-    a.altFreq = altTotal / n2;
-    a.maf     = std::min(a.altFreq, 1.0 - a.altFreq);
-    a.mac     = std::min(altTotal, n2 - altTotal);
-    return a;
-}
 
 // plink2 --hard-call-threshold default.  A dosage is called to the nearest
 // hard-call (0/1/2) when it lies within `thr` of that integer, and is

@@ -857,8 +857,10 @@ double estimateLambdaPerMarker(
         // spread across the whole [0, total) range for any total ≥ target, since
         // k ≤ target−1 ⇒ markerIdx = floor(k·total/target) < total.
         const uint64_t markerIdx = (k * total) / target;
-        const GenoStats gs = cursor->getGenotypes(markerIdx, geno, missingIdx);
-        const double altFreq = gs.altFreq;
+        double altFreq = 0.0, altCounts = 0.0, missingRate = 0.0;
+        double log10pHwe = 0.0, maf = 0.0, mac = 0.0;
+        cursor->getGenotypes(markerIdx, geno, altFreq, altCounts, missingRate,
+                             log10pHwe, maf, mac, missingIdx);
 
         // Mean impute missing entries to 2·AF (matches develop-R imputeMethod="mean")
         const double meanGeno = 2.0 * altFreq;

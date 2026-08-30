@@ -282,6 +282,7 @@ void runPairwiseIBD(
         auto cursor = genoData->makeCursor();
         Eigen::VectorXd genoVec(nSubj);
         std::vector<uint32_t> missingIdx;
+        double altFreq, altCounts, missingRate, log10pHwe, maf, mac;
 
         double *localXW = threadAccs[tid].sumXW.data();
         double *localW = threadAccs[tid].sumW.data();
@@ -298,8 +299,7 @@ void runPairwiseIBD(
             if (!chunk.empty()) cursor->beginSequentialBlock(chunk.front());
 
             for (uint64_t gi : chunk) {
-                const GenoStats gs = cursor->getGenotypes(gi, genoVec, missingIdx);
-                const double altFreq = gs.altFreq, maf = gs.maf;
+                cursor->getGenotypes(gi, genoVec, altFreq, altCounts, missingRate, log10pHwe, maf, mac, missingIdx);
                 if (maf < minMafIBD) continue;
 
                 const double meanGeno = 2.0 * altFreq;

@@ -8,8 +8,6 @@
 // operate through the abstract interface so they work with any backend.
 #pragma once
 
-#include "geno_factory/hwe.hpp"
-
 #include <Eigen/Dense>
 #include <cstdint>
 #include <memory>
@@ -141,23 +139,48 @@ class GenoCursor {
     // Prepare sequential reading starting from a given marker index.
     virtual void beginSequentialBlock(uint64_t firstMarker) = 0;
 
-    // Decode genotype for marker gIndex into caller-owned Eigen vector, and
-    // return its QC statistics.  `indexForMissing` receives the dense indices
-    // that were written NaN; it is cleared first.
-    virtual GenoStats getGenotypes(
+    // Decode genotype for marker gIndex into caller-owned Eigen vector.
+    // Returns QC statistics through the output parameters.
+    virtual void getGenotypes(
         uint64_t gIndex,
         Eigen::Ref<Eigen::VectorXd> out,
+        double &altFreq,
+        double &altCounts,
+        double &missingRate,
+        double &log10pHwe,
+        double &maf,
+        double &mac,
         std::vector<uint32_t> &indexForMissing
     ) = 0;
 
-    // Lightweight variant: genotype column only, missing → NaN, no QC stats.
-    // `out` may alias a destination matrix column, so a backend that can decode
-    // a variant cheaply (pgen's difflist: set the modal genotype, then patch the
-    // few that differ) writes the result in place rather than handing the caller
-    // a sparse representation to expand.
+    // Lightweight variant: genotype vector only, missing → NaN, no QC stats.
     virtual void getGenotypesSimple(
         uint64_t gIndex,
         Eigen::Ref<Eigen::VectorXd> out
     ) = 0;
+
+    // Optional sparse genotype read via pgenlib difflist.
+    //
+    // If the variant qualifies as sparse (difflist_len <= maxLen):
+    //   Returns commonGeno (0, 1, or 2).  diffSampleIds[0..diffLen-1]
+    //   contains subsetted sample indices; diffGenoCodes[0..diffLen-1]
+    //   contains 2-bit genotype codes (0/1/2/3).  `out` is NOT populated.
+    //
+    // If dense (commonGeno == UINT32_MAX):
+    //   `out` is populated as in getGenotypesSimple.  Diff arrays ignored.
+    //
+    // Buffers must be sized for at least maxLen entries.
+    // Default: always returns dense.
+    virtual uint32_t getGenotypesMaybeSparse(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out,
+        uint32_t maxLen,
+        uint32_t *diffSampleIds,
+        uint8_t *diffGenoCodes,
+        uint32_t &diffLen
+    ) {
+        getGenotypesSimple(gIndex, out);
+        return UINT32_MAX;
+    }
 
 };

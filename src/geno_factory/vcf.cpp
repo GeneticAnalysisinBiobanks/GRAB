@@ -259,9 +259,15 @@ void VcfCursor::beginSequentialBlock(uint64_t /*firstMarker*/) {
     impl.currentRecordIdx = 0;
 }
 
-GenoStats VcfCursor::getGenotypes(
+void VcfCursor::getGenotypes(
     uint64_t gIndex,
     Eigen::Ref<Eigen::VectorXd> out,
+    double &altFreq,
+    double &altCounts,
+    double &missingRate,
+    double &log10pHwe,
+    double &maf,
+    double &mac,
     std::vector<uint32_t> &indexForMissing
 ) {
     auto &impl = *m_impl;
@@ -279,9 +285,6 @@ GenoStats VcfCursor::getGenotypes(
         uint32_t outIdx = 0;
         uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
         double dosageSum = 0.0;
-        // A DS column of exact integers is a hard-call variant written in the
-        // dosage field; recording that here spares consumers a second pass.
-        bool anyFractional = false;
         for (uint32_t i = 0; i < impl.nSamplesInFile; ++i) {
             bool used = impl.allUsed || (((*impl.usedMask)[i / 64] >> (i % 64)) & 1);
             if (!used) continue;
@@ -291,10 +294,8 @@ GenoStats VcfCursor::getGenotypes(
                 indexForMissing.push_back(outIdx);
                 ++nMissing;
             } else {
-                const double d = static_cast<double>(ds);
-                out[outIdx] = d;
-                dosageSum += d;
-                if (d != 0.0 && d != 1.0 && d != 2.0) anyFractional = true;
+                out[outIdx] = static_cast<double>(ds);
+                dosageSum += static_cast<double>(ds);
                 // Classify for HWE via the plink2 hard-call threshold: a DS
                 // within hardCallThreshold of an integer is that hard-call,
                 // otherwise HWE-uncertain and excluded (still in dosageSum).
@@ -309,20 +310,25 @@ GenoStats VcfCursor::getGenotypes(
         // altCounts = 2*nHomAlt + nHet is the count of the ALT allele
         // listed in the VCF/BCF ALT field.
         GenoStats gs = statsFromCounts(nHomAlt, nHet, nHomRef, nMissing, nUsed);
-        gs.fromDosage = anyFractional;
+        altFreq = gs.altFreq;
+        altCounts = gs.altCounts;
+        missingRate = gs.missingRate;
+        log10pHwe = gs.log10pHwe;
+        maf = gs.maf;
+        mac = gs.mac;
         // Dosage-aware AF from the DS sum (un-binned).  Hard-call DS reproduces
         // the count-based values exactly; log10pHwe comes from statsFromCounts on the
         // plink2 hard-call-threshold classification, missingRate stays NaN-only.
         const uint32_t nNonMissing = nUsed - nMissing;
         if (nNonMissing > 0) {
-            const AlleleFreq af = alleleFreqFromTotal(dosageSum, nNonMissing);
-            gs.altCounts = dosageSum;
-            gs.altFreq = af.altFreq;
-            gs.maf = af.maf;
-            gs.mac = af.mac;
+            const double n2 = 2.0 * static_cast<double>(nNonMissing);
+            altCounts = dosageSum;
+            altFreq = dosageSum / n2;
+            maf = std::min(altFreq, 1.0 - altFreq);
+            mac = maf * n2;
         }
         ++impl.currentRecordIdx;
-        return gs;
+        return;
     }
 
     // Fall back to GT field
@@ -332,6 +338,7 @@ GenoStats VcfCursor::getGenotypes(
     const int maxPloidy = ngt / static_cast<int>(impl.nSamplesInFile);
     uint32_t outIdx = 0;
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
+    double dosageSum = 0.0;
 
     for (uint32_t i = 0; i < impl.nSamplesInFile; ++i) {
         bool used = impl.allUsed || (((*impl.usedMask)[i / 64] >> (i % 64)) & 1);
@@ -358,6 +365,7 @@ GenoStats VcfCursor::getGenotypes(
             ++nMissing;
         } else {
             out[outIdx] = static_cast<double>(dosage);
+            dosageSum += static_cast<double>(dosage);
             if (dosage == 0)
                 ++nHomRef;
             else if (dosage == 2)
@@ -371,11 +379,24 @@ GenoStats VcfCursor::getGenotypes(
     // statsFromCounts expects nHomAlt as its first argument so that
     // altCounts = 2*nHomAlt + nHet is the count of the ALT allele
     // listed in the VCF/BCF ALT field.
-    // GT alleles are integral, so dosageSum == 2*nHomAlt + nHet and
-    // statsFromCounts already yields the dosage-sum answer exactly; there is
-    // nothing to recompute, and fromDosage is false by construction.
+    GenoStats gs = statsFromCounts(nHomAlt, nHet, nHomRef, nMissing, nUsed);
+    altFreq = gs.altFreq;
+    altCounts = gs.altCounts;
+    missingRate = gs.missingRate;
+    log10pHwe = gs.log10pHwe;
+    maf = gs.maf;
+    mac = gs.mac;
+    // GT dosages are integral (0/1/2), so this reproduces the count-based AF
+    // exactly; kept uniform with the DS branch.
+    const uint32_t nNonMissing = nUsed - nMissing;
+    if (nNonMissing > 0) {
+        const double n2 = 2.0 * static_cast<double>(nNonMissing);
+        altCounts = dosageSum;
+        altFreq = dosageSum / n2;
+        maf = std::min(altFreq, 1.0 - altFreq);
+        mac = maf * n2;
+    }
     ++impl.currentRecordIdx;
-    return statsFromCounts(nHomAlt, nHet, nHomRef, nMissing, nUsed);
 }
 
 void VcfCursor::getGenotypesSimple(
