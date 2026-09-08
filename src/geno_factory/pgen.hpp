@@ -151,6 +151,7 @@ class PgenData : public GenoMeta {
 
     };
 
+    std::vector<uintptr_t> m_nonrefFlags;
     std::unique_ptr<PgenFileInfo, PgfiDeleter> m_pgfi;
     std::unique_ptr<unsigned char, void (*)(void *)> m_pgfiAlloc;
     uint32_t m_maxVrecWidth = 0;

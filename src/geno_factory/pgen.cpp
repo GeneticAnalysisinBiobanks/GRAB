@@ -295,6 +295,12 @@ PgenData::PgenData(
     }
     m_pgfiAlloc.reset(pgfi_alloc_raw);
 
+    // Phase 2 requires caller-owned storage for explicit reference-trust flags.
+    if ((header_ctrl >> 6) == 3) {
+        m_nonrefFlags.resize(BitCtToWordCt(m_nMarkers), 0);
+        pgfi_raw->nonref_flags = m_nonrefFlags.data();
+    }
+
     // Phase 2
     uintptr_t pgr_alloc_cacheline_ct;
     err = PgfiInitPhase2(header_ctrl,
