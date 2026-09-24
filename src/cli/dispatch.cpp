@@ -23,6 +23,7 @@
 #include "spamix/indiv_af.hpp"
 #include "spamix/spamixplus.hpp"
 #include "spasqr/spasqr.hpp"
+#include "engine/loco.hpp"
 #include "wtcoxg/leaf.hpp"
 #include "wtcoxg/wtcoxg.hpp"
 
@@ -230,7 +231,10 @@ static void logArgsInEffect(const Args &args) {
     if (args.calPhi) std::fprintf(stderr, "  --cal-phi\n");
     if (args.makeLanc) std::fprintf(stderr, "  --make-lanc\n");
     if (args.intPheno) std::fprintf(stderr, "  --int-pheno\n");
-    if (!args.method.empty()) std::fprintf(stderr, "  --method %s\n", args.method.c_str());
+    // LoQus is carried internally as SPAsqr + longitudinal (see dispatch).
+    if (!args.method.empty())
+        std::fprintf(stderr, "  --method %s\n",
+                     (args.method == "SPAsqr" && args.longitudinal) ? "LoQus" : args.method.c_str());
     // input
     if (!args.bfilePrefix.empty()) std::fprintf(stderr, "  --bfile %s\n", args.bfilePrefix.c_str());
     if (!args.pfilePrefix.empty()) std::fprintf(stderr, "  --pfile %s\n", args.pfilePrefix.c_str());
@@ -246,7 +250,10 @@ static void logArgsInEffect(const Args &args) {
     if (!args.residName.empty()) std::fprintf(stderr, "  --resid-name %s\n", args.residName.c_str());
     if (!args.regressionModel.empty()) std::fprintf(stderr, "  --regression-model %s\n", args.regressionModel.c_str());
     if (args.saveResid) std::fprintf(stderr, "  --save-resid\n");
-    if (args.longitudinal) std::fprintf(stderr, "  --longitudinal\n");
+    if (args.longitudinal && args.method != "SPAsqr") std::fprintf(stderr, "  --longitudinal\n");
+    if (!args.timeName.empty()) std::fprintf(stderr, "  --time-name %s\n", args.timeName.c_str());
+    if (!args.geeModel.empty()) std::fprintf(stderr, "  --gee-model %s\n", args.geeModel.c_str());
+    if (!args.workingCorr.empty()) std::fprintf(stderr, "  --working-corr %s\n", args.workingCorr.c_str());
     // pc-cols: relevant for SPAmix/SPAmixPlus/LEAF and cal-af-coef
     {
         bool usesPcCols =
@@ -305,6 +312,7 @@ static void logArgsInEffect(const Args &args) {
     if (args.outlierRatio != 1.5) std::fprintf(stderr, "  --outlier-iqr-multiplier %g\n", args.outlierRatio);
     if (args.outlierAbsBound != 0.55) std::fprintf(stderr, "  --spasqr-outlier-abs-bound %g\n", args.outlierAbsBound);
     if (args.spagrmControlOutlier) std::fprintf(stderr, "  --spagrm-control-outlier\n");
+    if (args.spasqrWriteOmega) std::fprintf(stderr, "  --spasqr-write-omega\n");
     if (args.pvalCovAdjCut != 5e-5) std::fprintf(stderr, "  --covar-p-threshold %g\n", args.pvalCovAdjCut);
     if (args.cutoff != 0.1) std::fprintf(stderr, "  --batch-effect-p-threshold %g\n", args.cutoff);
     if (args.missingCutoff != 0.1) std::fprintf(stderr, "  --geno %g\n", args.missingCutoff);
@@ -673,6 +681,33 @@ int run(
     // All GWAS methods require --pheno (except SPAmixLocalPlus which uses --lanc)
     if (args.method != "SPAmixLocalPlus")require(args.phenoFile, "--pheno", args.method.c_str());
 
+    // ── LoQus ──────────────────────────────────────────────────
+    // LOngitudinal QUantile Score test runs on SPAsqr's
+    // code path with --longitudinal's long-format input, so from here on it is
+    // carried as SPAsqr + longitudinal; "LoQus" is its only command-line
+    // spelling.  --time-name / --gee-model / --working-corr are its flags.
+    if (args.method == "SPAsqr" && args.longitudinal) {
+        std::cerr << "Error: quantile regression on a long-format phenotype is"
+                     " --method LoQus (without --longitudinal).\n";
+        return 1;
+    }
+    if (args.method != "LoQus" &&
+        (!args.timeName.empty() || !args.geeModel.empty() || !args.workingCorr.empty())) {
+        std::cerr << "Error: --time-name / --gee-model / --working-corr apply to"
+                     " --method LoQus only.\n";
+        return 1;
+    }
+    if (args.method == "LoQus") {
+        if (args.longitudinal) {
+            std::cerr << "Error: --method LoQus always reads a long-format phenotype;"
+                         " remove --longitudinal.\n";
+            return 1;
+        }
+        require(args.timeName, "--time-name", "LoQus");
+        args.method = "SPAsqr";
+        args.longitudinal = true;
+    }
+
     // Method-specific phenotype flag validation
     {
         const bool hasPhenoName = !args.phenoName.empty();
@@ -771,19 +806,20 @@ int run(
             // marginal main genetic effect via the per-IID residual R_G.  It
             // replaces the GLM null-model fit, so the fit-path checks below do
             // not apply.
+            // (args.method == "SPAsqr" here means LoQus; see above.)
             if (args.method != "SPACox" && args.method != "SPAmix" &&
-                args.method != "SPAGRM") {
+                args.method != "SPAGRM" && args.method != "SPAsqr") {
                 std::cerr << "Error: --longitudinal is only supported for"
                              " SPACox, SPAmix, and SPAGRM (got method '"
                           << args.method << "').\n";
                 return 1;
             }
             if (!hasPhenoName) {
-                std::cerr << "Error: --longitudinal requires --pheno-name"
-                             " (the long-format outcome column[s]).\n";
+                std::cerr << "Error: " << (args.method == "SPAsqr" ? "LoQus" : "--longitudinal")
+                          << " requires --pheno-name (the long-format outcome column[s]).\n";
                 return 1;
             }
-            if (covarNames.empty()) {
+            if (covarNames.empty() && args.method != "SPAsqr") {
                 std::cerr << "Error: --longitudinal requires --covar-name"
                              " (fixed-effect covariates of the Y ~ X + (1|IID) model).\n";
                 return 1;
@@ -1341,10 +1377,60 @@ int run(
                     " are mutually exclusive.\n";
                 return 1;
             }
-            if (args.spasqrTaus.empty()) {
-                std::cerr << "Error: --spasqr-taus is required for SPAsqr.\n";
-                return 1;
+            if (args.longitudinal) {
+                // Longitudinal defaults: nine quantile levels, h = IQR / 5,
+                // untransformed phenotype (a per-record rank transform is not
+                // defined for repeated measures, and QR does not need one).
+                if (args.spasqrTaus.empty())
+                    args.spasqrTaus = "0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9";
+                if (args.spasqrH < 0.0 && args.spasqrHScale < 0.0)
+                    args.spasqrHScale = 5.0;
+                if (!args.phenoTransform.empty() && args.phenoTransform != "raw") {
+                    std::cerr << "Error: LoQus supports --pheno-transform raw"
+                                 " only (got '" << args.phenoTransform << "').\n";
+                    return 1;
+                }
+                args.phenoTransform = "raw";
+                if (args.spasqrMode != "score") {
+                    std::cerr << "Error: LoQus supports --spasqr-mode score"
+                                 " only.\n";
+                    return 1;
+                }
+                if (args.geeModel.empty()) args.geeModel = "qr";
+                if (args.geeModel != "qr" && args.geeModel != "linear" && args.geeModel != "both") {
+                    std::cerr << "Error: --gee-model must be qr, linear or both (got '"
+                              << args.geeModel << "').\n";
+                    return 1;
+                }
+                if (args.workingCorr.empty()) args.workingCorr = "exchangeable";
+                if (args.workingCorr != "independence" && args.workingCorr != "exchangeable") {
+                    std::cerr << "Error: --working-corr must be independence or exchangeable"
+                                 " (got '" << args.workingCorr << "').\n";
+                    return 1;
+                }
+                {
+                    const auto phs = splitComma(args.phenoName, "--pheno-name", 1);
+                    const auto cvs = args.covarName.empty() ? std::vector<std::string>{}
+                                                            : splitComma(args.covarName, "--covar-name", 1);
+                    for (const auto &ph : phs) {
+                        if (ph == args.timeName) {
+                            std::cerr << "Error: --pheno-name '" << ph << "' is also the --time-name"
+                                         " column.\n";
+                            return 1;
+                        }
+                        if (std::find(cvs.begin(), cvs.end(), ph) != cvs.end()) {
+                            std::cerr << "Error: '" << ph << "' is listed in both --pheno-name and"
+                                         " --covar-name.\n";
+                            return 1;
+                        }
+                    }
+                }
+                if (args.outlierAbsBound != 0.55)
+                    warnMsg("LoQus: --spasqr-outlier-abs-bound is ignored"
+                            " (subject weights are sums over records with no fixed range;"
+                            " the bound is fixed at 1.2 SD of the standardized weights).");
             }
+            if (args.spasqrTaus.empty()) args.spasqrTaus = "0.1,0.3,0.5,0.7,0.9";
             auto tauStrs = splitComma(args.spasqrTaus, "--spasqr-taus", 1);
             if (tauStrs.size() > 20) {
                 std::cerr << "Error: --spasqr-taus accepts at most 20 tau levels, got "
@@ -1374,7 +1460,8 @@ int run(
                           << args.phenoTransform << "'\n";
                 return 1;
             }
-            if (!args.predListFile.empty() &&
+            // (Longitudinal LOCO uses the PGS as a covariate, so its scale is free.)
+            if (!args.predListFile.empty() && !args.longitudinal &&
                 (args.phenoTransform == "raw" || args.phenoTransform == "standardize")) {
                 std::cerr << "Warning: --pheno-transform " << args.phenoTransform
                           << " with --pred-list — ensure your LOCO PRS was trained"
@@ -1410,6 +1497,10 @@ int run(
             cfg.spasqrTol       = args.spasqrTol;
             cfg.spasqrH         = args.spasqrH;
             cfg.spasqrHScale    = args.spasqrHScale;
+            cfg.writeOmega      = args.spasqrWriteOmega;
+            cfg.timeName        = args.timeName;
+            cfg.geeModel        = args.geeModel;
+            cfg.workingCorr     = args.workingCorr;
             cfg.missingCutoff   = args.missingCutoff;
             cfg.minMafCutoff    = args.minMafCutoff;
             cfg.minMacCutoff    = args.minMacCutoff;
@@ -1417,6 +1508,13 @@ int run(
             cfg.nthreads        = args.nthread;
             cfg.nSnpPerChunk    = args.nSnpPerChunk;
 
+            if (args.longitudinal) {
+                if (!args.predListFile.empty())
+                    validatePredListPhenos(args.predListFile, phenoNames);
+                runLoQus(cfg);
+                printTimer();
+                return 0;
+            }
             if (args.spasqrMode == "wald") {
                 runSPAsqrWald(cfg);
                 printTimer();

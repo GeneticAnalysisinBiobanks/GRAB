@@ -153,7 +153,7 @@ in a later invocation via --pheno PREFIX.null.resid[.gz|.zst] --resid-name ....)
 inline const FlagDef kLongitudinal = {
     "--longitudinal", nullptr,
     "Treat --pheno as a long-format (repeated-measures) phenotype",
-    R"(SPACox / SPAmix / SPAGRM only.  --pheno must be a long-format file with
+    R"(SPACox / SPAmix / SPAGRM.  --pheno must be a long-format file with
 one row per measurement (>= 1 row per IID), like the SAGELD pheno-mode
 input.  For each --pheno-name outcome a random-intercept linear mixed
 null model  Y ~ X + (1 | IID)  is fit (X = intercept + --covar-name
@@ -163,7 +163,34 @@ genetic effect).  There is no environment / random-slope term, so
 --envir-name and G x E are not involved.  Incompatible with --resid-name,
 --regression-model, and --envir-name.  For SPAmix, every --pc-cols column
 must also appear in --covar-name (PCs are sourced from the long-format
-design).)"
+design).  Quantile regression on a long-format phenotype is --method
+LoQus, which reads the same file format and does not take this flag.)"
+};
+
+inline const FlagDef kTimeName = {
+    "--time-name", "COL",
+    "LoQus: record time column (numeric; required, never missing)",
+    R"(Orders each subject's records and identifies them: (IID, time) must be
+unique and a missing time is an error.  It is NOT added to the null model;
+list it in --covar-name as well to adjust for it (e.g. age).)"
+};
+
+inline const FlagDef kGeeModel = {
+    "--gee-model", "NAME",
+    "LoQus: qr | linear | both (default: qr)",
+    R"(qr      smoothed quantile GEE, one column per --spasqr-taus level
+linear  identity-link GEE, one column 'linear'
+both    both; LOG10P_CCT combines the quantile columns only)"
+};
+
+inline const FlagDef kWorkingCorr = {
+    "--working-corr", "NAME",
+    "LoQus: independence | exchangeable (default: exchangeable)",
+    R"(Working within-subject correlation, re-estimated by moments from the
+null-model residual (psi for qr, e for linear) until it settles.  Validity
+does not depend on it; power does, mainly when subjects have different
+numbers of records.  If the exchangeable fit fails for a column, that column
+falls back to independence weights and a warning names it.)"
 };
 
 inline const FlagDef kPcCols = {
@@ -320,6 +347,20 @@ inline const FlagDef kOutlierAbs = {
     "--spasqr-outlier-abs-bound", "FLOAT",
     "SPAsqr-only absolute outlier cutoff (default: 0.55)",
     nullptr
+};
+
+inline const FlagDef kSpasqrWriteOmega = {
+    "--spasqr-write-omega", nullptr,
+    "Write the cross-tau residual correlation matrix to PREFIX.PHENO.SPAsqr[.chrN].omega (LoQus: .LoQus) (default: off)",
+    R"(Flag is parameterless: present → written; absent → not written (default).
+
+Omega_ab = R_a^T R_b / sqrt(R_a^T R_a * R_b^T R_b) over the null-model
+residuals of quantiles a and b.  It is the quantile factor of the score
+covariance, Cov(Z) = LD (x) Omega for unrelated subjects, which multi-quantile
+summary-statistic methods (ghost knockoffs, joint cross-tau tests) need
+alongside the LD matrix.  Written as a tab-separated ntaus x ntaus matrix with
+a header row of tau labels.  Under --pred-list one file is written per
+chromosome, since the residuals are refitted per LOCO fold.)"
 };
 
 inline const FlagDef kSpagrmControlOutlier = {
@@ -575,7 +616,8 @@ inline const FlagDef kSeed = {
 
 inline const FlagDef kSpasqrTaus = {
     "--spasqr-taus", "LIST",
-    "Comma-separated tau levels for SPAsqr, max 20 (default: 0.1,0.3,0.5,0.7,0.9)",
+    "Comma-separated tau levels for SPAsqr, max 20 (default: 0.1,0.3,0.5,0.7,0.9; "
+    "LoQus 0.1,0.2,...,0.9)",
     nullptr
 };
 
@@ -614,7 +656,8 @@ inline const FlagDef kSpasqrH = {
 inline const FlagDef kSpasqrHScale = {
     "--spasqr-h-scale", "FLOAT",
     "Divisor for IQR-based bandwidth: h = IQR(Y) / SCALE  "
-    "(default: 3 in score mode, 10 in --spasqr-mode wald; mutually exclusive with --spasqr-h)",
+    "(default: 3 in score mode, 10 in --spasqr-mode wald, 5 for LoQus; "
+    "mutually exclusive with --spasqr-h)",
     nullptr
 };
 
@@ -666,66 +709,64 @@ inside a single p-value computation.)"
 // The encoding itself is `spa::Status` in src/util/spa.hpp; that enum and
 // this text must be changed together.
 #define GRAB_SPA_STATUS_TABLE \
-R"(    SPA_STATUS* outcome of the test that produced the p-value beside it, as
-                the integer spa::Status.  The column is spelled to match that
-                p-value (SPA_STATUS, SPA_STATUS_EXT, SPA_STATUS_tau{val},
-                SPA_STATUS_Gx<E>, cl<i>_SPA_STATUS_NOEXT, ...).  Nine values,
-                ordered by what the LOG10P cell holds:
-                  0 SPA_OK          saddlepoint; both tails converged
-                  1 NORMAL          normal approximation, and that is the
-                                    DESIGNED behaviour: either |Z| is at or
-                                    below --spa-z-threshold so the saddlepoint
-                                    was never attempted, or the test does not
-                                    use a saddlepoint at all (Wald legs, GALLOP)
-                  2 SPA_W_SINGULAR  saddlepoint, degraded: |w| <= 1e-3 in at
-                                    least one tail, so Phi(+/-w) replaces the
-                                    r* correction -- the correct limit there
-                  3 FALLBACK_MAXITER     the root finder did not meet its
-                                         residual criterion
-                  4 FALLBACK_GUARD_TEMP  zeta*s - K(zeta) < 0, so w is not real
-                  5 FALLBACK_GUARD_CURV  K''(zeta) <= 0, so v is not real
-                  6 FALLBACK_NONFINITE   zeta, a cumulant or r* left the reals
-                  7 NA_POST_FAIL    a step DOWNSTREAM of the saddlepoint
-                                    failed: a (var, cov, var) triple that is
-                                    not a covariance matrix, a conditional
-                                    denominator that is not usable, a mixture
-                                    leg that is missing and not immaterial
-                  8 NA_NO_TEST      no statistic exists for this marker in
-                                    this stratum: no informative subject, a
-                                    monomorphic stratum, Var(S) <= 0, or a
-                                    non-finite Z
-                The ordering is a design property, and it is the filter rule:
-                  SPA_STATUS <= 2        LOG10P is trustworthy
-                  3 <= SPA_STATUS <= 6   LOG10P is a substituted normal tail
-                  SPA_STATUS >= 7        LOG10P is NA
-)"
+"    SPA_STATUS* outcome of the test that produced the p-value beside it, as\n" \
+"                the integer spa::Status.  The column is spelled to match that\n" \
+"                p-value (SPA_STATUS, SPA_STATUS_EXT, SPA_STATUS_tau{val},\n" \
+"                SPA_STATUS_Gx<E>, cl<i>_SPA_STATUS_NOEXT, ...).  Nine values,\n" \
+"                ordered by what the LOG10P cell holds:\n" \
+"                  0 SPA_OK          saddlepoint; both tails converged\n" \
+"                  1 NORMAL          normal approximation, and that is the\n" \
+"                                    DESIGNED behaviour: either |Z| is at or\n" \
+"                                    below --spa-z-threshold so the saddlepoint\n" \
+"                                    was never attempted, or the test does not\n" \
+"                                    use a saddlepoint at all (Wald legs, GALLOP)\n" \
+"                  2 SPA_W_SINGULAR  saddlepoint, degraded: |w| <= 1e-3 in at\n" \
+"                                    least one tail, so Phi(+/-w) replaces the\n" \
+"                                    r* correction -- the correct limit there\n" \
+"                  3 FALLBACK_MAXITER     the root finder did not meet its\n" \
+"                                         residual criterion\n" \
+"                  4 FALLBACK_GUARD_TEMP  zeta*s - K(zeta) < 0, so w is not real\n" \
+"                  5 FALLBACK_GUARD_CURV  K''(zeta) <= 0, so v is not real\n" \
+"                  6 FALLBACK_NONFINITE   zeta, a cumulant or r* left the reals\n" \
+"                  7 NA_POST_FAIL    a step DOWNSTREAM of the saddlepoint\n" \
+"                                    failed: a (var, cov, var) triple that is\n" \
+"                                    not a covariance matrix, a conditional\n" \
+"                                    denominator that is not usable, a mixture\n" \
+"                                    leg that is missing and not immaterial\n" \
+"                  8 NA_NO_TEST      no statistic exists for this marker in\n" \
+"                                    this stratum: no informative subject, a\n" \
+"                                    monomorphic stratum, Var(S) <= 0, or a\n" \
+"                                    non-finite Z\n" \
+"                The ordering is a design property, and it is the filter rule:\n" \
+"                  SPA_STATUS <= 2        LOG10P is trustworthy\n" \
+"                  3 <= SPA_STATUS <= 6   LOG10P is a substituted normal tail\n" \
+"                  SPA_STATUS >= 7        LOG10P is NA\n"
 
 // The fallback warning.  Kept separate from the table so that the two can be
 // read, and revised, independently: the table states the encoding, this
 // states what is known about the substituted estimator.
 #define GRAB_SPA_FALLBACK_NOTE \
-R"(                Codes 3-6 report the two-sided normal tail
-                -log10(2*Phi(-|Z_Norm|)) in place of the saddlepoint value,
-                with the code naming why the saddlepoint could not be used.
-                The normal approximation is precisely what the saddlepoint
-                exists to correct, so those rows carry lower p-value accuracy
-                than the rest: filter with SPA_STATUS <= 2 before judging
-                significance.  On every null cohort measured in this
-                repository the substitution does not occur at all -- including
-                on one built specifically to provoke it, and with
-                --spa-z-threshold lowered to 0.05 so that nearly every marker
-                enters the saddlepoint branch.  Where it was observed earlier,
-                before the pairwise-IBD defect that caused it was repaired, it
-                fired only in a narrow band of |Z| just above
-                --spa-z-threshold; that bounded those rows at LOG10P <= 3.97
-                and made their enrichment at the genome-wide threshold 7.301
-                exactly zero.  The bound is EMPIRICAL, not a theorem: a
-                saddlepoint failure at large |Z| would still produce a large
-                substituted LOG10P.
-                Codes 7 and 8 substitute nothing.  There Z either does not
-                exist or says nothing about the quantity that failed, so a
-                p-value built from it would be fabricated rather than reported.
-)"
+"                Codes 3-6 report the two-sided normal tail\n" \
+"                -log10(2*Phi(-|Z_Norm|)) in place of the saddlepoint value,\n" \
+"                with the code naming why the saddlepoint could not be used.\n" \
+"                The normal approximation is precisely what the saddlepoint\n" \
+"                exists to correct, so those rows carry lower p-value accuracy\n" \
+"                than the rest: filter with SPA_STATUS <= 2 before judging\n" \
+"                significance.  On every null cohort measured in this\n" \
+"                repository the substitution does not occur at all -- including\n" \
+"                on one built specifically to provoke it, and with\n" \
+"                --spa-z-threshold lowered to 0.05 so that nearly every marker\n" \
+"                enters the saddlepoint branch.  Where it was observed earlier,\n" \
+"                before the pairwise-IBD defect that caused it was repaired, it\n" \
+"                fired only in a narrow band of |Z| just above\n" \
+"                --spa-z-threshold; that bounded those rows at LOG10P <= 3.97\n" \
+"                and made their enrichment at the genome-wide threshold 7.301\n" \
+"                exactly zero.  The bound is EMPIRICAL, not a theorem: a\n" \
+"                saddlepoint failure at large |Z| would still produce a large\n" \
+"                substituted LOG10P.\n" \
+"                Codes 7 and 8 substitute nothing.  There Z either does not\n" \
+"                exist or says nothing about the quantity that failed, so a\n" \
+"                p-value built from it would be fabricated rather than reported.\n"
 
 // ════════════════════════════════════════════════════════════════════
 //  Method definitions
@@ -1068,7 +1109,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kKeep,         &kRemove,     &kExtract,    &kExclude,
     &kGeno, &kMaf,
     &kMac,          &kHwe, &kHardCallThreshold,        &kChr,        &kPredList,    &kPhenoTransform,
-    &kSpasqrMode,
+    &kSpasqrMode,   &kSpasqrWriteOmega,
     nullptr
 };
 
@@ -1102,6 +1143,54 @@ inline const MethodDef kSPAsqr = {
     GRAB_SPA_STATUS_TABLE
     GRAB_SPA_FALLBACK_NOTE,
     nullptr,
+};
+
+// ── LoQus ──────────────────────────────────────────────────────
+// LOngitudinal QUantile Score test.  Runs on SPAsqr's
+// code path (dispatch sends it through the SPAsqr branch with the long-format
+// input of --longitudinal); this entry is its command-line name and help.
+inline const FlagDef *const kLoQusReq[] = {
+    &kGeno_input, &kPheno, &kOut, &kPhenoName, &kTimeName,
+    nullptr
+};
+
+inline const FlagDef *const kLoQusOpt[] = {
+    &kCovarName,    &kGeeModel,   &kWorkingCorr, &kSpGrm,
+    &kSpasqrTaus,   &kSpasqrTol,  &kSpasqrH,     &kSpasqrHScale,
+    &kOutlierIqr,   &kSpaZThresh, &kPredList,    &kSpasqrWriteOmega,
+    &kThreads,      &kChunkKsnp,  &kCompression, &kCompressionLevel,
+    &kKeep,         &kRemove,     &kExtract,     &kExclude,
+    &kGeno, &kMaf,  &kMac,        &kHwe,         &kHardCallThreshold, &kChr,
+    nullptr
+};
+
+inline const MethodDef kLoQus = {
+    "LoQus",
+    "LOngitudinal QUantile Score test (repeated measures)",
+    kLoQusReq,
+    kLoQusOpt,
+    "    --pheno FILE        long-format file: FID/IID + named columns, one row per record\n"
+    "    --pheno-name COLS   outcome column(s); --covar-name COLS covariates from the same file\n"
+    "    --time-name COL     record time: orders records, (IID, time) unique, never missing;\n"
+    "                        enters the model only if also listed in --covar-name",
+    R"(PREFIX.<COL>.LoQus[.gz|.zst]   one file per --pheno-name column
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  LOG10P_CCT  LOG10P_tau{val}... [LOG10P_linear]  Z_tau{val}... [Z_linear]
+         Z_Norm_tau{val}... [Z_Norm_linear]  SPA_STATUS_tau{val}... [SPA_STATUS_linear]
+    Same columns as SPAsqr; the *_linear group is present with --gee-model
+    linear|both.  LOG10P_CCT combines the quantile columns only.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
+    R"(  Null model: per outcome and quantile level, a smoothed quantile GEE with a
+  working within-subject correlation (--working-corr) re-estimated from the
+  residuals; each subject is reduced to one weight a_i = 1' R_i^-1 psi_i and
+  tested with SPAsqr's retrospective score test and saddlepoint (empirical
+  CGF below MAC 400).  Covariates may be time-varying or not; that need not
+  be declared.  Records with a missing outcome or covariate are dropped per
+  outcome; a rank-deficient design is an error.  Defaults: nine quantile
+  levels 0.1..0.9, h = IQR/5, raw phenotype, score mode.  With --pred-list
+  the chromosome's LOCO PGS enters the null model as a covariate.)",
 };
 
 // ── WtCoxG ─────────────────────────────────────────────────────────
@@ -1424,7 +1513,7 @@ inline const MethodDef kCalPairwiseIbd = {
 inline const MethodDef *const kAllMethods[] = {
     &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAGxEmix, &kSPAmix, &kSPAmixPlus,
     &kSPAmixLocalPlus,
-    &kSPAsqr, &kWtCoxG, &kLEAF,
+    &kSPAsqr, &kLoQus, &kWtCoxG, &kLEAF,
     nullptr
 };
 
@@ -1438,7 +1527,7 @@ inline const MethodDef *const kAllUtilModes[] = {
 // area focussed on the seven core GWAS methods.
 inline const MethodDef *const kVisibleMethods[] = {
     &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAGxEmix, &kSPAmix,
-    &kSPAsqr, &kWtCoxG, &kLEAF,
+    &kSPAsqr, &kLoQus, &kWtCoxG, &kLEAF,
     nullptr
 };
 
@@ -1476,6 +1565,7 @@ inline const FlagDef *const kInputFlags[] = {
     &kOut,         &kCompression, &kCompressionLevel,
     &kPheno,       &kCovar,       &kCovarName,
     &kPhenoName,   &kResidName,   &kRegressionModel, &kSaveResid,    &kLongitudinal,
+    &kTimeName,    &kGeeModel,    &kWorkingCorr,
     &kEnvirName,
     &kPcCols,      &kRefAf,
     &kSpGrmPlink2, &kIndAfCoef,   &kPairwiseIbd,
@@ -1495,7 +1585,7 @@ inline const FlagDef *const kNumericFlags[] = {
     &kSeed,       &kGeno,
     &kMaf,        &kMac,          &kHwe, &kHardCallThreshold,              &kMinMafIbd,
     &kSpasqrTaus, &kSpasqrTol,    &kSpasqrH,          &kSpasqrHScale,
-    &kSpasqrMode,
+    &kSpasqrMode, &kSpasqrWriteOmega,
     &kSageldMethod,
     &kSpagxeMarginalCutoff,
     nullptr

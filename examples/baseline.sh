@@ -432,6 +432,45 @@ build/grab2 \
   --compression zst \
   --compression-level 3
 
+## ── LoQus (zstd) ────────────────────────────────────────────────
+# Marginal GEE null model instead of the random-intercept LMM: per outcome,
+# a smoothed quantile GEE (one column per --spasqr-taus level) and a linear
+# GEE (column "linear"), working correlation re-estimated from the null-
+# model residual, one weight per subject a_i = 1' R_i^-1 r_i fed to SPAsqr's
+# score test.  --time-name orders each subject's records and must be unique
+# per IID; it enters the null model only through --covar-name.  LOG10P_CCT
+# combines the quantile columns only.  Output PREFIX.<COL>.LoQus.
+
+build/grab2 \
+  --method LoQus \
+  --pheno examples/long_pheno \
+  --pheno-name Long1,Long2 \
+  --time-name TIME \
+  --covar-name MALE,PC1,PC2,TIME \
+  --sp-grm-plink2 examples/1kg.grm.sp \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/loqus \
+  `# Optional flags below (set to built-in defaults):` \
+  --chr 1-2,3 \
+  --gee-model qr \
+  --working-corr exchangeable \
+  --spasqr-taus 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9 \
+  --spasqr-tol 1e-6 \
+  --spasqr-h-scale 5 \
+  --spasqr-mode score \
+  --pheno-transform raw \
+  --outlier-iqr-multiplier 1.5 \
+  --spa-z-threshold 2.0 \
+  --threads 2 \
+  --chunk-ksnp 8 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --hard-call-threshold 0.1 \
+  --compression zst \
+  --compression-level 3
+
 ## ── Utility: int-pheno ────────────────────────────────────────────────
 # Produces ${OUT}.int.txt, a phenotype file containing the
 # INT-transformed Quantitative and Time columns only.

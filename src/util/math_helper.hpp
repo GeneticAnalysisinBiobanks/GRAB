@@ -61,6 +61,11 @@ using NoPromote = boost::math::policies::policy<
 // § 1  Distribution wrappers
 // ──────────────────────────────────────────────────────────────────────
 
+// Standard normal density φ(x).
+inline double dnorm(double x) {
+    return std::exp(-0.5 * x * x) * 0.3989422804014327;   // 1/sqrt(2π)
+}
+
 // Normal CDF: P(X ≤ x) or the complementary tail.
 //
 // There is deliberately no `log_p` flag.  The only way to serve one from this

@@ -61,7 +61,9 @@ LongPhenoData parseLongPheno(
     const std::vector<std::string> &covarNames,
     const std::string &envName,
     const std::vector<std::string> &famIIDs,
-    const std::unordered_set<std::string> &keptSubjects
+    const std::unordered_set<std::string> &keptSubjects,
+    bool envRequired,
+    const char *envFlag
 ) {
     if (phenoNames.empty()) throw std::runtime_error("SAGELD: --pheno-name required for direct-phenotype mode");
     // envName may be empty: the longitudinal random-intercept path (no
@@ -123,7 +125,7 @@ LongPhenoData parseLongPheno(
         return it->second;
     };
 
-    const int envColIdx = hasEnv ? resolve(envName, "--envir-name") : -1;
+    const int envColIdx = hasEnv ? resolve(envName, envFlag) : -1;
     std::vector<int> phenoColIdx;
     phenoColIdx.reserve(phenoNames.size());
     for (const auto &pn : phenoNames) phenoColIdx.push_back(resolve(pn, "--pheno-name"));
@@ -191,6 +193,20 @@ LongPhenoData parseLongPheno(
                 double v = std::strtod(tp, &ep);
                 if (ep == tp) throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
                                                        ": non-numeric value in column " + std::to_string(ci + 1));
+                // strtod accepts a numeric prefix ("1.2junk") and can even
+                // skip a blank TSV field into the next column. Require the
+                // complete current field, allowing only trailing spaces.
+                const char *tokenEnd = sv.data() + sv.size();
+                while (ep < tokenEnd && *ep == ' ') ++ep;
+                if (ep != tokenEnd)
+                    throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+                                             ": non-numeric value in column " + std::to_string(ci + 1));
+                // strtod accepts "inf"/"infinity"; an infinite value would pass
+                // the NaN-drop below and poison every fit, so it is an input
+                // error.  NaN spellings strtod accepts stay missing values.
+                if (std::isinf(v))
+                    throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+                                             ": infinite value in column " + std::to_string(ci + 1));
                 tokVals[ci] = v;
             }
         }
@@ -217,6 +233,11 @@ LongPhenoData parseLongPheno(
         rb.X.resize(1 + covarColIdx.size());
         rb.X[0] = 1.0;
         for (size_t k = 0; k < covarColIdx.size(); ++k) rb.X[1 + k] = tokVals[covarColIdx[k]];
+
+        if (envRequired && hasEnv && std::isnan(rb.E))
+            throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+                                     ": missing value in required column '" + envName +
+                                     "' for IID " + iid);
 
         // Drop row if any required entry is NaN
         bool hasNa = hasEnv && std::isnan(rb.E);

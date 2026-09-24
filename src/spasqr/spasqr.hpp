@@ -62,6 +62,12 @@ struct SPAsqrConfig {
     double spasqrTol        = 1e-6;
     double spasqrH          = -1.0;       // -1 ⇒ IQR-based auto
     double spasqrHScale     = -1.0;       // -1 ⇒ 3 (score/LOCO), 5 (wald)
+    bool   writeOmega       = false;      // write cross-tau residual correlation
+
+    // ── Longitudinal (runLoQus only) ─────────────────────
+    std::string timeName;                  // --time-name: orders records, (IID, time) unique
+    std::string geeModel    = "qr";        // --gee-model qr | linear | both
+    std::string workingCorr = "exchangeable"; // --working-corr independence | exchangeable
 
     // ── Marker QC ──────────────────────────────────────────────────────
     double missingCutoff = 0.1;
@@ -81,6 +87,13 @@ void runSPAsqr(const SPAsqrConfig &cfg);
 // chromosome against y - loco_chr, so the residuals (and their CGF tables) are
 // chromosome-specific.  Requires cfg.predListFile.
 void runSPAsqrLoco(const SPAsqrConfig &cfg);
+
+// Longitudinal mode (--longitudinal): long-format --pheno with repeated
+// records per IID; marginal GEE null model (smoothed quantile and/or linear,
+// working independence or exchangeable), one weight per subject and column,
+// then SPAsqr's score test.  With cfg.predListFile the LOCO PGS enters the
+// null model as a covariate.  Output PREFIX.<COL>.LoQus.
+void runLoQus(const SPAsqrConfig &cfg);
 
 // Wald mode: per-marker × per-τ full-model refit + M-estimation sandwich
 // variance.  Emits one marker per line:
