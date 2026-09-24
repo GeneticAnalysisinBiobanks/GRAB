@@ -18,10 +18,13 @@ struct Args {
     std::string residName;                          // comma-separated residual column names
     std::string regressionModel;                    // --regression-model: auto|linear|logistic|cox|ordinal
     bool saveResid = false;                         // --save-resid: write fitted residuals to PREFIX.null.resid
-    bool longitudinal = false;                       // --longitudinal: SPACox/SPAmix/SPAGRM fit Y ~ X + (1|IID), use R_G
+    bool longitudinal = false;                       // --longitudinal: long-format --pheno (SPACox/SPAmix/SPAGRM/SPAsqr)
+    std::string timeName;                            // --time-name: LoQus record time (required there)
+    std::string geeModel;                            // --gee-model: LoQus qr | linear | both (default qr)
+    std::string workingCorr;                         // --working-corr: LoQus independence | exchangeable (default exchangeable)
 
     std::string pcCols = "PC1,PC2,PC3,PC4";         // comma-separated PC column names (default: PC1,PC2,PC3,PC4)
-    std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9"; // default tau levels (SPAsqr)
+    std::string spasqrTaus;       // --spasqr-taus; empty ⇒ resolved in dispatch (0.1,0.3,...,0.9; longitudinal 0.1,0.2,...,0.9)
     std::string sageldMethod = "sageld";            // --sageld-method: 'sageld' (score, default) or 'gallop' (Wald)
     std::string envName;                            // --envir-name: comma-separated environment column names (SAGELD / SPAGxE / SPAGxEmix G×E)
     double spagxeMarginalCutoff = 0.001;            // --spagxe-marginal-cutoff: ε, Branch A/B routing threshold (default 0.001)
@@ -90,6 +93,7 @@ struct Args {
     double outlierRatio = 1.5;
     double outlierAbsBound = 0.55;
     bool spagrmControlOutlier = false; // --spagrm-control-outlier (flag, no argument): enable iterative SPAGRM outlier-ratio adjustment (default off)
+    bool spasqrWriteOmega = false;     // --spasqr-write-omega (flag, no argument): write cross-tau residual correlation (default off)
     int nthread = 1;
     int nSnpPerChunk = 8192; // --chunk-ksnp: chunk size in SNPs (ksnp × 1024); default 8 ksnp = 8192
     // --compression-level: sentinel 0 means "resolve from --compression after

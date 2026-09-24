@@ -64,7 +64,17 @@ LongPhenoData parseLongPheno(
     const std::vector<std::string> &covarNames,
     const std::string &envName,
     const std::vector<std::string> &famIIDs,
-    const std::unordered_set<std::string> &keptSubjects = {});
+    const std::unordered_set<std::string> &keptSubjects = {},
+    bool envRequired = false,
+    const char *envFlag = "--envir-name");
+
+// envFlag: the flag that named envName, used in the column-not-found error
+// (LoQus passes "--time-name").
+//
+// envRequired: a missing envName value is an input error (throw, naming the
+// line) instead of a dropped row.  LoQus uses this for
+// its time column, which orders and identifies each subject's records and so
+// cannot be absent; SAGELD keeps the default and drops such rows.
 
 // One LMM fit's output.
 struct LMMFit {
