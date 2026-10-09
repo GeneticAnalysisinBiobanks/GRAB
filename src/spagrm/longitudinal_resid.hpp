@@ -8,7 +8,7 @@
 //   R_G_i = Σ_j r_ij,
 // which is then handed to each method's existing residual-mode marker test
 // (the main genetic effect only — there is no environment / random-slope term
-// and hence no --sageld-x and no G×E).
+// and hence no --envir-name and no G×E).
 //
 // The fitting reuses nsSAGELDFit::parseLongPheno / fitRandomInterceptWithCovar
 // / aggregatePerIID; SAGELD's validated random-slope path is not touched.

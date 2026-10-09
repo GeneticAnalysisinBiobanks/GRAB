@@ -3,6 +3,7 @@
 #include "cli/cli.hpp"
 
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -130,8 +131,9 @@ Args parseArgs(
         else if (arg == "--longitudinal") { markSeen(arg); a.longitudinal = true; }
         else if (arg == "--pc-cols")a.pcCols = next();
         else if (arg == "--spasqr-taus")a.spasqrTaus = next();
-        else if (arg == "--sageld-x")a.sageldX = next();
         else if (arg == "--sageld-method")a.sageldMethod = next();
+        else if (arg == "--envir-name")a.envName = next();
+        else if (arg == "--spagxe-marginal-cutoff")a.spagxeMarginalCutoff = parseDouble(next(), arg);
         else if (arg == "--spasqr-tol")a.spasqrTol = parseDouble(next(), arg);
         else if (arg == "--spasqr-h")a.spasqrH = parseDouble(next(), arg);
         else if (arg == "--spasqr-h-scale")a.spasqrHScale = parseDouble(next(), arg);
@@ -168,7 +170,30 @@ Args parseArgs(
         else if (arg == "--out")a.outPrefix = next();
         else if (arg == "--prevalence")a.refPrevalence = parseDouble(next(), arg);
         else if (arg == "--batch-effect-p-threshold")a.cutoff = parseDouble(next(), arg);
-        else if (arg == "--spa-z-threshold")a.spaCutoff = parseDouble(next(), arg);
+        else if (arg == "--spa-z-threshold") {
+            // The saddlepoint branch is entered only for |Z| above this value,
+            // and that gate is load-bearing, not merely a cost control.  Every
+            // absolute-error argument in the shared tier rests on it: K reaches
+            // the p-value through w = sgn(zeta)*sqrt(2*(zeta*s - K)), so an
+            // absolute error dK moves w by dK/w and r* = w + log(v/w)/w by about
+            // dK/w^3.  With |w| ~ |Z| near the gate, a threshold of 2 leaves
+            // |w| >= 1.78 (measured) and both quantities at rounding level; a
+            // threshold near zero puts the solver in the region where the
+            // terminal K's absolute error of ~1e-13 is amplified without bound,
+            // and at |Z| ~ 1e-7 it is enough to drive zeta*s - K negative and
+            // turn every marker into GUARD_TEMP.  See the terminal-K section of
+            // src/util/spa_cgf.hpp and `spa::kWSingularity` in src/util/spa.hpp.
+            //
+            // 0.01 is where dK/w^3 is still below 1e-6 for dK ~ 1e-12; below it
+            // the reported p-value stops being a function of the data alone.
+            a.spaCutoff = parseDouble(next(), arg);
+            if (!(a.spaCutoff >= 0.01) || !std::isfinite(a.spaCutoff)) {
+                std::cerr << "Error: --spa-z-threshold must be a finite value "
+                             "of at least 0.01, got '"
+                          << a.spaCutoff << "'\n";
+                std::exit(1);
+            }
+        }
         else if (arg == "--covar-p-threshold")a.pvalCovAdjCut = parseDouble(next(), arg);
         else if (arg == "--geno")a.missingCutoff = parseDouble(next(), arg);
         else if (arg == "--maf")a.minMafCutoff = parseDouble(next(), arg);
@@ -186,7 +211,25 @@ Args parseArgs(
         else if (arg == "--spasqr-outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
         else if (arg == "--spagrm-control-outlier") { markSeen(arg); a.spagrmControlOutlier = true; }
         else if (arg == "--threads")a.nthread = parseInt(next(), arg);
-        else if (arg == "--chunk-size")a.nSnpPerChunk = parseInt(next(), arg);
+        else if (arg == "--chunk-ksnp") {
+            // Chunk size in units of 1024 SNPs (1 ksnp = 1024 SNPs).  Accepted
+            // values are positive multiples of 0.5, so nSnpPerChunk is a
+            // positive multiple of 512 — the .lanc zstd frame length — and
+            // every work-stealing chunk starts on a frame boundary.  The
+            // minimum is 0.5 ksnp = 512 SNPs (one frame); the default is
+            // 8 ksnp = 8192 SNPs.
+            const std::string raw = next();
+            const double ksnp = parseDouble(raw, arg);
+            const double halves = ksnp * 2.0; // count of 512-SNP frames
+            const long long k = std::llround(halves);
+            if (k < 1 || std::fabs(halves - static_cast<double>(k)) > 1e-9) {
+                std::cerr << "Error: --chunk-ksnp must be a positive multiple of 0.5"
+                             " (0.5 ksnp = 512 SNPs, the .lanc frame length), got '"
+                          << raw << "'\n";
+                std::exit(1);
+            }
+            a.nSnpPerChunk = static_cast<int>(k * 512);
+        }
         else if (arg == "--leaf-nclusters")a.nClusters = parseInt(next(), arg);
         else if (arg == "--leaf-cluster-file")a.leafClusterFile = next();
         else if (arg == "--leaf-kmeans-nstart")a.leafKmeansNstart = parseInt(next(), arg);
@@ -199,10 +242,9 @@ Args parseArgs(
         else if (arg == "--pred-list")a.predListFile = next();
         else if (arg == "--pheno-transform")a.phenoTransform = next();
         else if (arg == "--spasqr-mode")a.spasqrMode = next();
-        else if (arg == "--admix-bfile")a.admixBfilePrefix = next();
         else if (arg == "--admix-phi")a.admixPhiFile = next();
         else if (arg == "--rfmix-msp")a.mspFile = next();
-        else if (arg == "--admix-text-prefix")a.admixTextPrefix = next();
+        else if (arg == "--lanc")a.lancPrefix = next();
         else if (arg == "--compression")a.compression = next();
         else if (arg == "--compression-level") {
             a.compressionLevel = parseInt(next(), arg);
@@ -212,7 +254,7 @@ Args parseArgs(
         else if (arg == "--cal-af-coef")        { markSeen(arg); a.calAfCoef = true; }
         else if (arg == "--cal-pairwise-ibd")   { markSeen(arg); a.calPairwiseIBD = true; }
         else if (arg == "--cal-phi")            { markSeen(arg); a.calPhi = true; }
-        else if (arg == "--make-abed")          { markSeen(arg); a.makeAbed = true; }
+        else if (arg == "--make-lanc")          { markSeen(arg); a.makeLanc = true; }
         else if (arg == "--int-pheno")          { markSeen(arg); a.intPheno = true; }
         else if (arg == "--min-maf-ibd")a.minMafIBD = parseDouble(next(), arg);
         else {

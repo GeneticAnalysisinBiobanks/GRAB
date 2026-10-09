@@ -11,10 +11,12 @@
 // Threading model: per-marker QR refit is driven through MethodBase /
 // multiPhenoEngine (no-LOCO) or locoEngine (LOCO) — identical to the
 // score-mode dispatch.  Output is plink2-style one-marker-per-line wide
-// format with P_CCT + P_tau* + Z_tau* + BETA_tau* + SE_tau* columns,
-// written via TextWriter honoring --compression {gz, zst}.
+// format with LOG10P_CCT + P_tau* + LOG10P_tau* + Z_tau* + BETA_tau* +
+// SE_tau* + SPA_STATUS_tau* columns, written via TextWriter honoring
+// --compression {gz, zst}.
 
 #include "spasqr/spasqr.hpp"
+#include "spasqr/null_model.hpp"
 #include "spasqr/qmme.hpp"
 
 #include "engine/loco.hpp"
@@ -23,6 +25,7 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/spa.hpp"       // spa::normalTwoSidedLog, spa::Status
 
 #include <Eigen/Dense>
 
@@ -38,45 +41,6 @@
 #include <vector>
 
 namespace {
-
-// ── Phenotype pre-transform (mirrors helper in spasqr.cpp). ──────────
-void applyPhenoTransform(Eigen::VectorXd &Y, const std::string &mode) {
-    if (mode == "raw") return;
-    if (mode == "int") {
-        Y = math::inverseRankNormal(Y);
-        return;
-    }
-    if (mode == "standardize") {
-        const Eigen::Index n = Y.size();
-        if (n <= 1) return;
-        const double mean = Y.mean();
-        const double ssq  = (Y.array() - mean).square().sum();
-        const double sd   = std::sqrt(ssq / static_cast<double>(n - 1));
-        if (sd > 0.0) Y = (Y.array() - mean) / sd;
-        return;
-    }
-    throw std::runtime_error("applyPhenoTransform: unknown mode '" + mode + "'");
-}
-
-// ── IQR-based bandwidth.  Wald defaults to scale=10. ────────────────
-double iqrBandwidth(const Eigen::VectorXd &Y, double scale) {
-    const Eigen::Index n = Y.size();
-    if (n < 4) return 1.0;
-    std::vector<double> v(static_cast<size_t>(n));
-    Eigen::VectorXd::Map(v.data(), n) = Y;
-    std::sort(v.begin(), v.end());
-    auto q = [&](double prob) {
-        const double idx = prob * (static_cast<double>(n) - 1);
-        const Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
-        const Eigen::Index hi = std::min(lo + 1, n - 1);
-        const double frac = idx - lo;
-        return v[lo] * (1.0 - frac) + v[hi] * frac;
-    };
-    const double iqr = q(0.75) - q(0.25);
-    const double h   = iqr / scale;
-    if (h > 0.0) return h;
-    return std::max(std::pow(std::log(static_cast<double>(n)) / static_cast<double>(n), 0.4), 0.05);
-}
 
 // ── Per-marker Wald refit (all τ) + sandwich variance. ──────────────
 //
@@ -209,17 +173,33 @@ class SPAsqrWaldMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 1 + 4 * static_cast<int>(m_shared->taus.size());
+        return 1 + 5 * static_cast<int>(m_shared->taus.size());
     }
 
+    // LOG10P_CCT, then five per-tau groups: LOG10P, Z, BETA, SE, SPA_STATUS.
+    // The grouping (all taus of one quantity, then all taus of the next) is
+    // score mode's, and LOG10P / SPA_STATUS are placed exactly where score mode
+    // places them, so the two modes remain readable against each other.  The
+    // linear P group left in log10p_unify Stage 8 (decision D1): LOG10P_tau is
+    // the sole p-value per quantile level and a consumer that needs the linear
+    // p takes 10^(-LOG10P_tau).
+    //
+    // SPA_STATUS_tau is `1 NORMAL` on every tau that produced a test: this leg
+    // is a plain Wald z against the normal, so no saddlepoint is ever attempted
+    // and decision D4 assigns exactly that code to a test which does not use
+    // one.  A tau whose sandwich variance is not usable (the LDLT failed, or
+    // V[γγ] <= 0) has no statistic at all and takes `8 NA_NO_TEST` with
+    // LOG10P, Z, BETA and SE all NA.  There is no fallback in between, because
+    // a variance that does not exist leaves nothing to fall back to.
     std::string getHeaderColumns() const override {
         std::ostringstream oss;
         const auto &labels = m_shared->tauLabels;
-        oss << "\tP_CCT";
-        for (const auto &lab : labels) oss << "\tP_"    << lab;
-        for (const auto &lab : labels) oss << "\tZ_"    << lab;
-        for (const auto &lab : labels) oss << "\tBETA_" << lab;
-        for (const auto &lab : labels) oss << "\tSE_"   << lab;
+        oss << "\tLOG10P_CCT";
+        for (const auto &lab : labels) oss << "\tLOG10P_"     << lab;
+        for (const auto &lab : labels) oss << "\tZ_"          << lab;
+        for (const auto &lab : labels) oss << "\tBETA_"       << lab;
+        for (const auto &lab : labels) oss << "\tSE_"         << lab;
+        for (const auto &lab : labels) oss << "\tSPA_STATUS_" << lab;
         return oss.str();
     }
 
@@ -235,7 +215,9 @@ class SPAsqrWaldMethod : public MethodBase {
         std::vector<double> betas(ntaus, std::numeric_limits<double>::quiet_NaN());
         std::vector<double> ses  (ntaus, std::numeric_limits<double>::quiet_NaN());
         std::vector<double> zs   (ntaus, std::numeric_limits<double>::quiet_NaN());
-        std::vector<double> ps   (ntaus, std::numeric_limits<double>::quiet_NaN());
+        std::vector<double> Ls   (ntaus, std::numeric_limits<double>::quiet_NaN());
+        std::vector<double> sts  (ntaus,
+            static_cast<double>(static_cast<uint8_t>(spa::Status::NaNoTest)));
 
         // GVec is pheno-dense, NaN-imputed by the engine.
         const Eigen::VectorXd G = GVec;
@@ -255,19 +237,35 @@ class SPAsqrWaldMethod : public MethodBase {
                 betas[t] = wr.beta;
                 ses[t]   = wr.se;
                 zs[t]    = z;
-                ps[t]    = 2.0 * (1.0 - math::pnorm(std::fabs(z)));
+                // The magnitude first, the linear p from it.  This leg is a
+                // plain normal tail, so 2*pnorm(|z|, upper) through Boost's
+                // complement was already accurate wherever it was representable
+                // — but it stops being representable at |z| = 38.6, and it is
+                // what the Cauchy combination is taken over.  Carrying L and
+                // deriving P from it (log10p_unify Stage 5, the pattern Stage 3
+                // established for the tier's own P column) removes that ceiling
+                // from LOG10P_CCT.  Since Stage 7 the magnitude is also a
+                // column of its own, and since Stage 8 it is the only one: the
+                // derived P_tau group is gone.
+                Ls[t]    = -spa::normalTwoSidedLog(z) / math::kLn10;
+                sts[t]   = static_cast<double>(
+                    static_cast<uint8_t>(spa::Status::Normal));
             }
         }
 
-        const double pCCT = math::cauchyCombine(ps.data(), static_cast<int>(ps.size()));
+        // Over the magnitudes, not the linear p-values: the Cauchy statistic
+        // 1/(pi*p) overflows for p <= 1e-308 and the linear routine returned
+        // P_CCT = 0 there (01_numerics §2.1).
+        const double lCCT = math::cauchyCombineLog10(Ls.data(), static_cast<int>(Ls.size()));
 
         result.clear();
         result.reserve(resultSize());
-        result.push_back(pCCT);
-        for (double p : ps)    result.push_back(p);
+        result.push_back(lCCT);
+        for (double L : Ls)    result.push_back(L);
         for (double z : zs)    result.push_back(z);
         for (double b : betas) result.push_back(b);
         for (double s : ses)   result.push_back(s);
+        for (double s : sts)   result.push_back(s);
     }
 
     int preferredBatchSize() const override {
@@ -279,131 +277,72 @@ class SPAsqrWaldMethod : public MethodBase {
 };
 
 // ── Phenotype work struct: subject filtering + transform happens here. ─
-struct PhenoWork {
-    std::vector<uint32_t> unionToLocal;   // size nUnion; UINT32_MAX = absent
-    uint32_t nk = 0;
-    Eigen::VectorXd Y;                    // nk; transformed
-    Eigen::MatrixXd X;                    // nk × nCov
-    // No-LOCO path:
-    Eigen::VectorXd yRespNoLoco;
-    double hNoLoco = 0.0;
-};
-
-std::vector<std::string> makeTauLabels(const std::vector<double> &taus) {
-    std::vector<std::string> labels;
-    labels.reserve(taus.size());
-    for (double tau : taus) {
-        std::ostringstream oss;
-        oss << "tau" << tau;
-        labels.push_back(oss.str());
-    }
-    return labels;
-}
 
 } // namespace
 
-void runSPAsqrWald(
-    const std::string &phenoFile,
-    const std::string &covarFile,
-    const std::vector<std::string> &phenoNames,
-    const std::vector<std::string> &covarNames,
-    const std::vector<double> &taus,
-    const GenoSpec &geno,
-    const std::string &predListFile,
-    const std::string &outPrefix,
-    double spasqrTol,
-    double spasqrH,
-    double spasqrHScale,
-    double missingCutoff,
-    double minMafCutoff,
-    double minMacCutoff,
-    double hweCutoff,
-    const std::string &keepFile,
-    const std::string &removeFile,
-    const std::string &phenoTransform,
-    int nthreads,
-    int nSnpPerChunk,
-    const std::string &compression,
-    int compressionLevel
-) {
+using namespace spasqr_null;
+
+void runSPAsqrWald(const SPAsqrConfig &cfg) {
+    const auto &phenoNames = cfg.phenoNames;
+    const auto &taus       = cfg.taus;
     const int K = static_cast<int>(phenoNames.size());
     const int ntaus = static_cast<int>(taus.size());
-    const bool useLoco = !predListFile.empty();
+    const bool useLoco = !cfg.predListFile.empty();
     // Wald defaults to h-scale=5 (vs score-mode's 3): per-marker QMME refits
     // with G in the design benefit from a smaller bandwidth so the kernel
     // weight K_h(-e) better resolves the score density f(0) and the
     // sandwich-derived SE matches the Gaussian asymptotic limit.
-    const double effHScale = (spasqrHScale >= 0.0) ? spasqrHScale : 5.0;
+    const double effHScale = (cfg.spasqrHScale >= 0.0) ? cfg.spasqrHScale : 5.0;
     // Wald refits per (marker, τ) — keep iter cap modest. The ε_grad tolerance
     // tracks the user's --spasqr-tol directly so a single bad fit can't hang the
     // run; score mode applies the same tolerance to its one-time null fit.
-    const double qmmeTol = spasqrTol;
+    const double qmmeTol = cfg.spasqrTol;
     const int maxIter = 5000;
 
     infoMsg("SPAsqr (wald): pheno-transform = %s, %s, ntaus = %d",
-            phenoTransform.c_str(),
+            cfg.phenoTransform.c_str(),
             useLoco ? "with LOCO offset" : "no LOCO",
             ntaus);
 
     // ── 1. Subject filtering (genotype ∩ keep/remove ∩ pheno) ───────────
-    auto famIIDs = parseGenoIIDs(geno);
+    auto famIIDs = parseGenoIIDs(cfg.geno);
     SubjectData sd(std::move(famIIDs));
-    if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile, phenoNames);
-    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
-    sd.setKeepRemove(keepFile, removeFile);
-    sd.setGenoLabel(geno.flagLabel());
+    if (!cfg.phenoFile.empty()) sd.loadPhenoFile(cfg.phenoFile, phenoNames);
+    if (!cfg.covarFile.empty()) sd.loadCovar(cfg.covarFile, cfg.covarNames);
+    sd.setKeepRemove(cfg.keepFile, cfg.removeFile);
+    sd.setGenoLabel(cfg.geno.flagLabel());
     sd.finalize();
 
     const uint32_t nUnion = sd.nUsed();
     const Eigen::Index N = static_cast<Eigen::Index>(nUnion);
 
-    Eigen::MatrixXd unionX = covarNames.empty()
+    Eigen::MatrixXd unionX = cfg.covarNames.empty()
         ? (sd.hasCovar() ? Eigen::MatrixXd(sd.covar()) : Eigen::MatrixXd(N, 0))
-        : sd.getColumns(covarNames);
+        : sd.getColumns(cfg.covarNames);
     const int nCov = static_cast<int>(unionX.cols());
 
     // ── 2. Per-phenotype: build pheno-dense Y/X (skip NA in Y) ─────────
-    std::vector<PhenoWork> pw(K);
-
-    for (int k = 0; k < K; ++k) {
-        Eigen::VectorXd fullY = sd.getColumn(phenoNames[k]);
-        pw[k].unionToLocal.assign(nUnion, UINT32_MAX);
-        uint32_t loc = 0;
-        for (uint32_t i = 0; i < nUnion; ++i)
-            if (!std::isnan(fullY[i])) pw[k].unionToLocal[i] = loc++;
-        pw[k].nk = loc;
-        if (pw[k].nk == 0)
-            throw std::runtime_error("SPAsqr (wald): phenotype '" + phenoNames[k]
-                                     + "' has no non-missing subjects");
-        const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
-        pw[k].Y.resize(Nk);
-        pw[k].X.resize(Nk, nCov);
-        for (uint32_t i = 0; i < nUnion; ++i) {
-            const uint32_t li = pw[k].unionToLocal[i];
-            if (li == UINT32_MAX) continue;
-            pw[k].Y[li] = fullY[i];
-            if (nCov > 0) pw[k].X.row(li) = unionX.row(i);
-        }
-        applyPhenoTransform(pw[k].Y, phenoTransform);
-    }
+    std::vector<PhenoWork> pw = buildPhenoWorkspaces(
+        sd, unionX, phenoNames, cfg.phenoTransform, "SPAsqr (wald)");
 
     // ── 3. Load LOCO (optional) ──────────────────────────────────────────
     std::unique_ptr<LocoData> loco;
     std::unordered_set<std::string> locoChroms;
     if (useLoco) {
-        loco = std::make_unique<LocoData>(LocoData::load(predListFile, phenoNames,
+        loco = std::make_unique<LocoData>(LocoData::load(cfg.predListFile, phenoNames,
                                                           sd.usedIIDs(), sd.famIIDs()));
         locoChroms = loco->availableChromosomes();
         infoMsg("SPAsqr (wald): LOCO available for %zu chromosomes", locoChroms.size());
     }
 
-    // ── 4. Pre-compute per-pheno y_resp + bandwidth h (no-LOCO path only) ─
+    // ── 4. Per-pheno bandwidth (no-LOCO path only; with LOCO it is derived
+    //      per chromosome from the LOCO-adjusted response). ──────────────
     if (!useLoco) {
         for (int k = 0; k < K; ++k) {
-            pw[k].yRespNoLoco = pw[k].Y;
-            pw[k].hNoLoco = (spasqrH >= 0.0) ? spasqrH : iqrBandwidth(pw[k].Y, effHScale);
+            pw[k].h = (cfg.spasqrH >= 0.0) ? cfg.spasqrH
+                                       : iqrBandwidth(pw[k].Y, effHScale, nCov);
             infoMsg("SPAsqr (wald): [%s] n=%u, h=%.6f",
-                    phenoNames[k].c_str(), pw[k].nk, pw[k].hNoLoco);
+                    phenoNames[k].c_str(), pw[k].nk, pw[k].h);
         }
     }
 
@@ -411,15 +350,15 @@ void runSPAsqrWald(
     const std::vector<std::string> tauLabels = makeTauLabels(taus);
 
     // ── 6. Build genotype meta with auto-shrunk chunk size ──────────────
-    // When the user has not overridden --chunk-size (default 8192), shrink
-    // it so chunk count ≥ 4·nthreads.  This keeps the work-stealing thread
-    // pool fed even when wald is invoked against a small --extract subset.
-    int effChunk = nSnpPerChunk;
+    // When the user has not overridden --chunk-ksnp (default 8 ksnp = 8192),
+    // shrink it so chunk count ≥ 4·cfg.nthreads.  This keeps the work-stealing
+    // thread pool fed even when wald is invoked against a small --extract subset.
+    int effChunk = cfg.nSnpPerChunk;
     {
         // Probe the marker count cheaply via a first GenoMeta build.  Pre-1.0
         // makeGenoData is the only marker enumeration path; build twice if we
         // need to shrink (cost is tiny vs per-marker QR refits).
-        auto probe = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+        auto probe = makeGenoData(cfg.geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
                                   /*chunk*/ 1);
         const size_t nMarkers = probe->markerInfo().size();
         if (nMarkers == 0) {
@@ -427,16 +366,16 @@ void runSPAsqrWald(
             return;
         }
         if (effChunk == 8192) {  // CLI default sentinel — auto-tune.
-            const int threads = std::max(1, nthreads);
+            const int threads = std::max(1, cfg.nthreads);
             const size_t target = static_cast<size_t>(threads) * 4;
             const size_t autoChunk =
                 std::max<size_t>(1, (nMarkers + target - 1) / target);
             effChunk = static_cast<int>(std::min<size_t>(autoChunk, 8192));
         }
         infoMsg("SPAsqr (wald): %zu markers, %d threads, chunk-size = %d",
-                nMarkers, std::max(1, nthreads), effChunk);
+                nMarkers, std::max(1, cfg.nthreads), effChunk);
     }
-    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+    auto genoData = makeGenoData(cfg.geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
                                  effChunk);
 
     // ── 7. Dispatch to multiPhenoEngine (no-LOCO) or locoEngine (LOCO) ─
@@ -444,11 +383,11 @@ void runSPAsqrWald(
         std::vector<PhenoTask> tasks(K);
         for (int k = 0; k < K; ++k) {
             auto shared = std::make_shared<SPAsqrWaldMethod::Shared>();
-            shared->Y_resp    = std::move(pw[k].yRespNoLoco);
+            shared->Y_resp    = pw[k].Y;
             shared->X         = pw[k].X;
             shared->taus      = taus;
             shared->tauLabels = tauLabels;
-            shared->h         = pw[k].hNoLoco;
+            shared->h         = pw[k].h;
             shared->qmmeTol   = qmmeTol;
             shared->maxIter   = maxIter;
 
@@ -459,11 +398,11 @@ void runSPAsqrWald(
         }
 
         infoMsg("SPAsqr (wald): starting association (%d phenotypes, %d taus, %d threads)",
-                K, ntaus, std::max(1, nthreads));
+                K, ntaus, std::max(1, cfg.nthreads));
         multiPhenoEngine(
-            *genoData, tasks, outPrefix, "SPAsqr",
-            compression, compressionLevel, nthreads,
-            missingCutoff, minMafCutoff, minMacCutoff, hweCutoff
+            *genoData, tasks, cfg.outPrefix, "SPAsqr",
+            cfg.compression, cfg.compressionLevel, cfg.nthreads,
+            cfg.missingCutoff, cfg.minMafCutoff, cfg.minMacCutoff, cfg.hweCutoff
         );
         return;
     }
@@ -473,28 +412,10 @@ void runSPAsqrWald(
     auto buildTasks = [&](const std::string &chr, std::vector<PhenoTask> &tasks) {
         tasks.resize(K);
         for (int k = 0; k < K; ++k) {
-            const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
-
-            // Map LOCO scores from union → pheno-dense.
-            const auto &locoVec = loco->scores.at(phenoNames[k]).at(chr);
-            Eigen::VectorXd loco_dense(Nk);
-            for (uint32_t i = 0; i < nUnion; ++i) {
-                const uint32_t li = pw[k].unionToLocal[i];
-                if (li != UINT32_MAX) loco_dense[li] = locoVec[i];
-            }
-            if (!loco_dense.allFinite()) {
-                const Eigen::Index nBad = Nk - loco_dense.array().isFinite().count();
-                throw std::runtime_error(
-                    "SPAsqr-LOCO (wald): LOCO file for phenotype '" + phenoNames[k] +
-                    "' chr " + chr + " is missing " + std::to_string(nBad) +
-                    " subject(s) that have non-missing Y. The LOCO PGS file "
-                    "must contain every subject in the --pheno analysis set. "
-                    "Re-run LDAK / Regenie Step 1 on the same sample set, or "
-                    "remove those subjects from --pheno.");
-            }
-
-            Eigen::VectorXd yResp = pw[k].Y - loco_dense;
-            const double h = (spasqrH >= 0.0) ? spasqrH : iqrBandwidth(yResp, effHScale);
+            Eigen::VectorXd yResp = pw[k].Y - locoDense(
+                loco->scores.at(phenoNames[k]).at(chr), pw[k], phenoNames[k], chr,
+                "SPAsqr-LOCO (wald)");
+            const double h = (cfg.spasqrH >= 0.0) ? cfg.spasqrH : iqrBandwidth(yResp, effHScale, nCov);
 
             auto shared = std::make_shared<SPAsqrWaldMethod::Shared>();
             shared->Y_resp    = std::move(yResp);
@@ -516,11 +437,11 @@ void runSPAsqrWald(
     };
 
     infoMsg("SPAsqr (wald): starting LOCO association (%d phenotypes, %d taus, %zu chroms, %d threads)",
-            K, ntaus, locoChroms.size(), std::max(1, nthreads));
+            K, ntaus, locoChroms.size(), std::max(1, cfg.nthreads));
     locoEngine(
         *genoData, locoChroms, phenoNames, buildTasks,
-        outPrefix, "SPAsqr",
-        compression, compressionLevel, nthreads,
-        missingCutoff, minMafCutoff, minMacCutoff, hweCutoff
+        cfg.outPrefix, "SPAsqr",
+        cfg.compression, cfg.compressionLevel, cfg.nthreads,
+        cfg.missingCutoff, cfg.minMafCutoff, cfg.minMacCutoff, cfg.hweCutoff
     );
 }

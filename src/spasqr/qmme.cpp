@@ -124,7 +124,7 @@ Eigen::VectorXd SqrSolver::solve(
     int restartPeriod,
     SolverStatus *statusOut,
     const Eigen::VectorXd *initBetaOrig
-) {
+) const {
     if (m_currentH <= 0.0)
         throw std::runtime_error("qmme::SqrSolver::solve: bandwidth not prepared");
 
@@ -159,6 +159,7 @@ Eigen::VectorXd SqrSolver::solve(
     Eigen::VectorXd beta_prev = beta_curr;
 
     Eigen::VectorXd y(dim), beta_new(dim), grad(dim), step(dim), der(n);
+    Eigen::VectorXd r_y(n), r_new(n);
     Eigen::VectorXd r_curr = Yc - m_Z * beta_curr;
     double f_curr = smoothedQuantileLossAvg(r_curr, tau, h);
 
@@ -171,7 +172,7 @@ Eigen::VectorXd SqrSolver::solve(
         y = beta_curr + extr * (beta_curr - beta_prev);
 
         // Gradient at extrapolated point y
-        Eigen::VectorXd r_y = Yc - m_Z * y;
+        r_y.noalias() = Yc - m_Z * y;
         smoothedQrGradAvg(m_Z, r_y, tau, h, der, grad);
         gradNorm = grad.lpNorm<Eigen::Infinity>();
         if (gradNorm < tol) {
@@ -188,7 +189,7 @@ Eigen::VectorXd SqrSolver::solve(
         step.noalias() = m_chol.solve(grad);
         beta_new = y - step;
 
-        Eigen::VectorXd r_new = Yc - m_Z * beta_new;
+        r_new.noalias() = Yc - m_Z * beta_new;
         const double f_new = smoothedQuantileLossAvg(r_new, tau, h);
 
         // Restart: reset momentum on ascent or after P steps. On ascent we
@@ -203,17 +204,20 @@ Eigen::VectorXd SqrSolver::solve(
             ++l;
         }
         if (ascent) {
-            Eigen::VectorXd grad_curr(dim), der_curr(n);
-            smoothedQrGradAvg(m_Z, r_curr, tau, h, der_curr, grad_curr);
-            step.noalias() = m_chol.solve(grad_curr);
+            smoothedQrGradAvg(m_Z, r_curr, tau, h, der, grad);
+            step.noalias() = m_chol.solve(grad);
             beta_new = beta_curr - step;
-            r_new = Yc - m_Z * beta_new;
+            r_new.noalias() = Yc - m_Z * beta_new;
         }
 
         beta_prev = beta_curr;
         beta_curr = beta_new;
         r_curr = r_new;
-        f_curr = smoothedQuantileLossAvg(r_curr, tau, h);
+        // On the descent path r_curr is the very vector f_new was evaluated at,
+        // so recomputing the loss here would repeat an O(n) pnorm+exp pass for
+        // a bit-identical answer — a third of the iteration's transcendental
+        // work.  The restart branch above moved r_new, so that one must refit.
+        f_curr = ascent ? smoothedQuantileLossAvg(r_curr, tau, h) : f_new;
     }
 
     // Final gradient at beta_curr (for honest convergence reporting)
@@ -231,10 +235,9 @@ Eigen::VectorXd SqrSolver::solve(
         *residOut = r_curr;
     if (statusOut) {
         statusOut->iter = iter;
-        statusOut->converged = (gradNorm <= tol) && (iter <= maxIter);
+        statusOut->converged = (gradNorm <= tol);
         statusOut->finalGradNorm = gradNorm;
     }
-    m_lastIters = iter;
     return beta_orig;
 }
 

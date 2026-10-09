@@ -19,6 +19,7 @@
 
 #include "engine/marker.hpp"
 #include "util/null_model.hpp"
+#include "util/spa.hpp"
 
 class WtCoxGMethod;
 struct WtCoxGRefInfo;
@@ -104,6 +105,19 @@ class LEAFMethod : public MethodBase {
         std::vector<double> &result
     ) override;
 
+// Push the 4 + 8*K result cells in header order; see getHeaderColumns.
+    void pushResult(
+        std::vector<double> &out,
+        const std::vector<double> &lExt,
+        const std::vector<double> &lNoext,
+        const std::vector<double> &sExt,
+        const std::vector<double> &sNoext,
+        const std::vector<double> &mac,
+        const std::vector<spa::Status> &stExt,
+        const std::vector<spa::Status> &stNoext,
+        int chunkIdx
+    ) const;
+
 // ── Fused-GEMM hooks ─────────────────────────────────────────────
 // Each cluster contributes (R_c) and (cluster mask) as separate
 // residual columns: cols [0..K)  = zero-padded R_c on cluster c's
@@ -137,6 +151,7 @@ class LEAFMethod : public MethodBase {
         uint32_t nUsed,
         const std::vector<double> &altFreqs,
         const std::vector<int> &chunkIdxs,
+        const UnionGenotypes &geno,
         std::vector<std::vector<double> > &results
     ) override;
 

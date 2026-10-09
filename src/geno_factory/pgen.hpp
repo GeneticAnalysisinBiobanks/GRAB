@@ -151,6 +151,7 @@ class PgenData : public GenoMeta {
 
     };
 
+    std::vector<uintptr_t> m_nonrefFlags;
     std::unique_ptr<PgenFileInfo, PgfiDeleter> m_pgfi;
     std::unique_ptr<unsigned char, void (*)(void *)> m_pgfiAlloc;
     uint32_t m_maxVrecWidth = 0;
@@ -167,15 +168,9 @@ class PgenCursor : public GenoCursor {
 
     void beginSequentialBlock(uint64_t firstMarker) override;
 
-    void getGenotypes(
+    GenoStats getGenotypes(
         uint64_t gIndex,
         Eigen::Ref<Eigen::VectorXd> out,
-        double &altFreq,
-        double &altCounts,
-        double &missingRate,
-        double &hweP,
-        double &maf,
-        double &mac,
         std::vector<uint32_t> &indexForMissing
     ) override;
 
@@ -184,14 +179,6 @@ class PgenCursor : public GenoCursor {
         Eigen::Ref<Eigen::VectorXd> out
     ) override;
 
-    uint32_t getGenotypesMaybeSparse(
-        uint64_t gIndex,
-        Eigen::Ref<Eigen::VectorXd> out,
-        uint32_t maxLen,
-        uint32_t *diffSampleIds,
-        uint8_t *diffGenoCodes,
-        uint32_t &diffLen
-    ) override;
 
   private:
     // Decode one variant into out[] (dosage where present, else hard call,

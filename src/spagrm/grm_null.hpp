@@ -27,7 +27,9 @@ constexpr double MIN_QUANTILE = 0.25;
 constexpr double INIT_OUTLIER_RATIO = 1.5;
 constexpr bool CONTROL_OUTLIER = true;
 constexpr int MAX_NUM_IN_FAM = 5;
-constexpr double ZETA_DEFAULT = 0.01;
+// ZETA_DEFAULT (the fixed 0.01 lower-tail initial abscissa) is gone: the
+// unified solver takes the mirrored first-order estimate -min(|S|/Var, 1.2) on
+// both tails.  See the convention note above nsSPAGRM::twoSidedSpa.
 constexpr double TOL_DEFAULT = 1e-6;
 
 /// Build MAF grid from QC cutoffs: starts at min(mafCutoff, macCutoff/(2*n)),

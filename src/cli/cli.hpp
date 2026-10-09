@@ -22,8 +22,9 @@ struct Args {
 
     std::string pcCols = "PC1,PC2,PC3,PC4";         // comma-separated PC column names (default: PC1,PC2,PC3,PC4)
     std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9"; // default tau levels (SPAsqr)
-    std::string sageldX;                            // --sageld-x: comma-separated env names for SAGELD pheno mode
     std::string sageldMethod = "sageld";            // --sageld-method: 'sageld' (score, default) or 'gallop' (Wald)
+    std::string envName;                            // --envir-name: comma-separated environment column names (SAGELD / SPAGxE / SPAGxEmix G×E)
+    double spagxeMarginalCutoff = 0.001;            // --spagxe-marginal-cutoff: ε, Branch A/B routing threshold (default 0.001)
     double spasqrTol = 1e-6;                          // --spasqr-tol (QMME convergence tolerance)
     double spasqrH = -1.0;                            // --spasqr-h (explicit bandwidth; -1 = auto)
     double spasqrHScale = -1.0;                       // --spasqr-h-scale (IQR divisor; -1 = auto: score=3, wald=5)
@@ -53,10 +54,10 @@ struct Args {
     std::string extractFile;      // --extract (SNP include list)
     std::string excludeFile;      // --exclude (SNP exclude list)
     std::string chrSpec;          // --chr (chromosome filter, e.g. "1-4,6,22")
-    std::string admixBfilePrefix; // --admix-bfile
     std::string admixPhiFile;     // --admix-phi
-    std::string mspFile;          // --rfmix-msp
-    std::string admixTextPrefix;  // --admix-text-prefix
+    std::string mspFile;          // --rfmix-msp (glob prefix for --make-lanc)
+    std::string lancPrefix;       // --lanc (LancData reader prefix for --cal-phi /
+                                  // --method SPAmixLocalPlus)
     std::string keepFile;         // --keep (subject include list)
     std::string removeFile;       // --remove (subject exclude list)
     std::string predListFile;     // --pred-list (Regenie / LDAK-KVIK pred.list for LOCO)
@@ -69,7 +70,7 @@ struct Args {
     bool calAfCoef = false;
     bool calPairwiseIBD = false;
     bool calPhi = false;
-    bool makeAbed = false;
+    bool makeLanc = false;
     bool intPheno = false;
     double minMafIBD = 0.01;
     double refPrevalence = -1.0;
@@ -90,7 +91,7 @@ struct Args {
     double outlierAbsBound = 0.55;
     bool spagrmControlOutlier = false; // --spagrm-control-outlier (flag, no argument): enable iterative SPAGRM outlier-ratio adjustment (default off)
     int nthread = 1;
-    int nSnpPerChunk = 8192;
+    int nSnpPerChunk = 8192; // --chunk-ksnp: chunk size in SNPs (ksnp × 1024); default 8 ksnp = 8192
     // --compression-level: sentinel 0 means "resolve from --compression after
     // parsing".  Dispatch sets it to 3 for zst (ZSTD_CLEVEL_DEFAULT) or 6 for
     // gz (Z_DEFAULT_COMPRESSION) when the user did not override it.  Plain-

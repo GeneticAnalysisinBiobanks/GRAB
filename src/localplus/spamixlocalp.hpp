@@ -1,14 +1,15 @@
 // spamixlocalp.hpp — SPAmixLocalPlus: local-ancestry-specific GWAS
 //
-// Phase 1: Phi estimation — streaming ancestry-specific kinship from admix .abed
+// Phase 1: Phi estimation — streaming ancestry-specific kinship from admix .lanc
 // Phase 2: Per-ancestry GWAS — score test with SPA tail, CCT meta-analysis
 //
-// Uses .abed binary format for local ancestry dosage/hapcount data,
-// and SparseGRM for related-pair structure.
+// Uses .lanc plane-separated binary format for local ancestry
+// dosage/hapcount data, and SparseGRM for related-pair structure.
 #pragma once
 
-#include "localplus/abed_io.hpp"
-#include "spamix/common.hpp"
+#include "localplus/lanc_io.hpp"
+#include "util/outlier.hpp"
+#include "util/spa.hpp"
 #include "io/sparse_grm.hpp"
 
 #include <Eigen/Dense>
@@ -184,7 +185,7 @@ void computeVarOffMultiPhenoBatch(
 //   ancIdx:     which ancestry to estimate (0-based)
 //   MAF cutoff is hardcoded to 0.01.
 PhiMatrices estimatePhiOneAncestry(
-    const AdmixData &admixData,
+    const LancData &admixData,
     const SparseGRM &grm,
     int ancIdx,
     int nthreads = 1
@@ -210,19 +211,37 @@ double computePhiVariance(
 // SPA p-value with outlier split
 // ======================================================================
 
-// Compute SPA p-value for the local-ancestry score test.
+// Per-worker gather buffers for the outlier subset.  The SPA branch needs the
+// outliers' residuals and hapcounts in contiguous storage (the shared CGF
+// kernels are SIMD reductions over `const double *`), and the gather is a
+// permutation, so a copy is unavoidable — but the ALLOCATION is not.  The
+// predecessor declared `std::vector<double> rOut(nOut), hOut(nOut)` inside
+// spaLocalPval, paying two heap allocations per (marker x ancestry x
+// phenotype) that entered the SPA branch (01_findings.md P4).  Hoisting them
+// into a caller-owned struct makes the cost one allocation per worker thread.
+struct LocalSpaScratch {
+    std::vector<double> rOut;
+    std::vector<double> hOut;
+};
+
+// Compute the SPA p-value for the local-ancestry score test.
 //   S:        score statistic = sum(dosage * R)
-//   sMean:    pre-computed mean of S = q * hapcount.dot(R)
-//   varDiag:  diagonal-only variance = q(1-q) * sum(R_i^2 * h_i)
-//   R:        residual vector
-//   hapcount: hapcount vector for this ancestry at this marker
-//   q:        allele frequency
-//   varS:     pre-computed variance (from computePhiVariance)
-//   outlier:  outlier positions
-//   spaCutoff: threshold for switching from normal to SPA
+//   sMean:    pre-computed mean of S = q * hapcount.dot(R)   [= K'(0)]
+//   varDiag:  independence variance = q(1-q) * sum(h_i R_i^2) [= K''(0)]
+//   R:        residual vector, all subjects
+//   hapcount: hapcount vector for this ancestry at this marker, all subjects
+//   q:        ancestry allele frequency
+//   varS:     variance including the phi (relatedness) off-diagonal block
+//   outlier:  the IQR partition of the residual vector
+//   scratch:  caller-owned gather buffers, reused across calls
+//   spaCutoff: |z| above which the saddlepoint is attempted
 //
-// Returns: {pval_spa, pval_normal}
-std::pair<double, double> spaLocalPval(
+// Returns {P, -log10(P), SPA_STATUS}.  P and -log10(P) are NaN — reported as
+// NA — exactly when SPA_STATUS >= 7 (NA_POST_FAIL / NA_NO_TEST); a status of
+// 3..6 means the saddlepoint failed and the substituted two-sided normal tail
+// is reported instead (log10p_unify D5).  See spamixlocalp_cgf.hpp for what
+// each status means and for the D3 defects this replaced.
+spa::Result spaLocalPval(
     double S,
     double sMean,
     double varDiag,
@@ -231,6 +250,7 @@ std::pair<double, double> spaLocalPval(
     double q,
     double varS,
     const OutlierData &outlier,
+    LocalSpaScratch &scratch,
     double spaCutoff
 );
 
@@ -239,7 +259,8 @@ std::pair<double, double> spaLocalPval(
 // ======================================================================
 
 // Estimate phi matrices for all ancestries and write single wide file.
-//   admixPrefix:  prefix for .abed/.bim/.fam
+//   admixPrefix:  prefix for .lanc/.bim/.fam (per-chromosome .lanc/.bim,
+//                 shared .fam; see lanc_io.hpp)
 //   grmGrabFile / grmGctaFile: sparse GRM (exactly one non-empty)
 //   phiOutputFile: output path for wide phi file
 //   extractFile / excludeFile: for marker filtering
@@ -261,7 +282,8 @@ void runPhiEstimation(
 //     - fit-path (phenoNameSpec non-empty): supplies phenotype columns
 //       (and optionally covariate columns when --covar is absent)
 //   residNames:  column names to use as residuals from phenoFile (residual-path)
-//   admixPrefix:  prefix for .abed/.bim/.fam
+//   admixPrefix:  prefix for .lanc/.bim/.fam (per-chromosome .lanc/.bim,
+//                 shared .fam; see lanc_io.hpp)
 //   admixPhiFile: pre-computed wide phi file
 //   outPrefix:   output prefix for per-phenotype GWAS results
 //   spaCutoff, outlierRatio, nthread, nSnpPerChunk: analysis params

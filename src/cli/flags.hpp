@@ -160,8 +160,8 @@ null model  Y ~ X + (1 | IID)  is fit (X = intercept + --covar-name
 covariates), and the per-IID aggregated residual  R_G = sum_j r_ij  is
 used as the per-subject residual for the marker test (the marginal MAIN
 genetic effect).  There is no environment / random-slope term, so
---sageld-x and G x E are not involved.  Incompatible with --resid-name,
---regression-model, and --sageld-x.  For SPAmix, every --pc-cols column
+--envir-name and G x E are not involved.  Incompatible with --resid-name,
+--regression-model, and --envir-name.  For SPAmix, every --pc-cols column
 must also appear in --covar-name (PCs are sourced from the long-format
 design).)"
 };
@@ -198,6 +198,11 @@ inline const FlagDef kSpGrmGrab = {
     "--sp-grm-grab", "FILE", "Sparse GRM, GRAB format (ID1 ID2 VALUE)",
     R"(Whitespace-delimited with mandatory header: ID1  ID2  VALUE
 (header may have # prefix).  #-comment lines skipped.
+VALUE is the genomic relationship 2*phi (twice the kinship coefficient;
+the GCTA / plink2 convention), so a self entry is 1 + F and no off-diagonal
+can exceed 1.  Off-diagonals above 1 are reported at load: they mean the
+matrix is not a pedigree kinship estimate, and SPAGRM's IBD model is
+undefined there.
 Subjects not in .fam are silently dropped.
 Mutually exclusive with --sp-grm-plink2.)"
 };
@@ -205,7 +210,11 @@ Mutually exclusive with --sp-grm-plink2.)"
 inline const FlagDef kSpGrmPlink2 = {
     "--sp-grm-plink2", "FILE", "Sparse GRM, plink2 .grm.sp format",
     R"(plink2-style sparse GRM.  The file lists one related pair per line as
-'ID1  ID2  VALUE', where VALUE is the kinship coefficient.  The companion
+'ID1  ID2  VALUE', where VALUE is the genomic relationship 2*phi (twice the
+kinship coefficient; the GCTA / plink2 convention), so a self entry is 1 + F
+and no off-diagonal can exceed 1.  Off-diagonals above 1 are reported at
+load: they mean the matrix is not a pedigree kinship estimate, and SPAGRM's
+IBD model is undefined there.  The companion
 .grm.id file ('FID  IID' per subject) is auto-detected from the file path;
 if .grm.id is absent, the loader assumes 0-based indices that match .fam
 order.  Subjects not present in the genotype .fam are silently dropped.
@@ -274,7 +283,7 @@ inline const FlagDef kPrevalence = {
 
 inline const FlagDef kBatchPThresh = {
     "--batch-effect-p-threshold", "FLOAT",
-    "Batch-effect p-value cutoff (default: 0.05)",
+    "Batch-effect p-value cutoff (default: 0.1)",
     nullptr
 };
 
@@ -338,8 +347,9 @@ load, finalize, and synchronization steps.  Plan for N + 1 logical
 cores when sizing a job to physical cores.)"
 };
 
-inline const FlagDef kChunkSize = {
-    "--chunk-size", "INT", "Markers per chunk (default: 8192, min: 256)",
+inline const FlagDef kChunkKsnp = {
+    "--chunk-ksnp", "KSNP",
+    "Chunk size in units of 1024 SNPs (default: 8 = 8192 SNPs; positive multiple of 0.5)",
     R"(Controls the granularity of the chunk-level work-stealing thread pool.
 Each chunk is processed end-to-end by a single worker, then handed to a
 single writer thread that emits chunks in genomic order.  Smaller chunks
@@ -347,19 +357,22 @@ improve load balancing on heterogeneous workloads at the cost of more
 synchronization and per-chunk overhead; larger chunks reduce overhead
 but may starve workers when the total marker count is small.
 
-The default of 8192 suits whole-genome scans where each chunk amortises
-the worker's startup cost over thousands of markers.  On a CLI-supplied
-value, the engine honors it verbatim (subject to the min: 256 floor).
+The size is given in units of 1024 SNPs (1 ksnp = 1024 SNPs) and must be a
+positive multiple of 0.5, so the resulting SNP count is a positive multiple
+of 512 (the .lanc block length) and every work-stealing chunk starts on a
+.lanc zstd frame boundary.  The minimum is 0.5 ksnp = 512 SNPs (one frame);
+the default of 8 ksnp = 8192 SNPs suits whole-genome scans where each chunk
+amortises the worker's startup cost over thousands of markers.
 
 Exception — SPAsqr --spasqr-mode wald: per-marker QR refit is far slower
 than score-mode batched GEMM, and wald runs are typically restricted to
-a curated SNP list via --extract.  When --chunk-size is left at the
-8192 default sentinel, wald auto-shrinks the chunk size to
+a curated SNP list via --extract.  When --chunk-ksnp is left at the
+8-ksnp default sentinel (8192 SNPs), wald auto-shrinks the chunk size to
   ceil( nMarkers / (4 * nthreads) )
 so the chunk count is at least 4 * nthreads, keeping the worker pool
 saturated even for very small marker sets (e.g. nMarkers = 10,
 nthreads = 4 → chunk = 1, one marker per chunk).  An explicit
---chunk-size on the command line suppresses the auto-shrink.)"
+--chunk-ksnp on the command line suppresses the auto-shrink.)"
 };
 
 inline const FlagDef kCompression = {
@@ -390,7 +403,11 @@ inline const FlagDef kMac = {
 
 inline const FlagDef kHwe = {
     "--hwe", "FLOAT", "Exclude markers with HWE p < threshold (default: 0, disabled)",
-    nullptr
+    R"(The threshold is a linear p-value (e.g. 1e-6), not a -log10 value, even
+though the reported column LOG10P_HWE is -log10(p).  A marker is excluded
+when its exact-test p falls below the threshold, i.e. when
+LOG10P_HWE > -log10(threshold).  Markers with no hard-called subject have
+LOG10P_HWE = NA and are never excluded by this filter.)"
 };
 
 inline const FlagDef kHardCallThreshold = {
@@ -453,19 +470,27 @@ inline const FlagDef kSpasqrMode = {
   score — score test on null-model residuals (default).  One null QR fit per
           phenotype × τ; markers are streamed and tested via the score
           statistic S = Σ R_i G_i with M-estimation sandwich variance.
-          Output (per marker): CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
-          P_CCT P_tau{val}... Z_tau{val}...
+          Output (per marker): CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
+          LOG10P_CCT LOG10P_tau{val}... Z_tau{val}... Z_Norm_tau{val}...
+          SPA_STATUS_tau{val}...
   wald  — full-model Wald test.  For every (marker, τ), the joint smoothed-QR
           model with [X | G] is refit by QMME and β̂_G + SE are computed from
           the (γ,γ) entry of the M-estimation sandwich V = A^{-1} B A^{-1}/n.
           Slower per marker; suited for follow-up effect-size estimation on
           a small SNP list (--extract).  Per-marker QR refit runs on the
-          shared marker-engine thread pool (--threads), and --chunk-size
-          auto-shrinks at its 8192 default so the pool stays fed even on
-          small marker sets — see --chunk-size for details.  Output is
+          shared marker-engine thread pool (--threads), and --chunk-ksnp
+          auto-shrinks at its 8-ksnp default so the pool stays fed even on
+          small marker sets — see --chunk-ksnp for details.  Output is
           plink2-style one-marker-per-line wide format:
-          CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
-          P_CCT P_tau{val}... Z_tau{val}... BETA_tau{val}... SE_tau{val}...
+          CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
+          LOG10P_CCT LOG10P_tau{val}... Z_tau{val}...
+          BETA_tau{val}... SE_tau{val}... SPA_STATUS_tau{val}...
+          SPA_STATUS_tau is 1 (NORMAL) wherever the tau produced a test: the
+          Wald leg is a plain z against the normal reference and never runs a
+          saddlepoint, which is the case that code covers.  A tau whose
+          sandwich variance is unusable (the LDLT failed, or V[gg] <= 0) has
+          no statistic at all and takes 8 (NA_NO_TEST) with every other cell
+          of that tau NA.
           (--pred-list gives y_resp = Y − loco_chr; --compression honored.))"
 };
 
@@ -494,7 +519,7 @@ inline const FlagDef kExtract = {
     R"(Single-column file of SNP IDs.  Comparison is by marker ID
 (.bim column 2, .pvar ID column, BGEN RSID/SNPID, VCF/BCF ID field).
 Applied uniformly to all genotype inputs: --bfile, --pfile, --vcf,
---bcf, --bgen, and --admix-bfile.  IDs listed in the file that do not
+--bcf, --bgen, and --lanc.  IDs listed in the file that do not
 match any marker are silently ignored.)"
 };
 
@@ -503,7 +528,7 @@ inline const FlagDef kExclude = {
     R"(Single-column file of SNP IDs.  Comparison is by marker ID
 (.bim column 2, .pvar ID column, BGEN RSID/SNPID, VCF/BCF ID field).
 Applied uniformly to all genotype inputs: --bfile, --pfile, --vcf,
---bcf, --bgen, and --admix-bfile.  IDs listed in the file that do not
+--bcf, --bgen, and --lanc.  IDs listed in the file that do not
 match any marker are silently ignored.)"
 };
 
@@ -513,13 +538,16 @@ inline const FlagDef kChr = {
 Examples: --chr 5   --chr 2,3   --chr 1-4,6-8,22)"
 };
 
-inline const FlagDef kAdmixBfile = {
-    "--admix-bfile", "PREFIX",
-    "Admixed ancestry binary genotype prefix (.abed/.bim/.fam)",
-    R"(Binary format storing 2K tracks (dosage + hapcount per ancestry).
-Shares standard PLINK .fam and .bim files.
-The .abed file has a 16-byte header with magic 0xAD4D, version,
-number of ancestries K, number of subjects N, and markers M.)"
+inline const FlagDef kLanc = {
+    "--lanc", "PREFIX",
+    "Local-ancestry binary prefix (merged .lanc + .bim + shared .fam)",
+    R"(Merged plane-separated local-ancestry binary produced by --make-lanc:
+a single {PREFIX}.lanc (framed-zstd ancestry / allele / missing bit-
+planes, one chromosome segment per contig in chromosome order) with a
+companion merged {PREFIX}.bim (standard PLINK BIM, all markers in that
+same order) plus one shared {PREFIX}.fam listing the query samples.  The
+reader opens the single file and builds one global marker list across
+segments.  Consumed by --cal-phi and --method SPAmixLocalPlus.)"
 };
 
 inline const FlagDef kAdmixPhi = {
@@ -529,20 +557,16 @@ Indices are 0-based into .fam row order. One row per related pair.)"
 };
 
 inline const FlagDef kMsp = {
-    "--rfmix-msp", "FILE", "MSP local-ancestry file from rfmix2 (for --make-abed)",
+    "--rfmix-msp", "PREFIX",
+    "MSP local-ancestry prefix from rfmix2 (for --make-lanc)",
     R"(rfmix2 output format:
   Line 1: #Subpopulation order/codes: 0=POP0\t1=POP1\t...  (K inferred)
   Line 2: #chm\tspos\tepos\tsgpos\tegpos\tn snps\tIID0.0\tIID0.1\t...
   Data:   chrom\tspos(0-based)\tepos(excl)\t...\tancestry_calls...
-Used with --vcf or --bcf to produce admixed .abed ancestry tracks.)"
+--make-lanc: a PREFIX; per-chromosome RFMix output is discovered by
+  globbing {PREFIX}*.msp.tsv and matched by chromosome token against the
+  --vcf/--bcf per-chromosome inputs, producing per-chr .lanc/.bim files.)"
 };
-
-inline const FlagDef kAdmixTextPrefix = {
-    "--admix-text-prefix", "PREFIX", "extract_tracts text output prefix (for --make-abed)",
-    R"({PREFIX}.anc{k}.dosage[.gz]   and   {PREFIX}.anc{k}.hapcount[.gz]  (k=0,1,...)
-Header: CHROM  POS  ID  REF  ALT  SAMPLE1  SAMPLE2  ...
-Values: integer 0-2 per subject; K auto-detected from file presence.)"};
-;
 
 inline const FlagDef kSeed = {
     "--seed", "INT", "Random seed for reproducibility (default: 0 = use random device)",
@@ -553,19 +577,6 @@ inline const FlagDef kSpasqrTaus = {
     "--spasqr-taus", "LIST",
     "Comma-separated tau levels for SPAsqr, max 20 (default: 0.1,0.3,0.5,0.7,0.9)",
     nullptr
-};
-
-inline const FlagDef kSageldX = {
-    "--sageld-x", "COL_IDS",
-    "Environment column name(s) for SAGELD G x E; REQUIRED in pheno mode (with --pheno-name)",
-    R"(Required for SAGELD's pheno-input mode together with --pheno-name and
---covar-name.  Each name must match a numeric column of --pheno; the env
-column also has to be listed in --covar-name so it enters the fixed-effect
-design.  For every (phenotype, env) pair the null model
-    Y ~ X + (E | IID)            (random intercept + random slope on E)
-is fit by EM-ML internally, and the BLUP residuals are aggregated to per-
-IID (R_G, R_<E>, R_Gx<E>) before the marker-level G and G x E score tests
-run.  Multiple envs trigger a separate model per env.)"
 };
 
 inline const FlagDef kSageldMethod = {
@@ -608,6 +619,114 @@ inline const FlagDef kSpasqrHScale = {
 };
 
 
+// ── SPAGxE ─────────────────────────────────────────────────────────
+
+inline const FlagDef kEnvirName = {
+    "--envir-name", "COL_IDS",
+    "Environment column name(s) for G×E (SAGELD / SPAGxE / SPAGxEmix; comma-separated)",
+    R"(Selects the environment column(s) E for the gene-environment interaction
+test.  Each name must match a numeric column of --pheno and must also appear
+in --covar-name.  Usage differs by method:
+  SPAGxE / SPAGxEmix — multiple envs are comma-separated; each produces its
+    own 7-wide output block (LOG10P_Gx<E> LOG10P_Wald_Gx<E> Z_Gx<E>
+    Z_Norm_Gx<E> BETA_Gx<E> SE_Gx<E> SPA_STATUS_Gx<E>).
+    E enters the genotype-independent null model  trait ~ X + E  (fixed
+    effect); the model is fit once and reused across envs (only lambda differs).
+  SAGELD (pheno mode) — a single env column, REQUIRED together with
+    --pheno-name and --covar-name.  E enters the random-effects design
+    Y ~ X + (E | IID)  (random intercept + random slope on E), and the BLUP
+    residuals are aggregated to per-IID (R_G, R_<E>, R_Gx<E>) before the
+    marker-level G and G x E score tests run.)"
+};
+
+inline const FlagDef kSpagxeMarginalCutoff = {
+    "--spagxe-marginal-cutoff", "FLOAT",
+    "SPAGxE Branch A/B routing threshold epsilon (default: 0.001)",
+    R"(The marginal-genetic-effect significance cutoff that routes each variant
+between Branch A and Branch B.  When the two-sided normal-approximation
+marginal p-value p_marg > epsilon the variant takes Branch A (lambda-
+orthogonalised G×E score, the common case); otherwise Branch B (the marginal
+effect is projected out of the residual).  Distinct from --spa-z-threshold,
+which is the |z| switch between the normal approximation and the saddlepoint
+inside a single p-value computation.)"
+};
+
+// ════════════════════════════════════════════════════════════════════
+//  Shared output-column documentation
+// ════════════════════════════════════════════════════════════════════
+
+// Nine method output blocks describe a saddlepoint status column, and the
+// nine-value encoding behind it is ONE thing, not nine.  The unification
+// principle governs documentation as much as code, so the table is written
+// once here and spliced into each block by adjacent string-literal
+// concatenation; the two blocks that do not carry it (SPAmixPlus,
+// SPAGxEmix) defer to the method whose output they reproduce exactly.
+// Both macros are #undef'd at the end of this header.
+//
+// The encoding itself is `spa::Status` in src/util/spa.hpp; that enum and
+// this text must be changed together.
+#define GRAB_SPA_STATUS_TABLE \
+R"(    SPA_STATUS* outcome of the test that produced the p-value beside it, as
+                the integer spa::Status.  The column is spelled to match that
+                p-value (SPA_STATUS, SPA_STATUS_EXT, SPA_STATUS_tau{val},
+                SPA_STATUS_Gx<E>, cl<i>_SPA_STATUS_NOEXT, ...).  Nine values,
+                ordered by what the LOG10P cell holds:
+                  0 SPA_OK          saddlepoint; both tails converged
+                  1 NORMAL          normal approximation, and that is the
+                                    DESIGNED behaviour: either |Z| is at or
+                                    below --spa-z-threshold so the saddlepoint
+                                    was never attempted, or the test does not
+                                    use a saddlepoint at all (Wald legs, GALLOP)
+                  2 SPA_W_SINGULAR  saddlepoint, degraded: |w| <= 1e-3 in at
+                                    least one tail, so Phi(+/-w) replaces the
+                                    r* correction -- the correct limit there
+                  3 FALLBACK_MAXITER     the root finder did not meet its
+                                         residual criterion
+                  4 FALLBACK_GUARD_TEMP  zeta*s - K(zeta) < 0, so w is not real
+                  5 FALLBACK_GUARD_CURV  K''(zeta) <= 0, so v is not real
+                  6 FALLBACK_NONFINITE   zeta, a cumulant or r* left the reals
+                  7 NA_POST_FAIL    a step DOWNSTREAM of the saddlepoint
+                                    failed: a (var, cov, var) triple that is
+                                    not a covariance matrix, a conditional
+                                    denominator that is not usable, a mixture
+                                    leg that is missing and not immaterial
+                  8 NA_NO_TEST      no statistic exists for this marker in
+                                    this stratum: no informative subject, a
+                                    monomorphic stratum, Var(S) <= 0, or a
+                                    non-finite Z
+                The ordering is a design property, and it is the filter rule:
+                  SPA_STATUS <= 2        LOG10P is trustworthy
+                  3 <= SPA_STATUS <= 6   LOG10P is a substituted normal tail
+                  SPA_STATUS >= 7        LOG10P is NA
+)"
+
+// The fallback warning.  Kept separate from the table so that the two can be
+// read, and revised, independently: the table states the encoding, this
+// states what is known about the substituted estimator.
+#define GRAB_SPA_FALLBACK_NOTE \
+R"(                Codes 3-6 report the two-sided normal tail
+                -log10(2*Phi(-|Z_Norm|)) in place of the saddlepoint value,
+                with the code naming why the saddlepoint could not be used.
+                The normal approximation is precisely what the saddlepoint
+                exists to correct, so those rows carry lower p-value accuracy
+                than the rest: filter with SPA_STATUS <= 2 before judging
+                significance.  On every null cohort measured in this
+                repository the substitution does not occur at all -- including
+                on one built specifically to provoke it, and with
+                --spa-z-threshold lowered to 0.05 so that nearly every marker
+                enters the saddlepoint branch.  Where it was observed earlier,
+                before the pairwise-IBD defect that caused it was repaired, it
+                fired only in a narrow band of |Z| just above
+                --spa-z-threshold; that bounded those rows at LOG10P <= 3.97
+                and made their enrichment at the genome-wide threshold 7.301
+                exactly zero.  The bound is EMPIRICAL, not a theorem: a
+                saddlepoint failure at large |Z| would still produce a large
+                substituted LOG10P.
+                Codes 7 and 8 substitute nothing.  There Z either does not
+                exist or says nothing about the quantity that failed, so a
+                p-value built from it would be fabricated rather than reported.
+)"
+
 // ════════════════════════════════════════════════════════════════════
 //  Method definitions
 // ════════════════════════════════════════════════════════════════════
@@ -626,7 +745,7 @@ inline constexpr const char *kPhenoNoteResidOrFit =
     "                       --save-resid            write fitted residuals to PREFIX.null.resid\n"
     "    Longitudinal mode: --pheno-name COL_IDS  --longitudinal  --covar-name COL_IDS\n"
     "                       long-format --pheno (>= 1 row/IID); fits Y ~ X + (1 | IID) and uses\n"
-    "                       the per-IID residual R_G (marginal main effect; no --sageld-x / G x E)";
+    "                       the per-IID residual R_G (marginal main effect; no --envir-name / G x E)";
 
 // ── SPACox ─────────────────────────────────────────────────────────
 inline const FlagDef *const kSPACoxReq[] = {
@@ -637,7 +756,7 @@ inline const FlagDef *const kSPACoxOpt[] = {
     &kCovar,       &kCovarName,        &kResidName,    &kPhenoName,   &kRegressionModel,  &kSaveResid,
     &kLongitudinal,
     &kCovarPThresh, &kSpaZThresh,      &kSeed,
-    &kThreads,      &kChunkSize,
+    &kThreads,      &kChunkKsnp,
     &kCompression, &kCompressionLevel,
     &kKeep,         &kRemove,           &kExtract,      &kExclude,
     &kGeno,         &kMaf,         &kMac,        &kHwe, &kHardCallThreshold,     &kChr,
@@ -650,7 +769,17 @@ inline const MethodDef kSPACox = {
     kSPACoxOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPACox[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z)",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P      -log10(P), the ONLY p-value column.  It is assembled in the
+                log domain throughout, so it stays a magnitude past the point
+                where a linear-scale p underflows to exactly zero (|Z| ~ 38.6).
+                A consumer that needs the linear p recovers it as 10^(-LOG10P).
+    Z           the two-sided normal deviate that reproduces LOG10P, inverted
+                in the log domain, so it does not saturate.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     nullptr,
 };
 
@@ -664,7 +793,7 @@ inline const FlagDef *const kSPAGRMOpt[] = {
     &kLongitudinal,
     &kCovar,      &kCovarName,
     &kSpaZThresh, &kOutlierIqr, &kSpagrmControlOutlier,      &kSeed,
-    &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kThreads, &kChunkKsnp, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,    &kExclude,
     &kGeno,       &kMaf,     &kMac,       &kHwe, &kHardCallThreshold,         &kChr,
     nullptr
@@ -676,7 +805,17 @@ inline const MethodDef kSPAGRM = {
     kSPAGRMOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAGRM[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z)",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P      -log10(P), the ONLY p-value column.  It is assembled in the
+                log domain throughout, so it stays a magnitude past the point
+                where a linear-scale p underflows to exactly zero (|Z| ~ 38.6).
+                A consumer that needs the linear p recovers it as 10^(-LOG10P).
+    Z           the two-sided normal deviate that reproduces LOG10P, inverted
+                in the log domain, so it does not saturate.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     "Generate pairwise IBD file with: grab2 --cal-pairwise-ibd",
 };
 
@@ -686,8 +825,8 @@ inline const FlagDef *const kSAGELDReq[] = {
     nullptr
 };
 inline const FlagDef *const kSAGELDOpt[] = {
-    &kResidName, &kPhenoName, &kCovarName, &kSageldX,    &kSageldMethod, &kSaveResid,
-    &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kResidName, &kPhenoName, &kCovarName, &kEnvirName,  &kSageldMethod, &kSaveResid,
+    &kSpaZThresh, &kThreads, &kChunkKsnp, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,   &kExclude,
     &kGeno, &kMaf, &kMac, &kHwe, &kHardCallThreshold, &kChr,
     nullptr
@@ -699,21 +838,139 @@ inline const MethodDef kSAGELD = {
     kSAGELDOpt,
     "    Residual mode: --resid-name R_G,R_<E1>,R_Gx<E1>[,...]\n"
     "                   pre-computed lmer residuals; layout: R_G + (R_<E>, R_Gx<E>) pairs\n"
-    "    Pheno mode:    --pheno-name Y1,Y2,... --covar-name X1,X2,... --sageld-x E1[,E2,...]\n"
-    "                   long-format Y, X, E; --covar-name must include every --sageld-x var\n"
+    "    Pheno mode:    --pheno-name Y1,Y2,... --covar-name X1,X2,... --envir-name E\n"
+    "                   long-format Y, X, E; --covar-name must include the --envir-name var\n"
     "                   --save-resid           write fitted (R_G, R_E, R_GxE) to PREFIX.null.resid",
     R"(Residual mode: PREFIX.SAGELD[.gz|.zst]   single file
   Pheno mode:    PREFIX.<COL>.SAGELD[.gz|.zst]   one file per --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
-  P_G  P_Gx<E1>  [...]  Z_G  Z_Gx<E1>  [...])",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+  LOG10P_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>
+                 SPA_STATUS_Gx<E1>   [... per env]
+  --sageld-method gallop replaces the G×E block with the exact Wald quintet
+  LOG10P_Gx<E> Z_Gx<E> BETA_Gx<E> SE_Gx<E> SPA_STATUS_Gx<E> (no Z_Norm: the
+  GALLOP z is already p-consistent).
+    LOG10P_*      -log10 of the p for that block, the ONLY p-value columns.
+                  Both are assembled in the log domain, so they stay
+                  magnitudes past the point where a linear-scale p underflows
+                  to exactly zero.  Recover the linear p as 10^(-LOG10P).
+                  SPA_STATUS_G is 1 (NORMAL) wherever Var(S_G) > 0 -- the G
+                  main effect is a plain two-sided normal test and never
+                  attempts a saddlepoint -- and 8 (NA_NO_TEST) where it is
+                  not.  SPA_STATUS_Gx is the saddlepoint outcome of that
+                  environment's G×E score test, the same encoding --method
+                  spagrm reports, because SAGELD runs the same SPAGRMClass;
+                  under --sageld-method gallop it is 1 (NORMAL) on both
+                  blocks, GALLOP being a Wald test.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     R"(Two input modes (mutually exclusive):
   Residual mode — supply lme4::lmer() residuals directly via --resid-name.
                   Column layout: R_G followed by (R_<E>, R_Gx<E>) pairs.
   Pheno mode    — supply long-format Y, X, E and fit  Y ~ X + (E | IID)
-                  internally via EM-ML.  --covar-name must include every
-                  variable in --sageld-x.
+                  internally via EM-ML.  --covar-name must include the
+                  --envir-name variable.
 
 Generate the IBD file once with: grab2 --cal-pairwise-ibd)",
+};
+
+// ── SPAGxE ─────────────────────────────────────────────────────────
+inline const FlagDef *const kSPAGxEReq[] = {
+    &kGeno_input, &kPheno, &kOut, &kEnvirName,
+    nullptr
+};
+inline const FlagDef *const kSPAGxEOpt[] = {
+    &kCovar,      &kCovarName,   &kResidName,   &kPhenoName,   &kRegressionModel, &kSaveResid,
+    &kSpagxeMarginalCutoff,
+    &kSpGrm,
+    &kSpaZThresh, &kOutlierIqr,  &kSeed,
+    &kThreads,    &kChunkKsnp,   &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove,      &kExtract,     &kExclude,
+    &kGeno,       &kMaf,         &kMac,         &kHwe, &kHardCallThreshold, &kChr,
+    nullptr
+};
+inline const MethodDef kSPAGxE = {
+    "SPAGxE",
+    "Retrospective saddlepoint gene-environment (G x E) interaction test",
+    kSPAGxEReq,
+    kSPAGxEOpt,
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.SPAGxE[.gz|.zst]   one file per --resid-name / --pheno-name column
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+  LOG10P_Gx<E1>  LOG10P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
+                 BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
+    LOG10P_*      -log10 of the p for that block, the ONLY p-value columns.
+                  Every path that produces one is evaluated in the log domain,
+                  so they stay magnitudes past the point where a linear-scale
+                  p underflows to exactly zero.  Recover the linear p as
+                  10^(-LOG10P).  In Branch B with a Wald leg the reported
+                  LOG10P_Gx is the Cauchy combination CCT(p_spa, p_wald),
+                  taken over the two magnitudes rather than over the two
+                  linear p-values: the Cauchy statistic's terms are 1/(pi*p)
+                  and overflow for p <= 1e-308, so that statistic is never
+                  formed.  The Branch-B Wald leg is reported as a magnitude of
+                  its own (LOG10P_Wald_Gx, NA where no Wald ran) and enters
+                  the combination as one, so no leg carries an underflow
+                  ceiling.
+    SPA_STATUS_Gx always describes the SADDLEPOINT leg: in Branch B a failed
+                  saddlepoint whose Wald refit succeeded still yields a finite
+                  LOG10P_Gx, and the status is the only record that the SPA
+                  leg dropped out of the combination.
+  The marginal block is always the normal approximation, never a saddlepoint,
+  so SPA_STATUS_G is 1 (NORMAL) wherever Var(S_G) > 0 and 8 (NA_NO_TEST) where
+  it is not.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
+    R"(Every --envir-name column must also appear in --covar-name (it enters the
+genotype-independent null model  trait ~ X + E).  Passing an optional sparse
+GRM (--sp-grm-grab / --sp-grm-plink2) engages the SPAGxE+ relatedness-corrected
+score variance (a retrospective GRM quadratic form; no --pairwise-ibd needed);
+absent, the base unrelated test runs.)",
+};
+
+// ── SPAGxEmix ───────────────────────────────────────────────────────
+inline const FlagDef *const kSPAGxEmixReq[] = {
+    &kGeno_input, &kPheno, &kOut, &kEnvirName, &kPcCols,
+    nullptr
+};
+inline const FlagDef *const kSPAGxEmixOpt[] = {
+    &kCovar,      &kCovarName,   &kResidName,   &kPhenoName,   &kRegressionModel, &kSaveResid,
+    &kSpagxeMarginalCutoff,
+    &kSpaZThresh, &kOutlierIqr,  &kSeed,
+    &kThreads,    &kChunkKsnp,   &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove,      &kExtract,     &kExclude,
+    &kGeno,       &kMaf,         &kMac,         &kHwe, &kHardCallThreshold, &kChr,
+    nullptr
+};
+inline const MethodDef kSPAGxEmix = {
+    "SPAGxEmix",
+    "SPAGxE G x E test with per-individual allele frequency (admixture)",
+    kSPAGxEmixReq,
+    kSPAGxEmixOpt,
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.SPAGxEmix[.gz|.zst]   one file per --resid-name / --pheno-name column
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  LOG10P_G  Z_G  BETA_G  SE_G  SPA_STATUS_G
+  LOG10P_Gx<E1>  LOG10P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
+                 BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
+    LOG10P_* and SPA_STATUS_* are as documented under --method spagxe.
+  A marker whose per-individual allele frequencies all saturate at 0 or 1 has
+  Var(S_G) = 0 and no statistic at all.  Every p-value cell of the row is NA
+  and both status columns are 8 (NA_NO_TEST) -- NOT one of the fallback codes
+  3-6, because there is nothing to fall back to: Z_Norm does not exist either,
+  so any p-value reported there would be fabricated.  Three of the 3000
+  markers in the bundled examples/1kg fixture are of that kind, all with
+  ALT_FREQ > 0.99.)",
+    R"(SPAGxEmix accounts for admixture by estimating a per-individual allele
+frequency q_i from the --pc-cols principal components (the same cascade as
+SPAmix), so the retrospective genotype law is Binomial(2, q_i).  The --pc-cols
+columns must also appear in --covar-name (they adjust the null model).  Every
+--envir-name column must likewise appear in --covar-name.  A sparse GRM is NOT
+accepted (SPAGxEmix+ is out of scope); the Branch-B Wald + CCT leg is applied
+exactly as in --method spagxe.)",
 };
 
 // ── SPAmix ─────────────────────────────────────────────────────────
@@ -726,7 +983,7 @@ inline const FlagDef *const kSPAmixOpt[] = {
     &kLongitudinal,
     &kIndAfCoef,  &kOutlierIqr,
     &kSpaZThresh, &kSeed,
-    &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kThreads, &kChunkKsnp, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,   &kExclude,
     &kGeno,       &kMaf,     &kMac,       &kHwe, &kHardCallThreshold,         &kChr,
     nullptr
@@ -738,7 +995,17 @@ inline const MethodDef kSPAmix = {
     kSPAmixOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAmix[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE)",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P      -log10(P), the ONLY p-value column.  It is assembled in the
+                log domain throughout, so it stays a magnitude past the point
+                where a linear-scale p underflows to exactly zero (|Z| ~ 38.6).
+                A consumer that needs the linear p recovers it as 10^(-LOG10P).
+    Z           the two-sided normal deviate that reproduces LOG10P, inverted
+                in the log domain, so it does not saturate.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     R"(Pre-compute the AF model for speed: grab2 --cal-af-coef.
 
 AF coefficient scope.  With --ind-af-coef, every phenotype in this run
@@ -759,7 +1026,7 @@ inline const FlagDef *const kSPAmixPlusReq[] = {
 inline const FlagDef *const kSPAmixPlusOpt[] = {
     &kCovar,      &kCovarName,  &kResidName,  &kPhenoName,    &kRegressionModel,    &kSaveResid,
     &kIndAfCoef,        &kOutlierIqr, &kSpaZThresh, &kSeed,    &kThreads,
-    &kChunkSize, &kCompression, &kCompressionLevel,
+    &kChunkKsnp, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,    &kExtract,    &kExclude,
     &kGeno,       &kMaf,        &kMac,
     &kHwe, &kHardCallThreshold,       &kChr,
@@ -772,7 +1039,9 @@ inline const MethodDef kSPAmixPlus = {
     kSPAmixPlusOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAmixP[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE)",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P, Z and SPA_STATUS are as documented under --method spamix.)",
     R"(AF coefficient scope.  With --ind-af-coef, every phenotype in this
 run shares the single pre-computed AF model per marker (fit at
 --cal-af-coef time on its full subject set).  Without --ind-af-coef,
@@ -794,7 +1063,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kPhenoName,    &kRegressionModel,
     &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
     &kSpasqrHScale, &kOutlierIqr, &kOutlierAbs,
-    &kSpaZThresh,   &kThreads,    &kChunkSize,
+    &kSpaZThresh,   &kThreads,    &kChunkKsnp,
     &kCompression,  &kCompressionLevel,
     &kKeep,         &kRemove,     &kExtract,    &kExclude,
     &kGeno, &kMaf,
@@ -812,8 +1081,26 @@ inline const MethodDef kSPAsqr = {
     "    --regression-model MODEL              auto | linear (default: auto; declarative only)\n"
     "                                          (SPAsqr fits smoothed QR per --spasqr-taus internally)",
     R"(PREFIX.<COL>.SPAsqr[.gz|.zst]   one file per --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
-  P_CCT  P_tau{val}... Z_tau{val}...)",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  LOG10P_CCT  LOG10P_tau{val}...  Z_tau{val}...
+         Z_Norm_tau{val}...  SPA_STATUS_tau{val}...
+    LOG10P_tau    -log10 of that tau's p, the ONLY per-tau p-value column.  It
+                  is assembled in the log domain, so it stays a magnitude past
+                  the point where a linear-scale p underflows to exactly zero.
+                  Recover the linear p as 10^(-LOG10P_tau).  A tau whose
+                  LOG10P_tau is NA drops out of the LOG10P_CCT combination.
+    LOG10P_CCT    the Cauchy combination of the per-tau tests, on the same
+                  -log10 scale.  It is computed FROM the LOG10P_tau group and
+                  never from linear p-values: the Cauchy statistic's terms are
+                  1/(pi*p), so the statistic overflows as soon as any single
+                  tau reaches p ~ 1e-308, where a linear combination returned
+                  exactly 0.  In the tail the combination is dominated by the
+                  smallest p, LOG10P_CCT ~ max(LOG10P_tau) - log10(T) for T
+                  taus.  LOG10P_CCT has no SPA_STATUS of its own; read the
+                  per-tau statuses that fed it.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     nullptr,
 };
 
@@ -826,7 +1113,7 @@ inline const FlagDef *const kWtCoxGReq[] = {
 inline const FlagDef *const kWtCoxGOpt[] = {
     &kCovar,  &kCovarName,
     &kPhenoName,  &kRegressionModel,    &kSpGrm,  &kBatchPThresh,
-    &kSpaZThresh, &kOutlierIqr, &kThreads, &kChunkSize,
+    &kSpaZThresh, &kOutlierIqr, &kThreads, &kChunkKsnp,
     &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove, &kExtract,   &kExclude,
     &kGeno, &kMaf,
@@ -842,8 +1129,36 @@ inline const MethodDef kWtCoxG = {
     "    --pheno-name COL_IDS                  TIME:EVENT pair (Cox) or binary trait (logistic)\n"
     "    --regression-model MODEL              auto | logistic | cox (default: auto)",
     R"(PREFIX.<COL>.WtCoxG[.gz|.zst]   one file per --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
-  P_EXT  P_NOEXT  Z_EXT  Z_NOEXT  P_BAT  PI_BAT  VAR_BAT)",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  LOG10P_EXT  LOG10P_NOEXT  Z_EXT  Z_NOEXT  Z_Norm_EXT  Z_Norm_NOEXT
+  LOG10P_BAT  PI_BAT  VAR_BAT  SPA_STATUS_EXT  SPA_STATUS_NOEXT
+    LOG10P_EXT    -log10 of the association p that USES the external reference
+                  allele frequency (--ref-af), i.e. the weighted Cox score test
+                  conditioned on the batch-effect test having passed.
+    LOG10P_NOEXT  -log10 of the same association p computed WITHOUT the
+                  external frequency.  Read LOG10P_EXT when the batch-effect
+                  test passes and LOG10P_NOEXT when it does not; the
+                  --batch-effect-p-threshold decision is reported by LOG10P_BAT.
+    LOG10P_BAT    -log10 of the batch-effect test p, comparing the cohort's
+                  allele frequency against the external reference.
+    All three are the ONLY p-value columns and are formed in the log domain
+    end to end -- including the conditional ratio behind LOG10P_EXT, which was
+    the last place in this method where a linear p could underflow to zero and
+    turn a magnitude into +Inf.  Recover a linear p as 10^(-LOG10P).
+    LOG10P_BAT has no SPA_STATUS: the batch-effect test is a plain two-sided
+    normal test, not a saddlepoint.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE
+R"(  One WtCoxG-specific reading of the table.  LOG10P_EXT is a CONDITIONAL
+  probability assembled from mixture legs, not a tail of one statistic, so a
+  code in 3-6 on SPA_STATUS_EXT does not mean LOG10P_EXT is itself a normal
+  tail; it means one of the variances entering that assembly was recovered
+  from a p-value the saddlepoint could not deliver.  The row is still a
+  substituted result and is still what SPA_STATUS <= 2 excludes.  Code 7 is
+  where the (var_S, cov, var_Sbat) triple that is not a covariance matrix is
+  reported: that triple is a modelling limitation of Branch B, is a known
+  remaining gap, and is named rather than laundered into a number.)",
     nullptr,
 };
 
@@ -859,7 +1174,7 @@ inline const FlagDef *const kLEAFOpt[] = {
     &kPcCols,    &kNClusters, &kLeafClusterFile, &kLeafKmeansNstart,
     &kSeed,      &kSpGrm,     &kBatchPThresh, &kSpaZThresh,
     &kOutlierIqr,
-    &kThreads,   &kChunkSize,
+    &kThreads,   &kChunkKsnp,
     &kCompression, &kCompressionLevel,
     &kKeep,      &kRemove,    &kExtract,   &kExclude,
     &kGeno,      &kMaf,       &kMac,          &kHwe, &kHardCallThreshold,        &kChr,
@@ -875,9 +1190,31 @@ inline const MethodDef kLEAF = {
     "    --regression-model MODEL              auto | logistic | cox (default: auto)\n"
     "                                          (--pc-cols drives the per-cluster K-means assignment)",
     R"(PREFIX.<COL>.LEAF[.gz|.zst]   one file per --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
-  meta_P_EXT  meta_P_NOEXT
-  cl1_MAC  cl1_P_EXT  cl1_P_NOEXT  cl1_P_BAT  cl1_PI_BAT  cl1_VAR_BAT  [cl2_... cl3_... ...])",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
+  meta_LOG10P_EXT  meta_LOG10P_NOEXT  meta_SPA_STATUS_EXT  meta_SPA_STATUS_NOEXT
+  cl1_MAC  cl1_LOG10P_EXT  cl1_LOG10P_NOEXT  cl1_LOG10P_BAT  cl1_PI_BAT
+  cl1_VAR_BAT  cl1_SPA_STATUS_EXT  cl1_SPA_STATUS_NOEXT   [cl2_... cl3_... ...]
+    cl<i>_*       one WtCoxG analysis per ancestry cluster; the column meanings
+                  are exactly those documented under --method wtcoxg.
+    meta_LOG10P_* the inverse-variance score pooling of the per-cluster
+                  results, on the -log10 scale.  The per-cluster weights are
+                  recovered from the per-cluster magnitudes by an analytic
+                  df = 1 chi-squared inversion, so a cluster that is extremely
+                  significant no longer has its weight truncated the way an
+                  inversion through a clamped quantile function truncated it.
+    All LOG10P columns are the ONLY p-value columns and are formed in the log
+    domain end to end.  Recover a linear p as 10^(-LOG10P).  cl<i>_LOG10P_BAT
+    has no SPA_STATUS: the batch-effect test is a plain two-sided normal test.
+  A cluster with no informative subject for a marker is the common case, not
+  the exception, and it is reported as 8 (NA_NO_TEST) with that cluster's
+  p-value cells NA -- never as a fallback, because no statistic exists there.
+  The meta columns take 7 (NA_POST_FAIL) when the pooled variance is not
+  positive, including when no cluster contributed at all: what failed there is
+  the POOLING, and 8 states the stronger thing, that the marker has no
+  statistic in this stratum.  Both are NA and neither is a fallback.
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE,
     R"(--pheno path: auto K-means on --pc-cols.
 The number of clusters and reference populations are independent.
 Summix estimates per-cluster ancestry proportions from the reference populations.)",
@@ -885,7 +1222,7 @@ Summix estimates per-cluster ancestry proportions from the reference populations
 
 // ── Utility mode: cal-phi ───────────────────────────────────────────
 inline const FlagDef *const kCalPhiReq[] = {
-    &kAdmixBfile, &kSpGrm, &kOut,
+    &kLanc, &kSpGrm, &kOut,
     nullptr
 };
 
@@ -906,17 +1243,17 @@ Output: PREFIX.phi[.gz|.zst])",
     "Pass output to --admix-phi for SPAmixLocalPlus GWAS.",
 };
 
-// ── SPAmixLocalPlus (── --pheno + --admix-bfile + --admix-phi) ──
+// ── SPAmixLocalPlus (── --pheno + --lanc + --admix-phi) ──
 // Not in kAllMethods—dispatched automatically when the three flags are present.
 inline const FlagDef *const kSPAmixLocalPlusReq[] = {
-    &kAdmixBfile, &kPheno, &kAdmixPhi, &kOut,
+    &kLanc, &kPheno, &kAdmixPhi, &kOut,
     nullptr
 };
 
 inline const FlagDef *const kSPAmixLocalPlusOpt[] = {
     &kCovar,            &kCovarName,        &kResidName,  &kPhenoName,  &kRegressionModel, &kSaveResid,
     &kKeep,             &kRemove,           &kExtract,    &kExclude,
-    &kOutlierIqr,       &kSpaZThresh,       &kThreads,    &kChunkSize,
+    &kOutlierIqr,       &kSpaZThresh,       &kThreads,    &kChunkKsnp,
     &kCompression,      &kCompressionLevel,
     &kGeno,             &kMaf,              &kMac,        &kHwe, &kHardCallThreshold,        &kChr,
     nullptr
@@ -929,39 +1266,52 @@ inline const MethodDef kSPAmixLocalPlus = {
     kSPAmixLocalPlusOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.LocalP[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  P_CCT
-  anc0_AltFreq  anc0_MissingRate  anc0_P  anc0_Pnorm  anc0_Stat  anc0_Var  anc0_zScore  anc0_AltCounts  anc0_BetaG
-  anc1_AltFreq  ...  (repeated for each ancestry k))",
+  CHROM  POS  ID  REF  ALT
+  anc0_MISS_RATE  anc0_ALT_FREQ  anc0_MAC
+  anc0_LOG10P  anc0_BETA  anc0_SE  anc0_SPA_STATUS
+  anc1_MISS_RATE  ...  (the seven columns repeat for each ancestry k)
+    LOG10P      -log10(P), the ONLY p-value column.  It is assembled in the
+                log domain throughout, so it stays a magnitude past the point
+                where a linear-scale p underflows to exactly zero.  Recover
+                the linear p as 10^(-LOG10P).
+)"
+    GRAB_SPA_STATUS_TABLE
+    GRAB_SPA_FALLBACK_NOTE
+R"(  An ancestry failing the --geno / --maf / --mac filters is NA in all four
+  statistic columns.)",
     R"(Two-phase workflow:
-  1. grab --cal-phi --admix-bfile PREFIX --sp-grm-plink2 FILE --out OUTPUT_PREFIX
-  2. grab --method SPAmixLocalPlus --admix-bfile PREFIX --admix-phi OUTPUT_PREFIX.phi --pheno FILE --out PREFIX)",
+  1. grab --cal-phi --lanc PREFIX --sp-grm-plink2 FILE --out OUTPUT_PREFIX
+  2. grab --method SPAmixLocalPlus --lanc PREFIX --admix-phi OUTPUT_PREFIX.phi --pheno FILE --out PREFIX)",
 };
 
-// ── Utility mode: make-abed ────────────────────────────────────────
-inline const FlagDef *const kMakeAbedReq[] = {
+// ── Utility mode: make-lanc ────────────────────────────────────────
+inline const FlagDef *const kMakeLancReq[] = {
     &kOut,
     nullptr
 };
 
-inline const FlagDef *const kMakeAbedOpt[] = {
-    &kVcf, &kBcf, &kMsp, &kAdmixTextPrefix,
+inline const FlagDef *const kMakeLancOpt[] = {
+    &kVcf, &kBcf, &kMsp, &kCompressionLevel,
     &kKeep, &kRemove, &kThreads,
     nullptr
 };
 
-inline const MethodDef kMakeAbed = {
-    "make-abed",
-    "Build .abed admixed ancestry binary from VCF+MSP or extract_tracts output",
-    kMakeAbedReq,
-    kMakeAbedOpt,
+inline const MethodDef kMakeLanc = {
+    "make-lanc",
+    "Build merged .lanc plane-separated local-ancestry binary from phased VCF/BCF + rfmix2 MSP",
+    kMakeLancReq,
+    kMakeLancOpt,
     nullptr,
-    "{prefix}.abed  {prefix}.bim  {prefix}.fam",
-    R"(Two modes (mutually exclusive):
-  --vcf FILE --rfmix-msp FILE  phased VCF + rfmix2 MSP            ->  .abed
-  --bcf FILE --rfmix-msp FILE  phased BCF2 + rfmix2 MSP           ->  .abed
-  --admix-text-prefix PREFIX   extract_tracts text output         ->  .abed
---out PREFIX writes PREFIX.abed, PREFIX.bim, PREFIX.fam.
-Pass PREFIX as --admix-bfile to SPAmixLocalPlus or --cal-phi.)",
+    "{prefix}.lanc  {prefix}.bim  (one merged file, chromosome segments)   +   {prefix}.fam  (shared)",
+    R"(--vcf PREFIX --rfmix-msp PREFIX   phased per-chr VCF/.vcf.gz + rfmix2 per-chr MSP  ->  .lanc
+--bcf PREFIX --rfmix-msp PREFIX   phased per-chr BCF2 + rfmix2 per-chr MSP            ->  .lanc
+Both flags are treated as PREFIXES: per-chromosome inputs are discovered
+by globbing {PREFIX}*.bcf / {PREFIX}*.vcf[.gz|.zst] and {PREFIX}*.msp.tsv
+respectively, matched by chromosome token.  --out PREFIX writes ONE merged
+PREFIX.lanc (a chromosome segment per contig, in chromosome order) and the
+companion merged PREFIX.bim plus one shared PREFIX.fam.
+--compression-level sets the zstd level for the .lanc frames (default 3).
+Pass PREFIX as --lanc to SPAmixLocalPlus or --cal-phi.)",
 };
 
 // ── Utility mode: int-pheno ────────────────────────────────────────
@@ -1004,7 +1354,7 @@ inline const FlagDef *const kCalAfOpt[] = {
     &kPheno,   &kCovar,     &kKeep, &kRemove,
     &kExtract, &kExclude,
     &kCompression, &kCompressionLevel,
-    &kThreads, &kChunkSize, &kGeno, &kMaf,    &kMac,         &kHwe, &kHardCallThreshold,             &kChr,
+    &kThreads, &kChunkKsnp, &kGeno, &kMaf,    &kMac,         &kHwe, &kHardCallThreshold,             &kChr,
     nullptr
 };
 
@@ -1067,18 +1417,19 @@ inline const MethodDef kCalPairwiseIbd = {
 // kAllMethods / kAllUtilModes drive method-name canonicalization inside the
 // dispatcher and must therefore continue to list every method GRAB knows
 // how to run, including the ones that are intentionally hidden from
-// --help (SPAmixLocalPlus, --make-abed, --cal-phi).  Help generation uses
+// --help (SPAmixLocalPlus, --cal-phi).  Help generation uses
 // the kVisible* arrays below, which omit the hidden entries; running
-// `grab --help SPAmixLocalPlus|make-abed|cal-phi` therefore reports
+// `grab --help SPAmixLocalPlus|cal-phi` therefore reports
 // "Unknown help topic" while the methods themselves remain functional.
 inline const MethodDef *const kAllMethods[] = {
-    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAmix, &kSPAmixPlus, &kSPAmixLocalPlus,
+    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAGxEmix, &kSPAmix, &kSPAmixPlus,
+    &kSPAmixLocalPlus,
     &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr
 };
 
 inline const MethodDef *const kAllUtilModes[] = {
-    &kCalAfCoef, &kCalPairwiseIbd, &kCalPhi, &kMakeAbed, &kIntPheno,
+    &kCalAfCoef, &kCalPairwiseIbd, &kCalPhi, &kMakeLanc, &kIntPheno,
     nullptr
 };
 
@@ -1086,19 +1437,24 @@ inline const MethodDef *const kAllUtilModes[] = {
 // callable via --method but are hidden from --help to keep the surface
 // area focussed on the seven core GWAS methods.
 inline const MethodDef *const kVisibleMethods[] = {
-    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAmix,
+    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAGxEmix, &kSPAmix,
     &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr
 };
 
+// --make-lanc (unlike --cal-phi / SPAmixLocalPlus) is
+// discoverable via --help: it is the standalone converter feeding the
+// still-under-development local-ancestry pipeline, and has no dependency
+// on the hidden admix reader internals, so it is listed here even while
+// --cal-phi / SPAmixLocalPlus stay hidden.
 inline const MethodDef *const kVisibleUtilModes[] = {
-    &kCalAfCoef, &kCalPairwiseIbd, &kIntPheno,
+    &kCalAfCoef, &kCalPairwiseIbd, &kIntPheno, &kMakeLanc,
     nullptr
 };
 
 // File-accepting flags (for --help <flag-topic>).  Admix-* topics and
 // --sp-grm-grab are omitted because the methods that consume them
-// (SPAmixLocalPlus, --cal-phi, --make-abed) and the legacy GRAB sparse
+// (SPAmixLocalPlus, --cal-phi) and the legacy GRAB sparse
 // GRM format are hidden from --help; the flags themselves remain
 // accepted by the parser.
 inline const FlagDef *const kFileFlags[] = {
@@ -1107,21 +1463,25 @@ inline const FlagDef *const kFileFlags[] = {
     nullptr
 };
 
-// Flags shown by `--help options`.  Admix-mode flags (--admix-bfile,
-// --admix-phi, --rfmix-msp, --admix-text-prefix) and --sp-grm-grab are
-// excluded because the methods that consume them (SPAmixLocalPlus,
-// --cal-phi, --make-abed) and the legacy GRAB sparse-GRM format are
-// hidden from --help.
+// Flags shown by `--help options`.  Admix-mode flags (--admix-phi) and
+// --sp-grm-grab are excluded because the methods that consume them
+// (SPAmixLocalPlus, --cal-phi) and the legacy GRAB sparse-GRM format are
+// hidden from --help.  --lanc is the exception: it is the reader input
+// for the same hidden methods, but is kept discoverable here because
+// --make-lanc (the converter that produces it) is itself a visible
+// utility mode.
 inline const FlagDef *const kInputFlags[] = {
     &kBfile,       &kPfile,       &kVcf,         &kBcf,
     &kBgen,
     &kOut,         &kCompression, &kCompressionLevel,
     &kPheno,       &kCovar,       &kCovarName,
     &kPhenoName,   &kResidName,   &kRegressionModel, &kSaveResid,    &kLongitudinal,
+    &kEnvirName,
     &kPcCols,      &kRefAf,
     &kSpGrmPlink2, &kIndAfCoef,   &kPairwiseIbd,
     &kPredList,    &kPhenoTransform,
     &kLeafClusterFile,
+    &kLanc,
     &kKeep,        &kRemove,
     &kExtract,     &kExclude,     &kChr,
     nullptr
@@ -1130,14 +1490,14 @@ inline const FlagDef *const kInputFlags[] = {
 inline const FlagDef *const kNumericFlags[] = {
     &kPrevalence, &kBatchPThresh, &kCovarPThresh,     &kSpaZThresh, &kOutlierIqr, &kOutlierAbs,
     &kSpagrmControlOutlier,
-    &kThreads,    &kChunkSize,    &kCompressionLevel, &kNClusters,
+    &kThreads,    &kChunkKsnp,    &kCompressionLevel, &kNClusters,
     &kLeafKmeansNstart,
     &kSeed,       &kGeno,
     &kMaf,        &kMac,          &kHwe, &kHardCallThreshold,              &kMinMafIbd,
     &kSpasqrTaus, &kSpasqrTol,    &kSpasqrH,          &kSpasqrHScale,
     &kSpasqrMode,
-    &kSageldX,
     &kSageldMethod,
+    &kSpagxeMarginalCutoff,
     nullptr
 };
 
@@ -1147,3 +1507,10 @@ inline const FlagDef *const kFilterFlags[] = {
 };
 
 } // namespace cli
+
+// The two output-documentation macros have done their work at this point --
+// every string literal that splices them has already been formed -- so they
+// are retired rather than left in every translation unit that includes this
+// header.
+#undef GRAB_SPA_STATUS_TABLE
+#undef GRAB_SPA_FALLBACK_NOTE
