@@ -1,12 +1,30 @@
 // spasqr_wald.cpp — SPAsqr Wald mode (full-model effect size + SE)
 //
 // For every (marker, τ) pair, this mode refits the joint smoothed-QR model
-// on Z = [1 | X | G] using QMME, then computes the M-estimation sandwich
+// on Z = [1 | X | G] by damped Newton (qmme::SqrSolver::solveNewton), started
+// from the null-model fit at that τ with the genotype coefficient at 0, and
+// converged to ||grad||_inf <= --spasqr-tol.  It then computes the
+// M-estimation sandwich
 //      V = A^{-1} B A^{-1} / n,
 // where
 //      A = (1/n) Σ K_h(-e_i)   Z_i Z_i^T   (smooth-QR Hessian)
 //      B = (1/n) Σ R_i^2       Z_i Z_i^T   (R_i = τ - Φ(-e_i/h))
 // Effect size β̂_G is the last entry of θ̂ and SE = sqrt(V[γγ]).
+//
+// Quantile-heterogeneity test (Koenker–Bassett, smoothed, robust).  Stacking
+// the ntaus estimating equations gives the joint sandwich
+//      Cov(θ̂_k, θ̂_l) = A_k^{-1} B_kl A_l^{-1} / n,
+//      B_kl = (1/n) Σ ψ_ik ψ_il Z_i Z_i^T,
+// evaluated at each tau's own full-model (with G) residuals.  Its [γγ] block
+// V is ntaus × ntaus with diagonal SE_k^2; with c_ik = (Z_i^T A_k^{-1} e_γ) ψ_ik,
+// V = C^T C / n^2.  Under H0: β(τ_1) = … = β(τ_K) (any common value),
+//      β̄ = 1'V^{-1}β̂ / 1'V^{-1}1,   Q = (β̂ − β̄1)' V^{-1} (β̂ − β̄1) ~ χ²_{K−1},
+// reported as BETA_HOM / SE_HOM / HET_Q / LOG10P_HET (df = ntaus − 1).  Everything is
+// accumulated in double precision from the fits themselves, never from the
+// rounded output columns: at h = IQR/3 the cross-tau correlation matrix has
+// condition number ~1e9, so the test needs the fits converged well below the
+// printed precision (see --spasqr-tol).  The test is run only for markers
+// with MAC >= kHetMacCutoff; below it the four columns are NA.
 //
 // Threading model: per-marker QR refit is driven through MethodBase /
 // multiPhenoEngine (no-LOCO) or locoEngine (LOCO) — identical to the
@@ -28,6 +46,9 @@
 #include "util/spa.hpp"       // spa::normalTwoSidedLog, spa::Status
 
 #include <Eigen/Dense>
+#include <boost/math/special_functions/gamma.hpp>
+
+#include <atomic>
 
 #include <algorithm>
 #include <cmath>
@@ -44,46 +65,77 @@ namespace {
 
 // ── Per-marker Wald refit (all τ) + sandwich variance. ──────────────
 //
-// y, X, G are all pheno-dense.  X has no intercept (QMME prepends one).
+// y, X, G are all pheno-dense.  X has no intercept (the solver prepends one).
 // G must be NaN-free (engine imputes before invocation).
 //
-// Recycling across τ (matches the paper's Algorithm 1 reuse design):
-//   • SqrSolver([X | G]) constructed ONCE per marker — caches Z^T Z / n.
-//   • prepareBandwidth(h) called ONCE — caches Cholesky of H.  h is
-//     fixed across τ within a (pheno, chr).
-//   • τ-chain warm start: β̂(τ_t) feeds initBetaOrig of solve() at τ_{t+1}.
-//     First τ uses the cold-start (β = 0 + intercept = empirical quantile),
-//     which the QMME solver does internally when initBetaOrig is null.
+// Per marker: one SqrSolver([X | G]) (caches the standardised design; its
+// majoriser Cholesky backs the Newton fallback step), and every τ starts from
+// that τ's null-model fit with the genotype coefficient at 0.  From there
+// Newton needs 2-3 iterations to 1e-8.
 struct WaldResult {
     bool sandwichOk;     // SE is finite and positive
     double beta;
     double se;
 };
 
-std::vector<WaldResult> fitWaldAllTaus(
+// MAC below which the heterogeneity test is skipped (columns NA).  MAC is
+// 2 n min(AF, 1 - AF) over the analysed samples, which equals the printed MAC
+// column when the marker has no missing genotypes.
+constexpr double kHetMacCutoff = 4000.0;
+
+struct HetResult {
+    bool ok = false;
+    double betaHom = std::numeric_limits<double>::quiet_NaN();
+    double seHom   = std::numeric_limits<double>::quiet_NaN();
+    double q       = std::numeric_limits<double>::quiet_NaN();
+    double log10p  = std::numeric_limits<double>::quiet_NaN();
+};
+
+// Solver work counters for the run log (fits, iterations, non-converged).
+std::atomic<long long> g_nFits{0}, g_nIter{0}, g_nNotConv{0};
+
+// −log10 of the χ²_df upper tail, finite past the double underflow of P.
+double chisqUpperNegLog10(double q, int df) {
+    if (!(q >= 0.0) || df < 1) return std::numeric_limits<double>::quiet_NaN();
+    const double a = 0.5 * df, x = 0.5 * q;
+    const double p = boost::math::gamma_q(a, x);
+    if (p > 1e-280) return -std::log10(p);
+    // Asymptotic series  Q(a,x) ~ x^{a-1} e^{-x} / Γ(a) · Σ_k (a-1)…(a-k)/x^k.
+    double s = 1.0, t = 1.0;
+    for (int k = 1; k < 30; ++k) {
+        t *= (a - k) / x;
+        s += t;
+        if (std::fabs(t) < 1e-17 * std::fabs(s)) break;
+    }
+    const double lnp = (a - 1.0) * std::log(x) - x - std::lgamma(a) + std::log(s);
+    return -lnp / math::kLn10;
+}
+
+void fitWaldAllTaus(
     const Eigen::VectorXd &y,                // pheno-dense response (n)
     const Eigen::MatrixXd &X,                // pheno-dense covariates (n × p), no intercept
     const Eigen::VectorXd &G,                // pheno-dense genotype (n), no NaN
     const std::vector<double> &taus,
+    const std::vector<Eigen::VectorXd> &nullTheta,   // per tau, [intercept, β_X] (size p+1)
     double h,
     double tol,
-    int maxIter
+    int maxIter,
+    std::vector<WaldResult> &out,
+    HetResult &het,
+    bool doHet
 ) {
     const Eigen::Index n = y.size();
     const int p = static_cast<int>(X.cols());
     const int dim = p + 2;                   // intercept + p covars + G
     const int ntaus = static_cast<int>(taus.size());
 
-    // Build the joint design (no intercept; QMME prepends one).
     Eigen::MatrixXd XG(n, p + 1);
     if (p > 0) XG.leftCols(p) = X;
     XG.col(p) = G;
 
-    // One SqrSolver per marker — Z^T Z + Cholesky reused across all τ.
     qmme::SqrSolver solver(XG, /*delta*/ 1e-6);
     solver.prepareBandwidth(h);
 
-    // Original-space Z = [1 | X | G] for the sandwich (independent of τ).
     Eigen::MatrixXd Z(n, dim);
     Z.col(0).setOnes();
     if (p > 0) Z.middleCols(1, p) = X;
@@ -93,26 +145,32 @@ std::vector<WaldResult> fitWaldAllTaus(
     const double inv_2h2 = 1.0 / (2.0 * h * h);
     const double inv_n = 1.0 / static_cast<double>(n);
 
-    std::vector<WaldResult> out(ntaus);
-    Eigen::VectorXd theta_prev;              // β̂(τ_{t-1}) in original space; size = dim
-    bool have_prev = false;
+    out.assign(ntaus, WaldResult{false, std::numeric_limits<double>::quiet_NaN(),
+                                 std::numeric_limits<double>::quiet_NaN()});
+    het = HetResult{};
 
-    Eigen::ArrayXd K(n);
-    Eigen::ArrayXd R(n);
+    Eigen::ArrayXd K(n), R(n);
+    Eigen::MatrixXd C(n, ntaus);             // c_ik = (Z_i^T A_k^{-1} e_γ) ψ_ik
+    bool allOk = true;
+    Eigen::VectorXd eG = Eigen::VectorXd::Zero(dim);
+    eG(dim - 1) = 1.0;
 
     for (int t = 0; t < ntaus; ++t) {
         const double tau = taus[t];
+        // Null-model warm start at this tau, genotype coefficient 0.
+        Eigen::VectorXd init(dim);
+        init.head(p + 1) = nullTheta[t];
+        init(dim - 1) = 0.0;
 
         Eigen::VectorXd resid;
         qmme::SolverStatus st;
-        Eigen::VectorXd theta = solver.solve(
-            y, tau, &resid, tol, maxIter, /*restart*/ 50, &st,
-            have_prev ? &theta_prev : nullptr
-        );
+        Eigen::VectorXd theta = solver.solveNewton(y, tau, &resid, tol, maxIter, &st, &init);
+        g_nFits.fetch_add(1, std::memory_order_relaxed);
+        g_nIter.fetch_add(st.iter, std::memory_order_relaxed);
+        if (!st.converged) g_nNotConv.fetch_add(1, std::memory_order_relaxed);
 
         WaldResult row{false, theta(dim - 1), std::numeric_limits<double>::quiet_NaN()};
 
-        // Sandwich variance uses the residual; valid even at loose QMME conv.
         for (Eigen::Index i = 0; i < n; ++i) {
             const double ei = resid(i);
             K(i) = inv_sqrt2pi_h * std::exp(-ei * ei * inv_2h2);
@@ -132,14 +190,33 @@ std::vector<WaldResult> fitWaldAllTaus(
                 row.se = std::sqrt(v_gg);
                 row.sandwichOk = true;
             }
+            const Eigen::VectorXd aK = ldlt.solve(eG);             // A_k^{-1} e_γ
+            C.col(t) = ((Z * aK).array() * R).matrix();
         }
-
+        if (!row.sandwichOk || !std::isfinite(row.beta)) allOk = false;
         out[t] = row;
-        theta_prev = theta;
-        have_prev = true;
     }
 
-    return out;
+    if (!doHet || !allOk || ntaus < 2) return;
+    // V = C^T C / n^2  (diagonal = SE^2).
+    const Eigen::MatrixXd V = (C.transpose() * C) * (inv_n * inv_n);
+    Eigen::LDLT<Eigen::MatrixXd> vl(V);
+    if (vl.info() != Eigen::Success || !vl.isPositive()) return;
+    Eigen::VectorXd b(ntaus);
+    for (int t = 0; t < ntaus; ++t) b(t) = out[t].beta;
+    const Eigen::VectorXd one = Eigen::VectorXd::Ones(ntaus);
+    const Eigen::VectorXd Vi1 = vl.solve(one);
+    const double s11 = one.dot(Vi1);
+    if (!(s11 > 0.0) || !Vi1.allFinite()) return;
+    const double bbar = Vi1.dot(b) / s11;
+    const Eigen::VectorXd e = b - bbar * one;
+    const double q = e.dot(vl.solve(e));
+    if (!std::isfinite(q)) return;
+    het.ok = true;
+    het.betaHom = bbar;
+    het.seHom = 1.0 / std::sqrt(s11);
+    het.q = std::max(q, 0.0);
+    het.log10p = chisqUpperNegLog10(het.q, ntaus - 1);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -160,8 +237,9 @@ class SPAsqrWaldMethod : public MethodBase {
         std::vector<double> taus;
         std::vector<std::string> tauLabels;
         double h        = 0.0;
-        double qmmeTol  = 1e-6;
-        int    maxIter  = 5000;
+        double tol      = 1e-8;
+        int    maxIter  = 200;
+        std::vector<Eigen::VectorXd> nullTheta;   // per tau: null fit [intercept, β_X]
     };
 
     explicit SPAsqrWaldMethod(std::shared_ptr<const Shared> sh)
@@ -173,7 +251,7 @@ class SPAsqrWaldMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 1 + 5 * static_cast<int>(m_shared->taus.size());
+        return 1 + 5 * static_cast<int>(m_shared->taus.size()) + 4;
     }
 
     // LOG10P_CCT, then five per-tau groups: LOG10P, Z, BETA, SE, SPA_STATUS.
@@ -200,12 +278,13 @@ class SPAsqrWaldMethod : public MethodBase {
         for (const auto &lab : labels) oss << "\tBETA_"       << lab;
         for (const auto &lab : labels) oss << "\tSE_"         << lab;
         for (const auto &lab : labels) oss << "\tSPA_STATUS_" << lab;
+        oss << "\tBETA_HOM\tSE_HOM\tHET_Q\tLOG10P_HET";
         return oss.str();
     }
 
     void getResultVec(
         Eigen::Ref<Eigen::VectorXd> GVec,
-        double /*altFreq*/,
+        double altFreq,
         int /*markerInChunkIdx*/,
         std::vector<double> &result
     ) override {
@@ -222,12 +301,17 @@ class SPAsqrWaldMethod : public MethodBase {
         // GVec is pheno-dense, NaN-imputed by the engine.
         const Eigen::VectorXd G = GVec;
 
+        const double mac = 2.0 * static_cast<double>(G.size()) *
+                           std::min(altFreq, 1.0 - altFreq);
+
         std::vector<WaldResult> rows;
+        HetResult het;
         try {
-            rows = fitWaldAllTaus(sh.Y_resp, sh.X, G, sh.taus, sh.h,
-                                  sh.qmmeTol, sh.maxIter);
+            fitWaldAllTaus(sh.Y_resp, sh.X, G, sh.taus, sh.nullTheta, sh.h,
+                           sh.tol, sh.maxIter, rows, het, mac >= kHetMacCutoff);
         } catch (const std::exception &) {
             rows.assign(ntaus, WaldResult{false, std::nan(""), std::nan("")});
+            het = HetResult{};
         }
 
         for (int t = 0; t < ntaus; ++t) {
@@ -266,6 +350,10 @@ class SPAsqrWaldMethod : public MethodBase {
         for (double b : betas) result.push_back(b);
         for (double s : ses)   result.push_back(s);
         for (double s : sts)   result.push_back(s);
+        result.push_back(het.betaHom);
+        result.push_back(het.seHom);
+        result.push_back(het.q);
+        result.push_back(het.log10p);
     }
 
     int preferredBatchSize() const override {
@@ -277,6 +365,33 @@ class SPAsqrWaldMethod : public MethodBase {
 };
 
 // ── Phenotype work struct: subject filtering + transform happens here. ─
+
+// Null-model fit [1 | X] at every tau, used as the warm start of the per-marker
+// refits (genotype coefficient 0).  Same solver and tolerance as the refits.
+std::vector<Eigen::VectorXd> fitNullThetas(
+    const Eigen::VectorXd &y, const Eigen::MatrixXd &X, const std::vector<double> &taus,
+    double h, double tol, int maxIter
+) {
+    std::vector<Eigen::VectorXd> th(taus.size());
+    if (X.cols() == 0) {
+        // No covariates: the warm start is the empirical tau-quantile of y.
+        for (size_t t = 0; t < taus.size(); ++t) {
+            std::vector<double> v(y.data(), y.data() + y.size());
+            std::sort(v.begin(), v.end());
+            const double idx = taus[t] * (v.size() - 1);
+            const size_t lo = static_cast<size_t>(idx);
+            const size_t hi = std::min(lo + 1, v.size() - 1);
+            th[t] = Eigen::VectorXd::Constant(1, v[lo] + (idx - lo) * (v[hi] - v[lo]));
+        }
+        return th;
+    }
+    qmme::SqrSolver s(X, 1e-6);
+    s.prepareBandwidth(h);
+    for (size_t t = 0; t < taus.size(); ++t) {
+        th[t] = s.solveNewton(y, taus[t], nullptr, tol, maxIter);
+    }
+    return th;
+}
 
 } // namespace
 
@@ -293,16 +408,23 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
     // weight K_h(-e) better resolves the score density f(0) and the
     // sandwich-derived SE matches the Gaussian asymptotic limit.
     const double effHScale = (cfg.spasqrHScale >= 0.0) ? cfg.spasqrHScale : 5.0;
-    // Wald refits per (marker, τ) — keep iter cap modest. The ε_grad tolerance
-    // tracks the user's --spasqr-tol directly so a single bad fit can't hang the
-    // run; score mode applies the same tolerance to its one-time null fit.
-    const double qmmeTol = cfg.spasqrTol;
-    const int maxIter = 5000;
+    // --spasqr-tol is the Newton ||grad||_inf tolerance of the null-model and
+    // per-marker fits.  The heterogeneity test needs the refits converged well
+    // below the printed precision of BETA (default 1e-8: |Δβ| < 2e-5 SE).
+    const double tol = cfg.spasqrTol;
+    const int maxIter = 200;   // Newton: 2-3 iterations from the null warm start
+    g_nFits = 0; g_nIter = 0; g_nNotConv = 0;
 
-    infoMsg("SPAsqr (wald): pheno-transform = %s, %s, ntaus = %d",
+    infoMsg("SPAsqr (wald): pheno-transform = %s, %s, ntaus = %d, Newton tol = %g",
             cfg.phenoTransform.c_str(),
             useLoco ? "with LOCO offset" : "no LOCO",
-            ntaus);
+            ntaus, tol);
+    auto reportSolver = [&]() {
+        const long long nf = g_nFits.load();
+        infoMsg("SPAsqr (wald): Newton refits = %lld, mean iterations = %.2f, not converged = %lld",
+                nf, nf ? double(g_nIter.load()) / nf : 0.0,
+                g_nNotConv.load());
+    };
 
     // ── 1. Subject filtering (genotype ∩ keep/remove ∩ pheno) ───────────
     auto famIIDs = parseGenoIIDs(cfg.geno);
@@ -388,8 +510,9 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
             shared->taus      = taus;
             shared->tauLabels = tauLabels;
             shared->h         = pw[k].h;
-            shared->qmmeTol   = qmmeTol;
+            shared->tol       = tol;
             shared->maxIter   = maxIter;
+            shared->nullTheta = fitNullThetas(pw[k].Y, pw[k].X, taus, pw[k].h, tol, maxIter);
 
             tasks[k].phenoName    = phenoNames[k];
             tasks[k].method       = std::make_unique<SPAsqrWaldMethod>(std::move(shared));
@@ -404,6 +527,7 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
             cfg.compression, cfg.compressionLevel, cfg.nthreads,
             cfg.missingCutoff, cfg.minMafCutoff, cfg.minMacCutoff, cfg.hweCutoff
         );
+        reportSolver();
         return;
     }
 
@@ -423,8 +547,9 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
             shared->taus      = taus;
             shared->tauLabels = tauLabels;
             shared->h         = h;
-            shared->qmmeTol   = qmmeTol;
+            shared->tol       = tol;
             shared->maxIter   = maxIter;
+            shared->nullTheta = fitNullThetas(shared->Y_resp, pw[k].X, taus, h, tol, maxIter);
 
             tasks[k].phenoName    = phenoNames[k];
             tasks[k].method       = std::make_unique<SPAsqrWaldMethod>(std::move(shared));
@@ -444,4 +569,5 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
         cfg.compression, cfg.compressionLevel, cfg.nthreads,
         cfg.missingCutoff, cfg.minMafCutoff, cfg.minMacCutoff, cfg.hweCutoff
     );
+    reportSolver();
 }

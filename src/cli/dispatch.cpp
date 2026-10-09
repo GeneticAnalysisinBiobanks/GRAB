@@ -269,7 +269,7 @@ static void logArgsInEffect(const Args &args) {
         std::fprintf(stderr, "  --spasqr-mode %s\n", args.spasqrMode.c_str());
         if (!args.spasqrTaus.empty())
             std::fprintf(stderr, "  --spasqr-taus %s\n", args.spasqrTaus.c_str());
-        if (args.spasqrTol != 1e-6)
+        if (args.spasqrTol != 1e-8)
             std::fprintf(stderr, "  --spasqr-tol %g\n", args.spasqrTol);
         if (args.spasqrH >= 0.0)
             std::fprintf(stderr, "  --spasqr-h %g\n", args.spasqrH);
@@ -305,6 +305,7 @@ static void logArgsInEffect(const Args &args) {
     if (args.outlierRatio != 1.5) std::fprintf(stderr, "  --outlier-iqr-multiplier %g\n", args.outlierRatio);
     if (args.outlierAbsBound != 0.55) std::fprintf(stderr, "  --spasqr-outlier-abs-bound %g\n", args.outlierAbsBound);
     if (args.spagrmControlOutlier) std::fprintf(stderr, "  --spagrm-control-outlier\n");
+    if (args.spasqrWriteOmega) std::fprintf(stderr, "  --spasqr-write-omega\n");
     if (args.pvalCovAdjCut != 5e-5) std::fprintf(stderr, "  --covar-p-threshold %g\n", args.pvalCovAdjCut);
     if (args.cutoff != 0.1) std::fprintf(stderr, "  --batch-effect-p-threshold %g\n", args.cutoff);
     if (args.missingCutoff != 0.1) std::fprintf(stderr, "  --geno %g\n", args.missingCutoff);
@@ -1410,6 +1411,7 @@ int run(
             cfg.spasqrTol       = args.spasqrTol;
             cfg.spasqrH         = args.spasqrH;
             cfg.spasqrHScale    = args.spasqrHScale;
+            cfg.writeOmega      = args.spasqrWriteOmega;
             cfg.missingCutoff   = args.missingCutoff;
             cfg.minMafCutoff    = args.minMafCutoff;
             cfg.minMacCutoff    = args.minMacCutoff;

@@ -322,6 +322,20 @@ inline const FlagDef kOutlierAbs = {
     nullptr
 };
 
+inline const FlagDef kSpasqrWriteOmega = {
+    "--spasqr-write-omega", nullptr,
+    "Write the cross-tau residual correlation matrix to PREFIX.PHENO.SPAsqr[.chrN].omega (default: off)",
+    R"(Flag is parameterless: present → written; absent → not written (default).
+
+Omega_ab = R_a^T R_b / sqrt(R_a^T R_a * R_b^T R_b) over the null-model
+residuals of quantiles a and b.  It is the quantile factor of the score
+covariance, Cov(Z) = LD (x) Omega for unrelated subjects, which multi-quantile
+summary-statistic methods (ghost knockoffs, joint cross-tau tests) need
+alongside the LD matrix.  Written as a tab-separated ntaus x ntaus matrix with
+a header row of tau labels.  Under --pred-list one file is written per
+chromosome, since the residuals are refitted per LOCO fold.)"
+};
+
 inline const FlagDef kSpagrmControlOutlier = {
     "--spagrm-control-outlier", nullptr,
     "Enable iterative IQR-ratio adjustment so the outlier share stays in (0, 5%] (SPAGRM, default: off)",
@@ -474,8 +488,17 @@ inline const FlagDef kSpasqrMode = {
           LOG10P_CCT LOG10P_tau{val}... Z_tau{val}... Z_Norm_tau{val}...
           SPA_STATUS_tau{val}...
   wald  — full-model Wald test.  For every (marker, τ), the joint smoothed-QR
-          model with [X | G] is refit by QMME and β̂_G + SE are computed from
-          the (γ,γ) entry of the M-estimation sandwich V = A^{-1} B A^{-1}/n.
+          model with [X | G] is refit by damped Newton (warm-started from the
+          null fit at that τ, converged to --spasqr-tol) and β̂_G + SE are
+          computed from the (γ,γ) entry of the M-estimation sandwich
+          V = A^{-1} B A^{-1}/n.  The same fits give a quantile-heterogeneity
+          test of H0: β(τ_1) = … = β(τ_K): the joint sandwich across taus,
+          Cov(β̂_k, β̂_l) = [A_k^{-1} B_kl A_l^{-1}]_γγ / n with
+          B_kl = (1/n) Σ ψ_ik ψ_il Z_i Z_i^T at each tau's full-model residuals,
+          gives the GLS common effect BETA_HOM (SE_HOM) and
+          HET_Q = (β̂ − BETA_HOM·1)' V^{-1} (β̂ − BETA_HOM·1) ~ χ²(K−1)
+          (K = number of --spasqr-taus), with LOG10P_HET.  The test is run
+          only for MAC >= 4000; below it these four columns are NA.
           Slower per marker; suited for follow-up effect-size estimation on
           a small SNP list (--extract).  Per-marker QR refit runs on the
           shared marker-engine thread pool (--threads), and --chunk-ksnp
@@ -485,6 +508,7 @@ inline const FlagDef kSpasqrMode = {
           CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
           LOG10P_CCT LOG10P_tau{val}... Z_tau{val}...
           BETA_tau{val}... SE_tau{val}... SPA_STATUS_tau{val}...
+          BETA_HOM SE_HOM HET_Q LOG10P_HET
           SPA_STATUS_tau is 1 (NORMAL) wherever the tau produced a test: the
           Wald leg is a plain z against the normal reference and never runs a
           saddlepoint, which is the case that code covers.  A tau whose
@@ -599,9 +623,10 @@ develop-R SAGELD.NullModel UsedMethod argument).  Only meaningful with
 
 inline const FlagDef kSpasqrTol = {
     "--spasqr-tol", "FLOAT",
-    "Convergence tolerance for the SPAsqr null-model SQR solver (default: 1e-6). "
-    "Applied directly as the QMME ||grad||_inf convergence threshold in both "
-    "score and wald modes.",
+    "Convergence tolerance of the SPAsqr smoothed-QR solvers (default: 1e-8): "
+    "||grad||_inf of the n-averaged loss in standardised coordinates.  Score "
+    "mode applies it to the QMME null-model fit, wald mode to the Newton "
+    "null-model and per-marker refits.",
     nullptr
 };
 
@@ -1066,7 +1091,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kKeep,         &kRemove,     &kExtract,    &kExclude,
     &kGeno, &kMaf,
     &kMac,          &kHwe, &kHardCallThreshold,        &kChr,        &kPredList,    &kPhenoTransform,
-    &kSpasqrMode,
+    &kSpasqrMode,   &kSpasqrWriteOmega,
     nullptr
 };
 
@@ -1493,7 +1518,7 @@ inline const FlagDef *const kNumericFlags[] = {
     &kSeed,       &kGeno,
     &kMaf,        &kMac,          &kHwe, &kHardCallThreshold,              &kMinMafIbd,
     &kSpasqrTaus, &kSpasqrTol,    &kSpasqrH,          &kSpasqrHScale,
-    &kSpasqrMode,
+    &kSpasqrMode, &kSpasqrWriteOmega,
     &kSageldMethod,
     &kSpagxeMarginalCutoff,
     nullptr

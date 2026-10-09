@@ -25,7 +25,7 @@ struct Args {
     std::string sageldMethod = "sageld";            // --sageld-method: 'sageld' (score, default) or 'gallop' (Wald)
     std::string envName;                            // --envir-name: comma-separated environment column names (SAGELD / SPAGxE / SPAGxEmix G×E)
     double spagxeMarginalCutoff = 0.001;            // --spagxe-marginal-cutoff: ε, Branch A/B routing threshold (default 0.001)
-    double spasqrTol = 1e-6;                          // --spasqr-tol (QMME convergence tolerance)
+    double spasqrTol = 1e-8;                          // --spasqr-tol (SQR solver ||grad||_inf tolerance)
     double spasqrH = -1.0;                            // --spasqr-h (explicit bandwidth; -1 = auto)
     double spasqrHScale = -1.0;                       // --spasqr-h-scale (IQR divisor; -1 = auto: score=3, wald=5)
     std::string bfilePrefix;
@@ -90,6 +90,7 @@ struct Args {
     double outlierRatio = 1.5;
     double outlierAbsBound = 0.55;
     bool spagrmControlOutlier = false; // --spagrm-control-outlier (flag, no argument): enable iterative SPAGRM outlier-ratio adjustment (default off)
+    bool spasqrWriteOmega = false;     // --spasqr-write-omega (flag, no argument): write cross-tau residual correlation (default off)
     int nthread = 1;
     int nSnpPerChunk = 8192; // --chunk-ksnp: chunk size in SNPs (ksnp × 1024); default 8 ksnp = 8192
     // --compression-level: sentinel 0 means "resolve from --compression after
