@@ -90,6 +90,7 @@ struct Args {
     double outlierRatio = 1.5;
     double outlierAbsBound = 0.55;
     bool spagrmControlOutlier = false; // --spagrm-control-outlier (flag, no argument): enable iterative SPAGRM outlier-ratio adjustment (default off)
+    bool spasqrWriteOmega = false;     // --spasqr-write-omega (flag, no argument): write cross-tau residual correlation (default off)
     int nthread = 1;
     int nSnpPerChunk = 8192; // --chunk-ksnp: chunk size in SNPs (ksnp × 1024); default 8 ksnp = 8192
     // --compression-level: sentinel 0 means "resolve from --compression after

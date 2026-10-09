@@ -21,6 +21,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <memory>
@@ -801,6 +802,28 @@ std::vector<GRMEntry> loadGrmEntries(
     return entries;
 }
 
+// Write one cross-tau correlation matrix as a small tab-separated text file:
+// header = tau labels, then the ntaus x ntaus matrix.
+static void writeOmegaFile(const std::string &path, const std::string &phenoName,
+                           const std::vector<std::string> &tauLabels,
+                           const Eigen::MatrixXd &omega)
+{
+    const int ntaus = static_cast<int>(tauLabels.size());
+    std::ofstream ofs(path);
+    if (!ofs)
+        throw std::runtime_error("SPAsqr: cannot write " + path);
+    for (int t = 0; t < ntaus; ++t)
+        ofs << (t ? "\t" : "") << tauLabels[t];
+    ofs << "\n" << std::setprecision(12);
+    for (int a = 0; a < ntaus; ++a) {
+        for (int b = 0; b < ntaus; ++b)
+            ofs << (b ? "\t" : "") << omega(a, b);
+        ofs << "\n";
+    }
+    infoMsg("[%s] Cross-tau residual correlation written to: %s",
+            phenoName.c_str(), path.c_str());
+}
+
 // Build SPAsqrMethod from a pre-computed residual matrix and pre-loaded GRM entries.
 std::unique_ptr<MethodBase> buildSPAsqrMethod(
     Eigen::MatrixXd &ResidMat,
@@ -810,7 +833,8 @@ std::unique_ptr<MethodBase> buildSPAsqrMethod(
     double outlierIqrRatio,
     double outlierAbsBound,
     std::vector<std::string> tauLabels,
-    std::vector<double> *outlierRatiosOut
+    std::vector<double> *outlierRatiosOut,
+    Eigen::MatrixXd *omegaOut
 )
 {
     const Eigen::Index N = ResidMat.rows();
@@ -825,6 +849,31 @@ std::unique_ptr<MethodBase> buildSPAsqrMethod(
         outlierRatiosOut->resize(K);
         for (Eigen::Index c = 0; c < K; ++c)
             (*outlierRatiosOut)[c] = static_cast<double>(outlierInfo.outlierCount[c]) / N;
+    }
+
+    // Cross-tau residual correlation, Omega_ab = R_a^T Phi R_b normalized to a
+    // correlation: the quantile factor of the score-statistic covariance
+    // Cov(Z) = LD (x) Omega, needed by multi-quantile summary-statistic
+    // methods (ghost knockoffs, joint tests) alongside the LD matrix.  With
+    // no GRM supplied, grmEntries is the identity and this is R^T R.  The
+    // diagonal of the same quadratic form is R_GRM_R below.  Off-diagonal
+    // GRM entries are stored once, so the a != b form is symmetrized.
+    if (omegaOut) {
+        Eigen::MatrixXd W = Eigen::MatrixXd::Zero(K, K);
+        for (const auto &e : grmEntries) {
+            for (Eigen::Index a = 0; a < K; ++a)
+                for (Eigen::Index b = 0; b < K; ++b) {
+                    if (e.row == e.col)
+                        W(a, b) += e.value * ResidMat(e.row, a) * ResidMat(e.row, b);
+                    else
+                        W(a, b) += e.value * (ResidMat(e.row, a) * ResidMat(e.col, b) +
+                                              ResidMat(e.col, a) * ResidMat(e.row, b));
+                }
+        }
+        omegaOut->resize(K, K);
+        for (Eigen::Index a = 0; a < K; ++a)
+            for (Eigen::Index b = 0; b < K; ++b)
+                (*omegaOut)(a, b) = W(a, b) / std::sqrt(W(a, a) * W(b, b));
     }
 
     // ── 4. Compute per-column variance terms + build SPAsqrSPAShared ──
@@ -1089,6 +1138,7 @@ void runSPAsqr(const SPAsqrConfig &cfg) {
         // Re-index GRM to pheno-dense space
         auto phenoGrm = reindexGrm(unionGrm, pw[k].unionToLocal, nUnion);
 
+        Eigen::MatrixXd omega;
         auto method = buildSPAsqrMethod(
             residMats[k],
             phenoGrm,
@@ -1097,8 +1147,13 @@ void runSPAsqr(const SPAsqrConfig &cfg) {
             cfg.outlierIqrRatio,
             cfg.outlierAbsBound,
             tauLabels,
-            &allOutlierRatios[k]
+            &allOutlierRatios[k],
+            cfg.writeOmega ? &omega : nullptr
         );
+
+        if (cfg.writeOmega)
+            writeOmegaFile(cfg.outPrefix + "." + phenoNames[k] + ".SPAsqr.omega",
+                           phenoNames[k], tauLabels, omega);
 
         tasks[k].phenoName = phenoNames[k];
         tasks[k].method = std::move(method);
@@ -1258,6 +1313,7 @@ void runSPAsqrLoco(const SPAsqrConfig &cfg) {
         // Build SPAsqrMethod for each phenotype (pheno-dense space)
         std::vector<std::vector<double> > allOutlierRatios(K);
         for (int k = 0; k < K; ++k) {
+            Eigen::MatrixXd omega;
             auto method = buildSPAsqrMethod(
                 ResidMats[k],
                 phenoGrms[k],
@@ -1266,8 +1322,13 @@ void runSPAsqrLoco(const SPAsqrConfig &cfg) {
                 cfg.outlierIqrRatio,
                 cfg.outlierAbsBound,
                 tauLabels,
-                &allOutlierRatios[k]
+                &allOutlierRatios[k],
+                cfg.writeOmega ? &omega : nullptr
             );
+
+            if (cfg.writeOmega)
+                writeOmegaFile(cfg.outPrefix + "." + phenoNames[k] + ".SPAsqr.chr" + chr + ".omega",
+                               phenoNames[k], tauLabels, omega);
 
             tasks[k].phenoName = phenoNames[k];
             tasks[k].method = std::move(method);

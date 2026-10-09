@@ -322,6 +322,20 @@ inline const FlagDef kOutlierAbs = {
     nullptr
 };
 
+inline const FlagDef kSpasqrWriteOmega = {
+    "--spasqr-write-omega", nullptr,
+    "Write the cross-tau residual correlation matrix to PREFIX.PHENO.SPAsqr[.chrN].omega (default: off)",
+    R"(Flag is parameterless: present → written; absent → not written (default).
+
+Omega_ab = R_a^T R_b / sqrt(R_a^T R_a * R_b^T R_b) over the null-model
+residuals of quantiles a and b.  It is the quantile factor of the score
+covariance, Cov(Z) = LD (x) Omega for unrelated subjects, which multi-quantile
+summary-statistic methods (ghost knockoffs, joint cross-tau tests) need
+alongside the LD matrix.  Written as a tab-separated ntaus x ntaus matrix with
+a header row of tau labels.  Under --pred-list one file is written per
+chromosome, since the residuals are refitted per LOCO fold.)"
+};
+
 inline const FlagDef kSpagrmControlOutlier = {
     "--spagrm-control-outlier", nullptr,
     "Enable iterative IQR-ratio adjustment so the outlier share stays in (0, 5%] (SPAGRM, default: off)",
@@ -1066,7 +1080,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kKeep,         &kRemove,     &kExtract,    &kExclude,
     &kGeno, &kMaf,
     &kMac,          &kHwe, &kHardCallThreshold,        &kChr,        &kPredList,    &kPhenoTransform,
-    &kSpasqrMode,
+    &kSpasqrMode,   &kSpasqrWriteOmega,
     nullptr
 };
 
@@ -1493,7 +1507,7 @@ inline const FlagDef *const kNumericFlags[] = {
     &kSeed,       &kGeno,
     &kMaf,        &kMac,          &kHwe, &kHardCallThreshold,              &kMinMafIbd,
     &kSpasqrTaus, &kSpasqrTol,    &kSpasqrH,          &kSpasqrHScale,
-    &kSpasqrMode,
+    &kSpasqrMode, &kSpasqrWriteOmega,
     &kSageldMethod,
     &kSpagxeMarginalCutoff,
     nullptr

@@ -62,6 +62,7 @@ struct SPAsqrConfig {
     double spasqrTol        = 1e-6;
     double spasqrH          = -1.0;       // -1 ⇒ IQR-based auto
     double spasqrHScale     = -1.0;       // -1 ⇒ 3 (score/LOCO), 5 (wald)
+    bool   writeOmega       = false;      // write cross-tau residual correlation
 
     // ── Marker QC ──────────────────────────────────────────────────────
     double missingCutoff = 0.1;

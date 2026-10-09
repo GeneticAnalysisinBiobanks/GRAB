@@ -210,6 +210,7 @@ Args parseArgs(
         else if (arg == "--outlier-iqr-multiplier")a.outlierRatio = parseDouble(next(), arg);
         else if (arg == "--spasqr-outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
         else if (arg == "--spagrm-control-outlier") { markSeen(arg); a.spagrmControlOutlier = true; }
+        else if (arg == "--spasqr-write-omega") { markSeen(arg); a.spasqrWriteOmega = true; }
         else if (arg == "--threads")a.nthread = parseInt(next(), arg);
         else if (arg == "--chunk-ksnp") {
             // Chunk size in units of 1024 SNPs (1 ksnp = 1024 SNPs).  Accepted
