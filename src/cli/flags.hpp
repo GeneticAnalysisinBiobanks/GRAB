@@ -497,7 +497,8 @@ inline const FlagDef kSpasqrMode = {
           B_kl = (1/n) Σ ψ_ik ψ_il Z_i Z_i^T at each tau's full-model residuals,
           gives the GLS common effect BETA_HOM (SE_HOM) and
           HET_Q = (β̂ − BETA_HOM·1)' V^{-1} (β̂ − BETA_HOM·1) ~ χ²(K−1)
-          (K = number of --spasqr-taus), with LOG10P_HET.
+          (K = number of --spasqr-taus), with LOG10P_HET.  The test is run
+          only for MAC >= 4000; below it these four columns are NA.
           Slower per marker; suited for follow-up effect-size estimation on
           a small SNP list (--extract).  Per-marker QR refit runs on the
           shared marker-engine thread pool (--threads), and --chunk-ksnp

@@ -23,7 +23,8 @@
 // accumulated in double precision from the fits themselves, never from the
 // rounded output columns: at h = IQR/3 the cross-tau correlation matrix has
 // condition number ~1e9, so the test needs the fits converged well below the
-// printed precision (see --spasqr-tol).
+// printed precision (see --spasqr-tol).  The test is run only for markers
+// with MAC >= kHetMacCutoff; below it the four columns are NA.
 //
 // Threading model: per-marker QR refit is driven through MethodBase /
 // multiPhenoEngine (no-LOCO) or locoEngine (LOCO) — identical to the
@@ -77,6 +78,11 @@ struct WaldResult {
     double se;
 };
 
+// MAC below which the heterogeneity test is skipped (columns NA).  MAC is
+// 2 n min(AF, 1 - AF) over the analysed samples, which equals the printed MAC
+// column when the marker has no missing genotypes.
+constexpr double kHetMacCutoff = 4000.0;
+
 struct HetResult {
     bool ok = false;
     double betaHom = std::numeric_limits<double>::quiet_NaN();
@@ -115,7 +121,8 @@ void fitWaldAllTaus(
     double tol,
     int maxIter,
     std::vector<WaldResult> &out,
-    HetResult &het
+    HetResult &het,
+    bool doHet
 ) {
     const Eigen::Index n = y.size();
     const int p = static_cast<int>(X.cols());
@@ -190,7 +197,7 @@ void fitWaldAllTaus(
         out[t] = row;
     }
 
-    if (!allOk || ntaus < 2) return;
+    if (!doHet || !allOk || ntaus < 2) return;
     // V = C^T C / n^2  (diagonal = SE^2).
     const Eigen::MatrixXd V = (C.transpose() * C) * (inv_n * inv_n);
     Eigen::LDLT<Eigen::MatrixXd> vl(V);
@@ -277,7 +284,7 @@ class SPAsqrWaldMethod : public MethodBase {
 
     void getResultVec(
         Eigen::Ref<Eigen::VectorXd> GVec,
-        double /*altFreq*/,
+        double altFreq,
         int /*markerInChunkIdx*/,
         std::vector<double> &result
     ) override {
@@ -294,11 +301,14 @@ class SPAsqrWaldMethod : public MethodBase {
         // GVec is pheno-dense, NaN-imputed by the engine.
         const Eigen::VectorXd G = GVec;
 
+        const double mac = 2.0 * static_cast<double>(G.size()) *
+                           std::min(altFreq, 1.0 - altFreq);
+
         std::vector<WaldResult> rows;
         HetResult het;
         try {
             fitWaldAllTaus(sh.Y_resp, sh.X, G, sh.taus, sh.nullTheta, sh.h,
-                           sh.tol, sh.maxIter, rows, het);
+                           sh.tol, sh.maxIter, rows, het, mac >= kHetMacCutoff);
         } catch (const std::exception &) {
             rows.assign(ntaus, WaldResult{false, std::nan(""), std::nan("")});
             het = HetResult{};
