@@ -140,9 +140,13 @@ struct SPAsqrPerTau {
 // null markers (50k subjects, 9 taus, obs/exp at p < 1e-3): the Binomial
 // branch sits at 0.57 for MAC 10-15, 0.8-0.9 for 20-50, 0.93 for 50-100 and
 // 0.86-0.9 for 100-140, and is calibrated from MAC ~150 on; the empirical
-// branch is calibrated at every MAC tried (10-2000).  200 is where the two
-// agree to within noise, and the carrier sum is cheap up to there.
-constexpr double kEmpiricalMacCutoff = 200.0;
+// branch is calibrated at every MAC tried (10-2000).  The Binomial deficit
+// does not end at 200: at MAC 200-400 (5000 unrelated subjects, one record
+// each, 200k i.i.d. markers x 200 null phenotypes -- normal, t3, chi2(2) --
+// 9 taus) the Binomial branch was 0.93 at 1e-4 and 0.91 at 1e-5, the
+// empirical branch 1.00 and 1.04, consistently in two independent batches of
+// phenotypes.  Hence 400.
+constexpr double kEmpiricalMacCutoff = 400.0;
 
 struct SPAsqrSPAShared {
     std::vector<SPAsqrPerTau> perTau;    // one per tau
