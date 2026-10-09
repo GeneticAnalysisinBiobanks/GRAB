@@ -1,9 +1,9 @@
 # .github/workflows/release.yml — tag-triggered multi-platform release.
 #
 # Fires when a tag matching `v*` (e.g. v2.0.0a1) is pushed.  Builds
-# GRAB2 on five platforms, packages each binary into a self-contained
+# GRAB2 on four platforms, packages each binary into a self-contained
 # archive, and publishes the archives to a GitHub Release page named
-# after the tag.
+# after the tag. Mark each published release as Latest.
 #
 # Design notes:
 #  - Linux builds run inside `quay.io/pypa/manylinux2014_{x86_64,aarch64}`,
@@ -42,7 +42,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
+    name: Build release-flags ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -249,6 +249,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           # Tag is the one that triggered the workflow.
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          make_latest: "true"
           files: |
             release/*.tar.gz
             release/*.zip
