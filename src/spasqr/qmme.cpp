@@ -21,6 +21,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <limits>
+#include <stdexcept>
 #include <vector>
 
 namespace qmme {
@@ -233,6 +236,118 @@ Eigen::VectorXd SqrSolver::solve(
 
     if (residOut)
         *residOut = r_curr;
+    if (statusOut) {
+        statusOut->iter = iter;
+        statusOut->converged = (gradNorm <= tol);
+        statusOut->finalGradNorm = gradNorm;
+    }
+    return beta_orig;
+}
+
+Eigen::VectorXd SqrSolver::solveNewton(
+    const Eigen::VectorXd &Y,
+    double tau,
+    Eigen::VectorXd *residOut,
+    double tol,
+    int maxIter,
+    SolverStatus *statusOut,
+    const Eigen::VectorXd *initBetaOrig
+) const {
+    if (m_currentH <= 0.0)
+        throw std::runtime_error("qmme::SqrSolver::solveNewton: bandwidth not prepared");
+
+    const int n = m_n;
+    const int dim = m_p + 1;
+    const double h = m_currentH;
+    const double inv_n = 1.0 / static_cast<double>(n);
+    const double inv_sqrt2pi_h = 1.0 / (std::sqrt(2.0 * M_PI) * h);
+    const double inv_2h2 = 1.0 / (2.0 * h * h);
+
+    const double my = Y.mean();
+    Eigen::VectorXd Yc = Y.array() - my;
+
+    Eigen::VectorXd beta(dim);
+    if (initBetaOrig && initBetaOrig->size() == dim) {
+        beta.tail(m_p) = initBetaOrig->tail(m_p).array() / m_sx.array();
+        beta(0) = (*initBetaOrig)(0) - my +
+                  (m_mx.array() * initBetaOrig->tail(m_p).transpose().array()).sum();
+    } else {
+        beta.setZero();
+        beta(0) = empiricalQuantile(Yc, tau);
+    }
+
+    Eigen::VectorXd r = Yc - m_Z * beta;
+    Eigen::VectorXd der(n), grad(dim), step(dim), beta_try(dim), r_try(n);
+    Eigen::ArrayXd w(n);
+    double f = smoothedQuantileLossAvg(r, tau, h);
+    double gradNorm = std::numeric_limits<double>::infinity();
+    int iter = 0;
+
+    for (; iter < maxIter; ++iter) {
+        smoothedQrGradAvg(m_Z, r, tau, h, der, grad);
+        gradNorm = grad.lpNorm<Eigen::Infinity>();
+        if (gradNorm <= tol) break;
+
+        for (int i = 0; i < n; ++i)
+            w(i) = inv_sqrt2pi_h * std::exp(-r(i) * r(i) * inv_2h2);
+        const Eigen::MatrixXd Hn =
+            inv_n * (m_Z.transpose() * (m_Z.array().colwise() * w).matrix());
+        Eigen::LDLT<Eigen::MatrixXd> ldlt(Hn);
+        bool newtonOk = (ldlt.info() == Eigen::Success) && ldlt.isPositive();
+        if (newtonOk) {
+            step = ldlt.solve(grad);
+            newtonOk = step.allFinite() && grad.dot(step) > 0.0;
+        }
+
+        bool accepted = false;
+        if (newtonOk) {
+            const double slope = grad.dot(step);       // predicted decrease rate (> 0)
+            // The loss is an n-term sum: changes below ~1e-12 relative are
+            // rounding, so Armijo is only checkable while 1e-4·slope exceeds
+            // that.  Below it, accept the full Newton step iff it lowers
+            // ||grad||_inf (quadratic-convergence regime).
+            if (1e-4 * slope <= 1e-12 * std::fabs(f)) {
+                beta_try = beta - step;
+                r_try.noalias() = Yc - m_Z * beta_try;
+                Eigen::VectorXd g_try(dim);
+                smoothedQrGradAvg(m_Z, r_try, tau, h, der, g_try);
+                if (g_try.lpNorm<Eigen::Infinity>() < gradNorm) {
+                    beta = beta_try; r = r_try;
+                    f = smoothedQuantileLossAvg(r, tau, h);
+                    accepted = true;
+                }
+            } else {
+                double alpha = 1.0;
+                for (int bt = 0; bt < 34 && !accepted; ++bt) {   // alpha >= 2^-33 ~ 1e-10
+                    beta_try = beta - alpha * step;
+                    r_try.noalias() = Yc - m_Z * beta_try;
+                    const double f_try = smoothedQuantileLossAvg(r_try, tau, h);
+                    // Strict decrease: a step so small that f_try rounds to f
+                    // must not pass as "sufficient decrease".
+                    if (f_try < f && f_try <= f - 1e-4 * alpha * slope) {
+                        beta = beta_try; r = r_try; f = f_try; accepted = true;
+                    }
+                    alpha *= 0.5;
+                }
+            }
+        }
+        if (!accepted) {
+            // Majoriser step from the current point: guaranteed descent.
+            step.noalias() = m_chol.solve(grad);
+            beta -= step;
+            r.noalias() = Yc - m_Z * beta;
+            f = smoothedQuantileLossAvg(r, tau, h);
+        }
+    }
+
+    smoothedQrGradAvg(m_Z, r, tau, h, der, grad);
+    gradNorm = grad.lpNorm<Eigen::Infinity>();
+
+    Eigen::VectorXd beta_orig(dim);
+    beta_orig.tail(m_p) = beta.tail(m_p).array() * m_sx.array();
+    beta_orig(0) = beta(0) + my -
+                   (m_mx.array() * beta_orig.tail(m_p).transpose().array()).sum();
+    if (residOut) *residOut = r;
     if (statusOut) {
         statusOut->iter = iter;
         statusOut->converged = (gradNorm <= tol);

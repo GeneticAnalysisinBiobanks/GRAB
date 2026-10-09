@@ -58,6 +58,25 @@ class SqrSolver {
         const Eigen::VectorXd *initBetaOrig = nullptr
     ) const;
 
+    // Damped Newton on the same smoothed loss, same gradient and the same
+    // stopping rule as solve() (||grad||_inf <= tol in standardised, n-averaged
+    // coordinates), so the two solvers are interchangeable at a given tol.
+    //   Hessian  (1/n) Z^T diag(K_h(r)) Z,   K_h(u) = phi(u/h)/h
+    //   step     Armijo backtracking on the loss; if the Hessian is not
+    //            positive definite or backtracking stalls, the fixed QMME
+    //            majoriser step (guaranteed descent) is taken instead.
+    // initBetaOrig (optional, original space, size p+1) is used as given,
+    // intercept included; without it the cold start of solve() is used.
+    Eigen::VectorXd solveNewton(
+        const Eigen::VectorXd &Y,
+        double tau,
+        Eigen::VectorXd *residOut = nullptr,
+        double tol = 1e-6,
+        int maxIter = 200,
+        SolverStatus *statusOut = nullptr,
+        const Eigen::VectorXd *initBetaOrig = nullptr
+    ) const;
+
   private:
     int m_n;                                // sample size
     int m_p;                                // raw covariate count (no intercept)

@@ -1076,7 +1076,7 @@ void runSPAsqr(const SPAsqrConfig &cfg) {
     const int K     = static_cast<int>(phenoNames.size());
     const int ntaus = static_cast<int>(taus.size());
     // Score mode fits the null model once and reuses it for every marker, so
-    // --spasqr-tol (default 1e-6) is tight enough; apply it directly.
+    // --spasqr-tol (default 1e-8) is tight enough; apply it directly.
     const double qmmeTol = cfg.spasqrTol;
 
     // ── 1-3. Analysis set, covariates, per-phenotype split, bandwidth ──

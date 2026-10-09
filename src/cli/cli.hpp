@@ -25,7 +25,7 @@ struct Args {
     std::string sageldMethod = "sageld";            // --sageld-method: 'sageld' (score, default) or 'gallop' (Wald)
     std::string envName;                            // --envir-name: comma-separated environment column names (SAGELD / SPAGxE / SPAGxEmix G×E)
     double spagxeMarginalCutoff = 0.001;            // --spagxe-marginal-cutoff: ε, Branch A/B routing threshold (default 0.001)
-    double spasqrTol = 1e-6;                          // --spasqr-tol (QMME convergence tolerance)
+    double spasqrTol = 1e-8;                          // --spasqr-tol (SQR solver ||grad||_inf tolerance)
     double spasqrH = -1.0;                            // --spasqr-h (explicit bandwidth; -1 = auto)
     double spasqrHScale = -1.0;                       // --spasqr-h-scale (IQR divisor; -1 = auto: score=3, wald=5)
     std::string bfilePrefix;
