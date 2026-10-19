@@ -1096,10 +1096,12 @@ std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
     return std::make_unique<WtCoxGMethod>(m_shared, m_refMap);
 }
 
-std::string WtCoxGMethod::getHeaderColumns() const {
-    return "\tLOG10P_EXT\tLOG10P_NOEXT"
-           "\tZ_EXT\tZ_NOEXT\tZ_Norm_EXT\tZ_Norm_NOEXT"
-           "\tLOG10P_BAT\tPI_BAT\tVAR_BAT\tSPA_STATUS_EXT\tSPA_STATUS_NOEXT";
+ResultColumns WtCoxGMethod::getResultColumns() const {
+    return {{"LOG10P_EXT"}, {"LOG10P_NOEXT"},
+            {"Z_EXT", ResultColumnKind::Z}, {"Z_NOEXT", ResultColumnKind::Z},
+            {"Z_Norm_EXT"}, {"Z_Norm_NOEXT"}, {"LOG10P_BAT"}, {"PI_BAT"}, {"VAR_BAT"},
+            {"SPA_STATUS_EXT", ResultColumnKind::SpaStatus},
+            {"SPA_STATUS_NOEXT", ResultColumnKind::SpaStatus}};
 }
 
 // Push the 11 result cells in header order.  Shared by getResultVec and the
@@ -1651,6 +1653,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
 #include "wtcoxg/regression.hpp"
 
 void runWtCoxGPheno(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
@@ -1805,6 +1808,7 @@ void runWtCoxGPheno(
     tasks[0].nUsed = sd.nUsed();
 
     multiPhenoEngine(
+        outputOptions,
         *genoData,
         tasks,
         outPrefix,
@@ -1836,6 +1840,7 @@ void runWtCoxGPheno(
 // forms are inferred per token.
 
 void runWtCoxG(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
@@ -2108,6 +2113,7 @@ void runWtCoxG(
     infoMsg("WtCoxG: Starting multi-phenotype association (%d phenotypes, %d threads)",
             P, nthreads);
     multiPhenoEngine(
+        outputOptions,
         *genoData,
         tasks,
         outPrefix,
@@ -2135,6 +2141,7 @@ void runWtCoxG(
 // into a shared snapshot, so no reference-lifetime discipline is required.
 
 void runWtCoxGLoco(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
@@ -2337,6 +2344,7 @@ void runWtCoxGLoco(
     infoMsg("WtCoxG-LOCO: starting LOCO association (%d phenotype(s), %zu chroms, %d threads)",
             P, locoChroms.size(), nthreads);
     locoEngine(
+        outputOptions,
         *genoData, locoChroms, specNames, buildTasks, outPrefix, "WtCoxG",
         compression, compressionLevel, nthreads,
         missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);

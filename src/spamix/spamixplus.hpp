@@ -8,6 +8,7 @@
 // Output columns: [Pvalue, zScore, BETA]
 #pragma once
 
+#include "util/output_columns.hpp"
 #include "geno_factory/geno_data.hpp"
 #include <Eigen/Dense>
 #include <memory>
@@ -112,8 +113,9 @@ class SPAmixPlusMethod : public MethodBase {
     // linear p takes 10^(-LOG10P).  SPA_STATUS is
     // static_cast<uint8_t>(spa::Status), the encoding Stages 3 and 4 gave
     // SPACox, SPAGRM and SPAsqr.  Column order matches those three exactly.
-    std::string getHeaderColumns() const override {
-        return "\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
+    ResultColumns getResultColumns() const override {
+        return {{"LOG10P"}, {"Z", ResultColumnKind::Z}, {"Z_Norm"},
+                {"BETA"}, {"SE"}, {"SPA_STATUS", ResultColumnKind::SpaStatus}};
     }
 
     void prepareChunk(const std::vector<uint64_t> &gIndices) override;
@@ -259,6 +261,7 @@ class SPAmixPlusMethod : public MethodBase {
 
 // spgrmGrabFile + spgrmGctaFile both empty → SPAmix (diagonal variance).
 void runSPAmixPlus(
+    const OutputOptions &outputOptions,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &pcColNames,
     const std::string &phenoFile,
@@ -298,6 +301,7 @@ void runSPAmixPlus(
 // pools, the previous chromosome's methods are destroyed before the residual
 // pools are overwritten.
 void runSPAmixPlusLoco(
+    const OutputOptions &outputOptions,
     const std::vector<std::string> &pcColNames,
     const std::string &phenoFile,
     const std::string &covarFile,

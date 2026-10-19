@@ -412,7 +412,7 @@ std::unique_ptr<MethodBase> SPAGxEMethod::clone() const {
     return std::make_unique<SPAGxEMethod>(*this);
 }
 
-std::string SPAGxEMethod::getHeaderColumns() const {
+ResultColumns SPAGxEMethod::getResultColumns() const {
     // Leading marginal block LOG10P_G Z_G BETA_G SE_G SPA_STATUS_G
     // (normal-approx, so its Z is already p-consistent and needs no Z_Norm, and
     // its status is the constant 1 NORMAL wherever a statistic exists), then a
@@ -422,12 +422,14 @@ std::string SPAGxEMethod::getHeaderColumns() const {
     // raw-score Z_Norm (which differ in the tails); BETA/SE; and the
     // saddlepoint outcome SPA_STATUS_Gx.  The linear P_G / P_Gx columns left in
     // log10p_unify Stage 8 (decision D1).
-    std::string h = "\tLOG10P_G\tZ_G\tBETA_G\tSE_G\tSPA_STATUS_G";
-    for (const auto &n : m_envNames)
-        h += "\tLOG10P_Gx" + n + "\tLOG10P_Wald_Gx" + n + "\tZ_Gx" + n +
-             "\tZ_Norm_Gx" + n + "\tBETA_Gx" + n + "\tSE_Gx" + n +
-             "\tSPA_STATUS_Gx" + n;
-    return h;
+    ResultColumns columns{{"LOG10P_G"}, {"Z_G", ResultColumnKind::Z},
+                          {"BETA_G"}, {"SE_G"}, {"SPA_STATUS_G", ResultColumnKind::SpaStatus}};
+    for (const auto &n : m_envNames) {
+        columns.insert(columns.end(), {{"LOG10P_Gx" + n}, {"LOG10P_Wald_Gx" + n},
+            {"Z_Gx" + n, ResultColumnKind::Z}, {"Z_Norm_Gx" + n},
+            {"BETA_Gx" + n}, {"SE_Gx" + n}, {"SPA_STATUS_Gx" + n, ResultColumnKind::SpaStatus}});
+    }
+    return columns;
 }
 
 namespace {
@@ -787,6 +789,7 @@ void SPAGxEMethod::getResultBatch(
 namespace {
 
 void runSPAGxEImpl(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &envNames,
@@ -1039,7 +1042,7 @@ void runSPAGxEImpl(
 
     infoMsg("Running %s marker tests (%d thread(s), %d phenotype(s))...",
             dispLabel.c_str(), nthreads, K);
-    multiPhenoEngine(*genoData, tasks, outPrefix, fileSuffix, compression,
+    multiPhenoEngine(outputOptions, *genoData, tasks, outPrefix, fileSuffix, compression,
                      compressionLevel, nthreads, missingCutoff, minMafCutoff,
                      minMacCutoff, hweCutoff);
 }
@@ -1051,6 +1054,7 @@ void runSPAGxEImpl(
 // ══════════════════════════════════════════════════════════════════════
 
 void runSPAGxE(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &envNames,
@@ -1077,7 +1081,7 @@ void runSPAGxE(
     const std::vector<std::string> &covarNames,
     bool saveResid
 ) {
-    runSPAGxEImpl(phenoFile, residNames, envNames, /*pcColNames=*/{}, spgrmGrabFile,
+    runSPAGxEImpl(outputOptions, phenoFile, residNames, envNames, /*pcColNames=*/{}, spgrmGrabFile,
                   spgrmGctaFile, geno, outPrefix, compression, compressionLevel,
                   marginalCutoff, spaCutoff, outlierIqrRatio, nthreads, nSnpPerChunk,
                   missingCutoff, minMafCutoff, minMacCutoff, hweCutoff, keepFile,
@@ -1086,6 +1090,7 @@ void runSPAGxE(
 }
 
 void runSPAGxEmix(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &envNames,
@@ -1112,7 +1117,7 @@ void runSPAGxEmix(
     bool saveResid
 ) {
     // SPAGxEmix has no sparse-GRM path (SPAGxEmix+ is out of scope).
-    runSPAGxEImpl(phenoFile, residNames, envNames, pcColNames, /*spgrmGrabFile=*/{},
+    runSPAGxEImpl(outputOptions, phenoFile, residNames, envNames, pcColNames, /*spgrmGrabFile=*/{},
                   /*spgrmGctaFile=*/{}, geno, outPrefix, compression, compressionLevel,
                   marginalCutoff, spaCutoff, outlierIqrRatio, nthreads, nSnpPerChunk,
                   missingCutoff, minMafCutoff, minMacCutoff, hweCutoff, keepFile,

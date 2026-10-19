@@ -416,6 +416,7 @@ GRMTopology buildTopology(
 // ══════════════════════════════════════════════════════════════════════
 
 void runSPAGRM(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::string &spgrmGrabFile,
@@ -624,7 +625,7 @@ void runSPAGRM(
     }
 
     infoMsg("Running SPAGRM marker tests (%d thread(s), %d phenotype(s))...", nthreads, K);
-    multiPhenoEngine(*genoData, tasks, outPrefix, "SPAGRM", compression, compressionLevel, nthreads,
+    multiPhenoEngine(outputOptions, *genoData, tasks, outPrefix, "SPAGRM", compression, compressionLevel, nthreads,
                      missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 }
 
@@ -641,6 +642,7 @@ void runSPAGRM(
 // lifetime discipline to observe here.
 
 void runSPAGRMLoco(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &spgrmGrabFile,
     const std::string &spgrmGctaFile,
@@ -837,6 +839,7 @@ void runSPAGRMLoco(
     infoMsg("SPAGRM-LOCO: starting LOCO association (%d phenotype(s), %zu chroms, %d threads)",
             K, locoChroms.size(), nthreads);
     locoEngine(
+        outputOptions,
         *genoData, locoChroms, specNames, buildTasks, outPrefix, "SPAGRM",
         compression, compressionLevel, nthreads,
         missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);

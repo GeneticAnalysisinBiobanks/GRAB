@@ -9,6 +9,7 @@
 //   6. Create LEAFMethod (N WtCoxGMethod objects) → markerEngine → meta-analysis
 #pragma once
 
+#include "util/output_columns.hpp"
 #include "geno_factory/geno_data.hpp"
 
 #include <Eigen/Dense>
@@ -94,7 +95,7 @@ class LEAFMethod : public MethodBase {
 
     int resultSize() const override;
 
-    std::string getHeaderColumns() const override;
+    ResultColumns getResultColumns() const override;
 
     void prepareChunk(const std::vector<uint64_t> &gIndices) override;
 
@@ -105,7 +106,7 @@ class LEAFMethod : public MethodBase {
         std::vector<double> &result
     ) override;
 
-// Push the 4 + 8*K result cells in header order; see getHeaderColumns.
+// Push the 4 + 8*K result cells in header order; see getResultColumns.
     void pushResult(
         std::vector<double> &out,
         const std::vector<double> &lExt,
@@ -180,6 +181,7 @@ class LEAFMethod : public MethodBase {
 
 // --pheno path: K-means clustering + per-cluster regression
 void runLEAFPheno(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &covarFile,                             // empty = no separate covar file
     const std::vector<std::string> &covarNames,               // covariate columns for regression
@@ -214,6 +216,7 @@ void runLEAFPheno(
 // single multiPhenoEngine call.  parsedSpecs[p] is produced by dispatch via
 // nullmodel::parsePhenoSpecAuto (binary "COL" or survival "TIME:EVENT").
 void runLEAF(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,

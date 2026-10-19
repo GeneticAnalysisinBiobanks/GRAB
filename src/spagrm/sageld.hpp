@@ -22,12 +22,14 @@
 // same downstream GRM topology + SPAGRM null-model + marker-engine path.
 #pragma once
 
+#include "util/output_columns.hpp"
 #include "geno_factory/geno_data.hpp"
 
 #include <string>
 #include <vector>
 
 void runSAGELD(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &phenoNames,

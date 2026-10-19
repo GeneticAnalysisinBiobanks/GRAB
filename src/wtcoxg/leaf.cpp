@@ -861,18 +861,18 @@ int LEAFMethod::resultSize() const {
 // status would mark almost every marker, since a cluster with no informative
 // subjects for a marker is the common case rather than the exception (2036 of
 // 3000 markers for cluster 1 on the bundled fixture).
-std::string LEAFMethod::getHeaderColumns() const {
-    std::ostringstream oss;
-    oss << "\tmeta_LOG10P_EXT\tmeta_LOG10P_NOEXT"
-        << "\tmeta_SPA_STATUS_EXT\tmeta_SPA_STATUS_NOEXT";
-    for (int i = 1; i <= m_nCluster; ++i)
-        oss << "\tcl" << i << "_MAC"
-            << "\tcl" << i << "_LOG10P_EXT"
-            << "\tcl" << i << "_LOG10P_NOEXT"
-            << "\tcl" << i << "_LOG10P_BAT"
-            << "\tcl" << i << "_PI_BAT\tcl" << i << "_VAR_BAT"
-            << "\tcl" << i << "_SPA_STATUS_EXT\tcl" << i << "_SPA_STATUS_NOEXT";
-    return oss.str();
+ResultColumns LEAFMethod::getResultColumns() const {
+    ResultColumns columns{{"meta_LOG10P_EXT"}, {"meta_LOG10P_NOEXT"},
+                          {"meta_SPA_STATUS_EXT", ResultColumnKind::SpaStatus},
+                          {"meta_SPA_STATUS_NOEXT", ResultColumnKind::SpaStatus}};
+    for (int i = 1; i <= m_nCluster; ++i) {
+        const std::string prefix = "cl" + std::to_string(i) + "_";
+        for (const char *name : {"MAC", "LOG10P_EXT", "LOG10P_NOEXT", "LOG10P_BAT", "PI_BAT", "VAR_BAT"})
+            columns.push_back({prefix + name});
+        columns.push_back({prefix + "SPA_STATUS_EXT", ResultColumnKind::SpaStatus});
+        columns.push_back({prefix + "SPA_STATUS_NOEXT", ResultColumnKind::SpaStatus});
+    }
+    return columns;
 }
 
 void LEAFMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
@@ -1089,6 +1089,7 @@ static Eigen::VectorXd leafRegrWeight(
 }
 
 void runLEAFPheno(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
@@ -1634,6 +1635,7 @@ void runLEAFPheno(
 
     infoMsg("Running LEAF marker engine (%d thread(s))...", nthread);
     multiPhenoEngine(
+        outputOptions,
         *genoData,
         tasks,
         outPrefix,
@@ -1664,6 +1666,7 @@ void runLEAFPheno(
 // matching the WtCoxG / SPACox / SPAGRM / SPAmix syntax.
 
 void runLEAF(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
@@ -2313,6 +2316,7 @@ void runLEAF(
     infoMsg("LEAF: Starting multi-phenotype association (%d phenotypes, %d clusters, %d threads)",
             P, K, nthreads);
     multiPhenoEngine(
+        outputOptions,
         *genoData,
         tasks,
         outPrefix,

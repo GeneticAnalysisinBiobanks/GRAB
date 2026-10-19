@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """fallback_report.py — G1/G2/G4 for the D5 normal fallback.
 
+Generate its inputs with --output-spa-status. Z_Norm remains in default output.
+
 Reads GRAB output tables and reports, for every LOG10P column that has a
 matching SPA_STATUS column:
 

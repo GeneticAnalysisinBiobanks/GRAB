@@ -14,6 +14,7 @@
 // dev-notes/methods/spa_unify/02_design.md.
 #pragma once
 
+#include "util/output_columns.hpp"
 #include <Eigen/Dense>
 #include <array>
 #include <cmath>
@@ -204,8 +205,9 @@ class SPAGRMMethod : public MethodBase {
 // NA.  What is and is not measured about that substitution is recorded once,
 // on spa::statusIsFallback in src/util/spa.hpp; in particular it does NOT
 // concentrate at low MAC, which measurement refutes.
-    std::string getHeaderColumns() const override {
-        return "\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
+    ResultColumns getResultColumns() const override {
+        return {{"LOG10P"}, {"Z", ResultColumnKind::Z}, {"Z_Norm"},
+                {"BETA"}, {"SE"}, {"SPA_STATUS", ResultColumnKind::SpaStatus}};
     }
 
     void getResultVec(
@@ -371,6 +373,7 @@ class SPAGRMMethod : public MethodBase {
 // ══════════════════════════════════════════════════════════════════════
 
 void runSPAGRM(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::string &spgrmGrabFile,
@@ -408,6 +411,7 @@ void runSPAGRM(
 // dispatch.  The retrospective GRM variance (R^T Phi R) is compatible with LOCO
 // (the GRM models genotype covariance among relatives; LOCO adjusts the mean).
 void runSPAGRMLoco(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &spgrmGrabFile,
     const std::string &spgrmGctaFile,

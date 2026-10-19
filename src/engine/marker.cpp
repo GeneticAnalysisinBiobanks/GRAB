@@ -29,6 +29,7 @@ using namespace engine_impl;
 // ══════════════════════════════════════════════════════════════════════
 
 void markerEngine(
+    const OutputOptions &outputOptions,
     const GenoMeta &genoData,
     const MethodBase &method,
     const std::string &outputFile,
@@ -49,7 +50,8 @@ void markerEngine(
     infoMsg("Number of chunks for all markers: %zu", nTotalChunks);
     infoMsg("Start chunk-level parallel processing with %d worker threads.", effective_nthreads);
 
-    const std::string header = buildHeader(method);
+    const auto layout = makeOutputLayout(method, outputOptions);
+    const std::string header = buildHeader(layout);
 
     // Per-chunk output buffer + cache-line-padded ready flag.
     std::vector<std::string> chunkOutput(nTotalChunks);
@@ -99,7 +101,7 @@ void markerEngine(
             GenoCursor &cursor = *ctx.cursor;
             MethodBase &meth = *ctx.method;
             const auto &localChunks = gd.chunkIndices();
-            const std::string &naSuffix = ctx.naSuffix;
+            const std::string &naSuffix = layout.naSuffix;
 
             // Per-thread reusable buffers — allocated once, reused for every marker.
             Eigen::VectorXd GVec(gd.nSubjUsed());
@@ -194,7 +196,7 @@ void markerEngine(
                                              mi.ref, mi.alt, mi.missingRate, mi.altFreq,
                                              mi.mac, mi.log10pHwe, naSuffix);
                             } else {
-                                formatLine(out, fmtBuf, mi.chr, mi.pos, mi.marker,
+                                formatLine(layout, out, fmtBuf, mi.chr, mi.pos, mi.marker,
                                            mi.ref, mi.alt, mi.missingRate, mi.altFreq,
                                            mi.mac, mi.log10pHwe, batchResults[ri++]);
                             }
@@ -228,7 +230,7 @@ void markerEngine(
                         rv.clear();
                         meth.getResultVec(GVec, altFreq, static_cast<int>(i), rv);
 
-                        formatLine(out, fmtBuf, chr, pos, marker, ref, alt,
+                        formatLine(layout, out, fmtBuf, chr, pos, marker, ref, alt,
                                    missingRate, altFreq, mac, log10pHwe, rv);
                     }
                 }
@@ -305,12 +307,16 @@ int MultiMethod::resultSize() const {
     return static_cast<int>(m_methods.size() * m_suffixes.size());
 }
 
-std::string MultiMethod::getHeaderColumns() const {
-    std::string h;
-    for (const auto &name : m_residNames)
-        for (const auto &suf : m_suffixes)
-            h += "\t" + name + suf;
-    return h;
+ResultColumns MultiMethod::getResultColumns() const {
+    ResultColumns columns;
+    for (size_t i = 0; i < m_methods.size(); ++i) {
+        auto inner = m_methods[i]->getResultColumns();
+        if (inner.size() != m_suffixes.size())
+            throw std::logic_error("MultiMethod suffix count does not match its result schema");
+        for (size_t j = 0; j < inner.size(); ++j)
+            columns.push_back({m_residNames[i] + m_suffixes[j], inner[j].kind});
+    }
+    return columns;
 }
 
 void MultiMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
@@ -365,7 +371,7 @@ int MultiMethod::preferredBatchSize() const {
 void multiPhenoEngineRange(
     const GenoMeta &genoData,
     std::vector<PhenoTask> &tasks,
-    const std::vector<std::string> &naSuffixes,
+    const std::vector<OutputLayout> &layouts,
     size_t chunkStart,
     size_t chunkEnd,
     std::vector<TextWriter> &writers,
@@ -938,7 +944,7 @@ void multiPhenoEngineRange(
                                 for (size_t bi = 0; bi < wlen; ++bi) {
                                     const auto &wm = winMarkers[bi];
                                     if (wmQC[bi].pass) {
-                                        formatLine(phenoOut[p], fmtBuf, wm.chr, wm.pos,
+                                        formatLine(layouts[p], phenoOut[p], fmtBuf, wm.chr, wm.pos,
                                                    wm.marker, wm.ref, wm.alt,
                                                    wmQC[bi].missingRate,
                                                    wmQC[bi].altFreq,
@@ -952,7 +958,7 @@ void multiPhenoEngineRange(
                                                      wmQC[bi].altFreq,
                                                      wmQC[bi].mac,
                                                      wmQC[bi].log10pHwe,
-                                                     naSuffixes[p]);
+                                                     layouts[p].naSuffix);
                                     }
                                 }
                             }
@@ -1022,7 +1028,7 @@ void multiPhenoEngineRange(
                                 for (size_t bi = 0; bi < wlen; ++bi) {
                                     const auto &wm = winMarkers[bi];
                                     if (nfWinPassQC[bi]) {
-                                        formatLine(phenoOut[p], fmtBuf, wm.chr, wm.pos,
+                                        formatLine(layouts[p], phenoOut[p], fmtBuf, wm.chr, wm.pos,
                                                    wm.marker, wm.ref, wm.alt,
                                                    nfWinStats[bi].missingRate,
                                                    nfWinStats[bi].altFreq,
@@ -1036,7 +1042,7 @@ void multiPhenoEngineRange(
                                                      nfWinStats[bi].altFreq,
                                                      nfWinStats[bi].mac,
                                                      nfWinStats[bi].log10pHwe,
-                                                     naSuffixes[p]);
+                                                     layouts[p].naSuffix);
                                     }
                                 }
                             }
@@ -1093,6 +1099,7 @@ void multiPhenoEngineRange(
 // ══════════════════════════════════════════════════════════════════════
 
 void multiPhenoEngine(
+    const OutputOptions &outputOptions,
     const GenoMeta &genoData,
     std::vector<PhenoTask> &tasks,
     const std::string &outPrefix,
@@ -1118,10 +1125,11 @@ void multiPhenoEngine(
     infoMsg("Start chunk-level parallel processing with %d worker threads, %zu phenotypes.",
             std::min(nthreads, static_cast<int>(nTotalChunks)), K);
 
-    // Build per-phenotype NA suffixes.
-    std::vector<std::string> naSuffixes(K);
+    // Select the same columns for headers, values, and failed-QC rows.
+    std::vector<OutputLayout> layouts;
+    layouts.reserve(K);
     for (size_t p = 0; p < K; ++p)
-        naSuffixes[p] = makeNaSuffix(tasks[p].method->resultSize());
+        layouts.push_back(makeOutputLayout(*tasks[p].method, outputOptions));
 
     // Build output file paths and open writers.
     auto writerMode = TextWriter::modeFromString(compression);
@@ -1131,12 +1139,12 @@ void multiPhenoEngine(
     for (size_t p = 0; p < K; ++p) {
         outPaths[p] = TextWriter::buildOutputPath(outPrefix, tasks[p].phenoName, methodName, compression);
         writers.emplace_back(outPaths[p], writerMode, compressionLevel);
-        std::string header = std::string(META_HEADER) + tasks[p].method->getHeaderColumns() + "\n";
+        std::string header = buildHeader(layouts[p]) + "\n";
         writers[p].write(header);
     }
 
     // Delegate to the range engine.
-    multiPhenoEngineRange(genoData, tasks, naSuffixes, 0, nTotalChunks, writers,
+    multiPhenoEngineRange(genoData, tasks, layouts, 0, nTotalChunks, writers,
                           nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 
     for (auto &w : writers)

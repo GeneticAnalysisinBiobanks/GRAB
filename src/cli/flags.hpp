@@ -394,6 +394,27 @@ inline const FlagDef kCompression = {
     nullptr
 };
 
+inline const FlagDef kOutputSpaStatus = {
+    "--output-spa-status", nullptr, "Include SPA_STATUS columns (default: omitted)",
+    R"(Include existing SPA_STATUS columns in analysis result files, including
+per-quantile, per-environment, per-cluster, and per-ancestry columns.
+Status calculations and fallback behavior are unchanged. See the method's
+help for status meanings. A method without this column family adds nothing.)"
+};
+
+inline const FlagDef kOutputZ = {
+    "--output-z", nullptr, "Include Z columns; retain Z_Norm by default",
+    R"(Include existing Z columns in analysis result files (default: omitted).
+This includes per-quantile and per-environment Z columns. Existing Z_Norm
+columns are always written, independently of this flag. A method without
+Z columns adds nothing. This flag changes output only, not test calculations.)"
+};
+
+inline constexpr const char kOutputColumnNote[] =
+    "Z and SPA_STATUS column families require --output-z and --output-spa-status,\n"
+    "respectively. Both are omitted by default. Existing Z_Norm columns remain\n"
+    "in the default output. The layout below lists all available columns.\n";
+
 inline const FlagDef kCompressionLevel = {
     "--compression-level", "INT",
     "Compression level (gz: 1-9, default 6; zst: 1-22, default 3)",
@@ -487,6 +508,7 @@ inline const FlagDef kSpasqrMode = {
           Output (per marker): CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
           LOG10P_CCT LOG10P_tau{val}... Z_tau{val}... Z_Norm_tau{val}...
           SPA_STATUS_tau{val}...
+          Z and SPA_STATUS columns require --output-z and --output-spa-status.
   wald  — full-model Wald test.  For every (marker, τ), the joint smoothed-QR
           model with [X | G] is refit by damped Newton (warm-started from the
           null fit at that τ, converged to --spasqr-tol) and β̂_G + SE are
@@ -509,6 +531,7 @@ inline const FlagDef kSpasqrMode = {
           LOG10P_CCT LOG10P_tau{val}... Z_tau{val}...
           BETA_tau{val}... SE_tau{val}... SPA_STATUS_tau{val}...
           BETA_HOM SE_HOM HET_Q LOG10P_HET
+          Z and SPA_STATUS columns require --output-z and --output-spa-status.
           SPA_STATUS_tau is 1 (NORMAL) wherever the tau produced a test: the
           Wald leg is a plain z against the normal reference and never runs a
           saddlepoint, which is the case that code covers.  A tau whose
@@ -776,6 +799,7 @@ inline const FlagDef *const kSPACoxReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPACoxOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kCovar,       &kCovarName,        &kResidName,    &kPhenoName,   &kRegressionModel,  &kSaveResid,
     &kLongitudinal,
     &kCovarPThresh, &kSpaZThresh,      &kSeed,
@@ -812,6 +836,7 @@ inline const FlagDef *const kSPAGRMReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAGRMOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kResidName,  &kPhenoName,  &kRegressionModel,           &kSaveResid,
     &kLongitudinal,
     &kCovar,      &kCovarName,
@@ -848,6 +873,7 @@ inline const FlagDef *const kSAGELDReq[] = {
     nullptr
 };
 inline const FlagDef *const kSAGELDOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kResidName, &kPhenoName, &kCovarName, &kEnvirName,  &kSageldMethod, &kSaveResid,
     &kSpaZThresh, &kThreads, &kChunkKsnp, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,   &kExclude,
@@ -904,6 +930,7 @@ inline const FlagDef *const kSPAGxEReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAGxEOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kCovar,      &kCovarName,   &kResidName,   &kPhenoName,   &kRegressionModel, &kSaveResid,
     &kSpagxeMarginalCutoff,
     &kSpGrm,
@@ -960,6 +987,7 @@ inline const FlagDef *const kSPAGxEmixReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAGxEmixOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kCovar,      &kCovarName,   &kResidName,   &kPhenoName,   &kRegressionModel, &kSaveResid,
     &kSpagxeMarginalCutoff,
     &kSpaZThresh, &kOutlierIqr,  &kSeed,
@@ -1002,6 +1030,7 @@ inline const FlagDef *const kSPAmixReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAmixOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kCovar,      &kCovarName,  &kResidName,    &kPhenoName,    &kRegressionModel, &kSaveResid,
     &kLongitudinal,
     &kIndAfCoef,  &kOutlierIqr,
@@ -1047,6 +1076,7 @@ inline const FlagDef *const kSPAmixPlusReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAmixPlusOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kCovar,      &kCovarName,  &kResidName,  &kPhenoName,    &kRegressionModel,    &kSaveResid,
     &kIndAfCoef,        &kOutlierIqr, &kSpaZThresh, &kSeed,    &kThreads,
     &kChunkKsnp, &kCompression, &kCompressionLevel,
@@ -1082,6 +1112,7 @@ inline const FlagDef *const kSPAsqrReq[] = {
 };
 
 inline const FlagDef *const kSPAsqrOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kSpGrm,        &kCovar,      &kCovarName,
     &kPhenoName,    &kRegressionModel,
     &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
@@ -1134,6 +1165,7 @@ inline const FlagDef *const kWtCoxGReq[] = {
 };
 
 inline const FlagDef *const kWtCoxGOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kCovar,  &kCovarName,
     &kPhenoName,  &kRegressionModel,    &kSpGrm,  &kBatchPThresh,
     &kSpaZThresh, &kOutlierIqr, &kThreads, &kChunkKsnp,
@@ -1192,6 +1224,7 @@ inline const FlagDef *const kLEAFReq[] = {
 };
 
 inline const FlagDef *const kLEAFOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kCovar,     &kCovarName, &kPhenoName,
     &kRegressionModel,
     &kPcCols,    &kNClusters, &kLeafClusterFile, &kLeafKmeansNstart,
@@ -1274,6 +1307,7 @@ inline const FlagDef *const kSPAmixLocalPlusReq[] = {
 };
 
 inline const FlagDef *const kSPAmixLocalPlusOpt[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kCovar,            &kCovarName,        &kResidName,  &kPhenoName,  &kRegressionModel, &kSaveResid,
     &kKeep,             &kRemove,           &kExtract,    &kExclude,
     &kOutlierIqr,       &kSpaZThresh,       &kThreads,    &kChunkKsnp,
@@ -1494,6 +1528,7 @@ inline const FlagDef *const kFileFlags[] = {
 // --make-lanc (the converter that produces it) is itself a visible
 // utility mode.
 inline const FlagDef *const kInputFlags[] = {
+    &kOutputSpaStatus, &kOutputZ,
     &kBfile,       &kPfile,       &kVcf,         &kBcf,
     &kBgen,
     &kOut,         &kCompression, &kCompressionLevel,

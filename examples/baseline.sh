@@ -14,6 +14,9 @@
 #      added, the corresponding block must gain a line listing it at
 #      its default value.
 #
+#   --output-z and --output-spa-status are omitted (their default is off).
+#   Output layouts below list all available columns; Z_Norm remains present.
+#
 #   2. Regression baseline.  After any refactor (shared engine, SIMD
 #      kernels, null-model fitting, genotype readers, output formatting,
 #      per-method code), re-run this script and confirm that the
@@ -95,6 +98,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --save-resid \
   --chr 1-2,3 \
@@ -120,6 +124,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${RESID_OUT} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --chr 1-2,3 \
   --covar-p-threshold 5e-5 \
   --spa-z-threshold 2.0 \
@@ -153,6 +158,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --chr 1-2,3 \
   --outlier-iqr-multiplier 1.5 \
@@ -185,6 +191,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/spamix_otf \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --chr 1-2,3 \
   --outlier-iqr-multiplier 1.5 \
@@ -228,6 +235,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --chr 1-2,3 \
   --spa-z-threshold 2.0 \
@@ -268,6 +276,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --save-resid \
   --chr 1-2,3 \
   --spa-z-threshold 2.0 \
@@ -300,6 +309,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${RESID_OUT}_${sageld_pheno} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --chr 1-2,3 \
   --spa-z-threshold 2.0 \
   --threads 2 \
@@ -337,6 +347,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --chr 1-2,3 \
   --threads 2 \
   --chunk-ksnp 8 \
@@ -368,6 +379,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/long_spacox \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --chr 1-2,3 \
   --covar-p-threshold 5e-5 \
   --spa-z-threshold 2.0 \
@@ -393,6 +405,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/long_spamix \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --chr 1-2,3 \
   --outlier-iqr-multiplier 1.5 \
   --spa-z-threshold 2.0 \
@@ -419,6 +432,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/long_spagrm \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --chr 1-2,3 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
@@ -468,6 +482,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --chr 1-2,3 \
   --spasqr-taus 0.1,0.3,0.5,0.7,0.9 \
   --spasqr-tol 1e-8 \
@@ -502,6 +517,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${LOCO} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --chr 1-2,3 \
   --covar-p-threshold 5e-5 \
@@ -528,6 +544,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${LOCO} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --chr 1-2,3 \
   --outlier-iqr-multiplier 1.5 \
@@ -558,6 +575,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${LOCO} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --chr 1-2,3 \
   --spa-z-threshold 2.0 \
@@ -589,6 +607,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${LOCO} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --chr 1-2,3 \
   `# NOT the built-in default, which is 0.1 (src/cli/cli.hpp).  0.05 is pinned` \
@@ -636,6 +655,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/wald \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --chr 1-2,3 \
   --spasqr-taus 0.1,0.3,0.5,0.7,0.9 \
   --spasqr-tol 1e-8 \
@@ -695,6 +715,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --chr 1-2,3 \
   `# NOT the built-in default, which is 0.1 (src/cli/cli.hpp).  0.05 is pinned` \
@@ -745,6 +766,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT} \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --remove examples/leaf_kmeans_remove \
   --leaf-nclusters 3 \
@@ -804,6 +826,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/spagxe \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --save-resid \
   --spagxe-marginal-cutoff 0.001 \
@@ -834,6 +857,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/spagxe_plus \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --spagxe-marginal-cutoff 0.001 \
   --chr 1-2,3 \
@@ -880,6 +904,7 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/spagxemix \
   `# Optional flags below (set to built-in defaults):` \
+  `# --output-z and --output-spa-status: omitted (default off)` \
   --regression-model auto \
   --spagxe-marginal-cutoff 0.001 \
   --chr 1-2,3 \
@@ -1009,6 +1034,7 @@ awk 'NR>1 && $1 !~ /^#/ {print $1"\t"$1}' examples/1kg.psam | sed -n '1901,2000p
 # Shared SPAGRM invocation; only --pfile/--bfile/--bcf/--bgen and --out
 # vary between the four runs below.
 SPAGRM_COMMON=(
+  # --output-z and --output-spa-status: omitted (default off)
   --method SPAGRM
   --pheno examples/1kg.pheno
   --pheno-name Quantitative,Time:Event,Binary,Ordinal

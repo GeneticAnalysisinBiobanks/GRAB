@@ -9,6 +9,7 @@
 // SPAsqr, SPACox, WtCoxG, etc.
 #pragma once
 
+#include "util/output_columns.hpp"
 #include "engine/marker.hpp"
 
 #include <Eigen/Dense>
@@ -106,6 +107,7 @@ using LocoTaskBuilder = std::function<void (
 // locoChroms: chromosomes available in LOCO data (used for O4 filtering)
 // phenoNames: used to build output file paths and write headers
 void locoEngine(
+    const OutputOptions &outputOptions,
     const GenoMeta &genoData,
     const std::unordered_set<std::string> &locoChroms,
     const std::vector<std::string> &phenoNames,

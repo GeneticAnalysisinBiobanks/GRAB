@@ -18,6 +18,7 @@
 #endif
 #include <string>
 #include <string_view>
+#include <stdexcept>
 #include <vector>
 
 // Forward-declare plink2's fast double-to-string (6 sig figs, ~5-10× faster
@@ -35,19 +36,6 @@ namespace engine_impl {
 // ──────────────────────────────────────────────────────────────────────
 // TSV formatting helpers — zero allocation in the hot path
 // ──────────────────────────────────────────────────────────────────────
-
-// Build a suffix of nCols tab-separated "NA" values for fail-QC rows.
-inline std::string makeNaSuffix(int nResultCols) {
-    if (nResultCols <= 0) return {};
-    std::string s;
-    s.reserve(3 * static_cast<size_t>(nResultCols));
-    for (int i = 0; i < nResultCols; ++i) {
-        s += '\t';
-        s += 'N';
-        s += 'A';
-    }
-    return s;
-}
 
 // Format double: "NA" | "Inf" | "-Inf" | 6-sig-fig decimal/scientific.
 // Returns char count.  Uses plink2's dtoa_g for ~5-10× speedup over snprintf.
@@ -119,6 +107,7 @@ inline void appendMeta(
 
 // Full result line: meta + tab-separated doubles.
 inline void formatLine(
+    const OutputLayout &layout,
     std::string &out,
     char *buf,
     std::string_view chrom,
@@ -133,9 +122,9 @@ inline void formatLine(
     const std::vector<double> &vals
 ) {
     appendMeta(out, buf, chrom, pos, id, ref, alt, missRate, altFreq, mac, log10pHwe);
-    for (double v : vals) {
+    for (size_t index : layout.indices) {
         out += '\t';
-        int n = numToChars(buf, v);
+        int n = numToChars(buf, vals[index]);
         out.append(buf, n);
     }
     out += '\n';
@@ -172,8 +161,15 @@ inline void formatLineNA(
 // below p ~ 1e-300.  NA when no subject has a hard call.
 constexpr const char *META_HEADER = "CHROM\tPOS\tID\tREF\tALT\tMISS_RATE\tALT_FREQ\tMAC\tLOG10P_HWE";
 
-inline std::string buildHeader(const MethodBase &method) {
-    return std::string(META_HEADER) + method.getHeaderColumns();
+inline OutputLayout makeOutputLayout(const MethodBase &method, const OutputOptions &options) {
+    const auto columns = method.getResultColumns();
+    if (columns.size() != static_cast<size_t>(method.resultSize()))
+        throw std::logic_error("Method result schema does not match resultSize()");
+    return OutputLayout(columns, options);
+}
+
+inline std::string buildHeader(const OutputLayout &layout) {
+    return std::string(META_HEADER) + layout.header;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -710,15 +706,13 @@ inline PhenoGenoStats sparseExtractAndStats(
 struct ThreadContext {
     std::unique_ptr<MethodBase> method; // cloned per thread
     std::unique_ptr<GenoCursor> cursor; // per-thread genotype decoder
-    std::string naSuffix;
 
     ThreadContext(
         const MethodBase &proto,
         const GenoMeta &gd
     )
         : method(proto.clone()),
-          cursor(gd.makeCursor()),
-          naSuffix(makeNaSuffix(proto.resultSize()))
+          cursor(gd.makeCursor())
     {
     }
 

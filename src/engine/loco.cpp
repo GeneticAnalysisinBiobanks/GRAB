@@ -449,6 +449,7 @@ void validatePredListPhenos(
 // ══════════════════════════════════════════════════════════════════════
 
 void locoEngine(
+    const OutputOptions &outputOptions,
     const GenoMeta &genoData,
     const std::unordered_set<std::string> &locoChroms,
     const std::vector<std::string> &phenoNames,
@@ -520,10 +521,14 @@ void locoEngine(
     std::vector<PhenoTask> tasks;
     buildTasks(activeChroms[0], tasks);
 
-    // Build per-phenotype headers and NA suffixes
+    // Build per-phenotype output selections and headers.
+    std::vector<OutputLayout> layouts;
+    layouts.reserve(K);
     std::vector<std::string> headers(K);
-    for (size_t p = 0; p < K; ++p)
-        headers[p] = std::string(META_HEADER) + tasks[p].method->getHeaderColumns() + "\n";
+    for (size_t p = 0; p < K; ++p) {
+        layouts.push_back(makeOutputLayout(*tasks[p].method, outputOptions));
+        headers[p] = buildHeader(layouts[p]) + "\n";
+    }
 
     // Build output file paths
     auto writerMode = TextWriter::modeFromString(compression);
@@ -560,17 +565,12 @@ void locoEngine(
         if (chrIdx > 0)
             buildTasks(chr, tasks);
 
-        // Build per-phenotype NA suffixes for this chromosome's methods
-        std::vector<std::string> naSuffixes(K);
-        for (size_t p = 0; p < K; ++p)
-            naSuffixes[p] = makeNaSuffix(tasks[p].method->resultSize());
-
         infoMsg("LOCO: chromosome %s — %zu chunks, %d workers (%zu/%zu)",
                 chr.c_str(), nChrChunks,
                 std::min(nthreads, static_cast<int>(nChrChunks)),
                 chrIdx + 1, activeChroms.size());
 
-        multiPhenoEngineRange(genoData, tasks, naSuffixes, chunkStart, chunkEnd, writers,
+        multiPhenoEngineRange(genoData, tasks, layouts, chunkStart, chunkEnd, writers,
                               nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 
         infoMsg("LOCO: chromosome %s finished (%zu/%zu)",

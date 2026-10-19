@@ -269,17 +269,18 @@ class SPAsqrWaldMethod : public MethodBase {
     // V[γγ] <= 0) has no statistic at all and takes `8 NA_NO_TEST` with
     // LOG10P, Z, BETA and SE all NA.  There is no fallback in between, because
     // a variance that does not exist leaves nothing to fall back to.
-    std::string getHeaderColumns() const override {
-        std::ostringstream oss;
+    ResultColumns getResultColumns() const override {
+        ResultColumns columns{{"LOG10P_CCT"}};
         const auto &labels = m_shared->tauLabels;
-        oss << "\tLOG10P_CCT";
-        for (const auto &lab : labels) oss << "\tLOG10P_"     << lab;
-        for (const auto &lab : labels) oss << "\tZ_"          << lab;
-        for (const auto &lab : labels) oss << "\tBETA_"       << lab;
-        for (const auto &lab : labels) oss << "\tSE_"         << lab;
-        for (const auto &lab : labels) oss << "\tSPA_STATUS_" << lab;
-        oss << "\tBETA_HOM\tSE_HOM\tHET_Q\tLOG10P_HET";
-        return oss.str();
+        const ResultColumns groups{{"LOG10P_"}, {"Z_", ResultColumnKind::Z},
+                                   {"BETA_"}, {"SE_"},
+                                   {"SPA_STATUS_", ResultColumnKind::SpaStatus}};
+        for (const auto &group : groups)
+            for (const auto &lab : labels)
+                columns.push_back({group.name + lab, group.kind});
+        for (const char *name : {"BETA_HOM", "SE_HOM", "HET_Q", "LOG10P_HET"})
+            columns.push_back({name});
+        return columns;
     }
 
     void getResultVec(
@@ -523,6 +524,7 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
         infoMsg("SPAsqr (wald): starting association (%d phenotypes, %d taus, %d threads)",
                 K, ntaus, std::max(1, cfg.nthreads));
         multiPhenoEngine(
+            cfg.outputOptions,
             *genoData, tasks, cfg.outPrefix, "SPAsqr",
             cfg.compression, cfg.compressionLevel, cfg.nthreads,
             cfg.missingCutoff, cfg.minMafCutoff, cfg.minMacCutoff, cfg.hweCutoff
@@ -564,6 +566,7 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
     infoMsg("SPAsqr (wald): starting LOCO association (%d phenotypes, %d taus, %zu chroms, %d threads)",
             K, ntaus, locoChroms.size(), std::max(1, cfg.nthreads));
     locoEngine(
+        cfg.outputOptions,
         *genoData, locoChroms, phenoNames, buildTasks,
         cfg.outPrefix, "SPAsqr",
         cfg.compression, cfg.compressionLevel, cfg.nthreads,

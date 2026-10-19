@@ -104,7 +104,9 @@ static void printMethodHelp(const MethodDef *m) {
 
     if (m->extra) std::fprintf(stderr, "\n%s\n", m->extra);
 
-    std::fprintf(stderr, "\nOutput:\n  %s\n", m->outputCols);
+    std::fprintf(stderr, "\nOutput:\n");
+    if (!isUtil) std::fputs(kOutputColumnNote, stderr);
+    std::fprintf(stderr, "  %s\n", m->outputCols);
 }
 
 // ── Flag topic help (--help pheno, --help sp-grm, etc.) ───────

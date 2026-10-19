@@ -486,6 +486,7 @@ void SPACoxMethod::getResultBatch(
 // ======================================================================
 
 void runSPACox(
+    const OutputOptions &outputOptions,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &covarNames,
     const std::string &phenoFile,
@@ -710,6 +711,7 @@ void runSPACox(
 
     infoMsg("Running SPACox marker tests (%d thread(s), %d phenotype(s))...", nthread, K);
     multiPhenoEngine(
+        outputOptions,
         *genoData,
         tasks,
         outPrefix,
@@ -735,6 +737,7 @@ void runSPACox(
 // column, the refit is per-phenotype (fitAll with a single spec).
 
 void runSPACoxLoco(
+    const OutputOptions &outputOptions,
     const std::vector<std::string> &covarNames,
     const std::string &phenoFile,
     const std::string &covarFile,
@@ -901,6 +904,7 @@ void runSPACoxLoco(
     infoMsg("SPACox-LOCO: starting LOCO association (%d phenotype(s), %zu chroms, %d threads)",
             K, locoChroms.size(), nthread);
     locoEngine(
+        outputOptions,
         *genoData,
         locoChroms,
         specNames,

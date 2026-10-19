@@ -1,6 +1,7 @@
 // marker.hpp — Thread-pool marker-level association engine (pure C++17 / Eigen)
 #pragma once
 
+#include "util/output_columns.hpp"
 #include <Eigen/Dense>
 #include <memory>
 #include <string>
@@ -12,7 +13,7 @@ class GenoMeta;
 // MethodBase — abstract interface for statistical methods.
 //
 // Each concrete method (SPAGRM, SPACox, WtCoxG, LEAF, …) derives from
-// this and implements clone(), resultSize(), getHeaderColumns(), and
+// this and implements clone(), resultSize(), getResultColumns(), and
 // getResultVec().  The engine clones one copy per worker thread.
 // ======================================================================
 
@@ -23,11 +24,11 @@ class MethodBase {
     // Deep-copy for per-thread isolation (mutable scratch state, etc.).
     virtual std::unique_ptr<MethodBase> clone() const = 0;
 
-    // Number of result columns after the 9 meta columns.
+    // Number of values in the full internal result vector, before output selection.
     virtual int resultSize() const = 0;
 
-    // Tab-separated column headers for the result columns (leading tab included).
-    virtual std::string getHeaderColumns() const = 0;
+    // Names and output categories in the full internal result-vector order.
+    virtual ResultColumns getResultColumns() const = 0;
 
     // Called once per chunk before processing markers.  Default: no-op.
     virtual void prepareChunk(const std::vector<uint64_t> & /*gIndices*/) {
@@ -236,6 +237,7 @@ class MethodBase {
 // ======================================================================
 
 void markerEngine(
+    const OutputOptions &outputOptions,
     const GenoMeta &genoData,
     const MethodBase &method,
     const std::string &outputFile,
@@ -265,7 +267,7 @@ class TextWriter;
 void multiPhenoEngineRange(
     const GenoMeta &genoData,
     std::vector<PhenoTask> &tasks,
-    const std::vector<std::string> &naSuffixes,
+    const std::vector<OutputLayout> &layouts,
     size_t chunkStart,
     size_t chunkEnd,
     std::vector<TextWriter> &writers,
@@ -288,6 +290,7 @@ void multiPhenoEngineRange(
 //
 // Threading: chunk-level work-stealing, K phenotypes sequential per chunk.
 void multiPhenoEngine(
+    const OutputOptions &outputOptions,
     const GenoMeta &genoData,
     std::vector<PhenoTask> &tasks,
     const std::string &outPrefix,
@@ -323,7 +326,7 @@ class MultiMethod : public MethodBase {
 
     int resultSize() const override;
 
-    std::string getHeaderColumns() const override;
+    ResultColumns getResultColumns() const override;
 
     void prepareChunk(const std::vector<uint64_t> &gIndices) override;
 

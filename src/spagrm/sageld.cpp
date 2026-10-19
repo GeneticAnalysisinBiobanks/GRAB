@@ -465,13 +465,15 @@ class SAGELDMethod : public MethodBase {
     // the log domain by spa::normalBranch rather than as −log10 of the linear
     // tail, which is the same rule every other block in the tree now follows:
     // 2·Φ(−|z|) is exactly zero beyond |z| ≈ 38.6, and −log10 of that is +∞.
-    std::string getHeaderColumns() const override {
-        std::string h = "\tLOG10P_G\tZ_G\tBETA_G\tSE_G\tSPA_STATUS_G";
-        for (const auto &n : m_envNames)
-            h += "\tLOG10P_Gx" + n + "\tZ_Gx" + n +
-                 "\tZ_Norm_Gx" + n + "\tBETA_Gx" + n + "\tSE_Gx" + n +
-                 "\tSPA_STATUS_Gx" + n;
-        return h;
+    ResultColumns getResultColumns() const override {
+        ResultColumns columns{{"LOG10P_G"}, {"Z_G", ResultColumnKind::Z},
+                              {"BETA_G"}, {"SE_G"}, {"SPA_STATUS_G", ResultColumnKind::SpaStatus}};
+        for (const auto &n : m_envNames) {
+            columns.insert(columns.end(), {{"LOG10P_Gx" + n}, {"Z_Gx" + n, ResultColumnKind::Z},
+                {"Z_Norm_Gx" + n}, {"BETA_Gx" + n}, {"SE_Gx" + n},
+                {"SPA_STATUS_Gx" + n, ResultColumnKind::SpaStatus}});
+        }
+        return columns;
     }
 
     void getResultVec(
@@ -668,11 +670,11 @@ class GALLOPMethod : public MethodBase {
     // col 5..9 : LOG10P_Gx<E>  Z_Gx<E>  BETA_Gx<E>  SE_Gx<E>  SPA_STATUS_Gx<E>
     //
     // The linear P_G / P_Gx columns left in log10p_unify Stage 8 (D1).
-    std::string getHeaderColumns() const override {
-        return "\tLOG10P_G\tZ_G\tBETA_G\tSE_G\tSPA_STATUS_G"
-               "\tLOG10P_Gx" + m_envName +
-               "\tZ_Gx" + m_envName + "\tBETA_Gx" + m_envName +
-               "\tSE_Gx" + m_envName + "\tSPA_STATUS_Gx" + m_envName;
+    ResultColumns getResultColumns() const override {
+        return {{"LOG10P_G"}, {"Z_G", ResultColumnKind::Z}, {"BETA_G"}, {"SE_G"},
+                {"SPA_STATUS_G", ResultColumnKind::SpaStatus}, {"LOG10P_Gx" + m_envName},
+                {"Z_Gx" + m_envName, ResultColumnKind::Z}, {"BETA_Gx" + m_envName},
+                {"SE_Gx" + m_envName}, {"SPA_STATUS_Gx" + m_envName, ResultColumnKind::SpaStatus}};
     }
 
     void getResultVec(
@@ -1114,6 +1116,7 @@ ResidCacheResult loadSAGELDCacheFromResid(
 //                       markerEngine for a single output file.
 // ══════════════════════════════════════════════════════════════════════
 void runSAGELDCoreSingle(
+    const OutputOptions &outputOptions,
     const Eigen::VectorXd &Resid_G,
     const std::vector<std::string> &envNames,
     const std::vector<Eigen::VectorXd> &Resid_GxE_list,
@@ -1137,7 +1140,7 @@ void runSAGELDCoreSingle(
                                        /*innerThreads=*/nthreads, /*phenoLabel=*/{},
                                        lambdaOverride, Resid_E_list, markerLambdaCutoff, cache);
     infoMsg("Running SAGELD marker-level association on '%s'...", outputFile.c_str());
-    markerEngine(genoData, *method, outputFile, nthreads,
+    markerEngine(outputOptions, genoData, *method, outputFile, nthreads,
                  missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 }
 
@@ -1145,6 +1148,7 @@ void runSAGELDCoreSingle(
 // runSAGELDResidualMode — original residual-input mode
 // ══════════════════════════════════════════════════════════════════════
 void runSAGELDResidualMode(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::string &spgrmGrabFile,
@@ -1236,7 +1240,7 @@ void runSAGELDResidualMode(
                 "marker-specific λ branch.");
     }
 
-    runSAGELDCoreSingle(Resid_G, envNames, Resid_GxE_list, topo, N, *genoData,
+    runSAGELDCoreSingle(outputOptions, Resid_G, envNames, Resid_GxE_list, topo, N, *genoData,
                         outputFile, spaCutoff, nthreads,
                         missingCutoff, minMafCutoff, minMacCutoff, hweCutoff,
                         lambdaOverride, markerLambdaResidE, rc.cutoff, markerLambdaCache);
@@ -1284,6 +1288,7 @@ std::unordered_set<std::string> loadIIDsFromFile(const std::string &path) {
 // and R_GxE, so the extra fit was logged but never propagated downstream.
 // ══════════════════════════════════════════════════════════════════════
 void runSAGELDPhenoMode(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &phenoNames,
     const std::vector<std::string> &covarNames,
@@ -1570,7 +1575,7 @@ void runSAGELDPhenoMode(
     const char *methodLabel = gallop ? "GALLOP" : "SAGELD";
     infoMsg("Running %s marker tests via multiPhenoEngine (%d phenotype(s), %d threads)...",
             methodLabel, nPheno, nthreads);
-    multiPhenoEngine(*genoData, tasks, outPrefix, methodLabel,
+    multiPhenoEngine(outputOptions, *genoData, tasks, outPrefix, methodLabel,
                      compression, compressionLevel, nthreads,
                      missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 }
@@ -1581,6 +1586,7 @@ void runSAGELDPhenoMode(
 // runSAGELD — public entry point
 // ══════════════════════════════════════════════════════════════════════
 void runSAGELD(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &phenoNames,
@@ -1622,7 +1628,7 @@ void runSAGELD(
         if (compression == "gz") resOut += ".gz";
         else if (compression == "zst") resOut += ".zst";
 
-        runSAGELDResidualMode(phenoFile, residNames, spgrmGrabFile, spgrmGctaFile, pairwiseIBDFile,
+        runSAGELDResidualMode(outputOptions, phenoFile, residNames, spgrmGrabFile, spgrmGctaFile, pairwiseIBDFile,
                               geno, resOut, spaCutoff, nthreads, nSnpPerChunk,
                               missingCutoff, minMafCutoff, minMacCutoff, hweCutoff,
                               keepFile, removeFile);
@@ -1636,7 +1642,7 @@ void runSAGELD(
         throw std::runtime_error("SAGELD pheno mode: --covar-name is required (must include the --envir-name variable)");
     if (gallop && saveResid)
         throw std::runtime_error("SAGELD: --save-resid is incompatible with --sageld-method gallop (GALLOP produces no residual vector)");
-    runSAGELDPhenoMode(phenoFile, phenoNames, covarNames, envNames,
+    runSAGELDPhenoMode(outputOptions, phenoFile, phenoNames, covarNames, envNames,
                        spgrmGrabFile, spgrmGctaFile, pairwiseIBDFile, geno,
                        outPrefix, compression, compressionLevel,
                        spaCutoff, nthreads, nSnpPerChunk,

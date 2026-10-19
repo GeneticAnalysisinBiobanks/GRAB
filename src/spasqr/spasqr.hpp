@@ -20,6 +20,7 @@
 #pragma once
 
 #include "geno_factory/geno_data.hpp"
+#include "util/output_columns.hpp"
 #include <string>
 #include <vector>
 
@@ -51,6 +52,7 @@ struct SPAsqrConfig {
 
     // ── Output ─────────────────────────────────────────────────────────
     std::string outPrefix;
+    OutputOptions outputOptions;
     std::string compression;        // "" | "gz" | "zst"
     int compressionLevel = 3;
 

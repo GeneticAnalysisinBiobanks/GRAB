@@ -295,6 +295,8 @@ static void logArgsInEffect(const Args &args) {
     if (!args.mspFile.empty()) std::fprintf(stderr, "  --rfmix-msp %s\n", args.mspFile.c_str());
     if (!args.outPrefix.empty()) std::fprintf(stderr, "  --out %s\n", args.outPrefix.c_str());
     if (!args.compression.empty()) std::fprintf(stderr, "  --compression %s\n", args.compression.c_str());
+    if (args.outputOptions.spaStatus) std::fprintf(stderr, "  --output-spa-status\n");
+    if (args.outputOptions.z) std::fprintf(stderr, "  --output-z\n");
     // numeric: log only when non-default
     if (args.refPrevalence > 0.0) std::fprintf(stderr, "  --prevalence %g\n", args.refPrevalence);
     if (args.nthread != 1) std::fprintf(stderr, "  --threads %d\n", args.nthread);
@@ -1011,6 +1013,7 @@ int run(
         if (args.method == "SPACox") {
             if (!args.predListFile.empty()) {
                 runSPACoxLoco(
+                    args.outputOptions,
                     covarNames,
                     args.phenoFile,
                     effectiveCovarFile,
@@ -1034,6 +1037,7 @@ int run(
                 );
             } else {
                 runSPACox(
+                    args.outputOptions,
                     residNames,
                     covarNames,
                     args.phenoFile,
@@ -1066,6 +1070,7 @@ int run(
             require(args.pairwiseIBDFile, "--pairwise-ibd", "SPAGRM");
             if (!args.predListFile.empty()) {
                 runSPAGRMLoco(
+                    args.outputOptions,
                     args.phenoFile,
                     args.spGrmGrabFile,
                     args.spGrmPlink2File,
@@ -1093,6 +1098,7 @@ int run(
                 );
             } else {
             runSPAGRM(
+                args.outputOptions,
                 args.phenoFile,
                 residNames,
                 args.spGrmGrabFile,
@@ -1140,6 +1146,7 @@ int run(
             auto sageldEnvNames =
                 args.envName.empty() ? std::vector<std::string>{} : splitComma(args.envName, "--envir-name", 1);
             runSAGELD(
+                args.outputOptions,
                 args.phenoFile,
                 residNames,
                 phenoNames,
@@ -1175,6 +1182,7 @@ int run(
             checkSpGrm(args, /*required=*/ false, "SPAGxE");
             auto envNames = splitComma(args.envName, "--envir-name", 1);
             runSPAGxE(
+                args.outputOptions,
                 args.phenoFile,
                 residNames,
                 envNames,
@@ -1219,6 +1227,7 @@ int run(
             }
             auto envNames = splitComma(args.envName, "--envir-name", 1);
             runSPAGxEmix(
+                args.outputOptions,
                 args.phenoFile,
                 residNames,
                 envNames,
@@ -1269,6 +1278,7 @@ int run(
             }
             if (!args.predListFile.empty()) {
                 runSPAmixPlusLoco(
+                    args.outputOptions,
                     pcColNames,
                     args.phenoFile,
                     args.covarFile,
@@ -1296,6 +1306,7 @@ int run(
                 );
             } else {
             runSPAmixPlus(
+                args.outputOptions,
                 residNames,
                 pcColNames,
                 args.phenoFile,
@@ -1402,6 +1413,7 @@ int run(
             cfg.keepFile        = args.keepFile;
             cfg.removeFile      = args.removeFile;
             cfg.outPrefix       = args.outPrefix;
+            cfg.outputOptions   = args.outputOptions;
             cfg.compression     = args.compression;
             cfg.compressionLevel= args.compressionLevel;
             cfg.phenoTransform  = args.phenoTransform;
@@ -1474,6 +1486,7 @@ int run(
             // one matched-marker scan + parallel batch-effect + single engine.
             if (!args.predListFile.empty()) {
                 runWtCoxGLoco(
+                    args.outputOptions,
                     args.phenoFile,
                     effectiveCovarFile,
                     covarNames,
@@ -1501,6 +1514,7 @@ int run(
                 );
             } else {
             runWtCoxG(
+                args.outputOptions,
                 args.phenoFile,
                 effectiveCovarFile,
                 covarNames,
@@ -1562,6 +1576,7 @@ int run(
             // Multi-phenotype entry point: shared K-means + geno scan + summix + GRM,
             // parallel regression and batch-effect, single engine.
             runLEAF(
+                args.outputOptions,
                 args.phenoFile,
                 effectiveCovarFile,
                 covarNames,
@@ -1599,6 +1614,7 @@ int run(
             require(args.admixPhiFile, "--admix-phi", "SPAmixLocalPlus");
             require(args.phenoFile, "--pheno", "SPAmixLocalPlus");
             runSPAmixLocalPlus(
+                args.outputOptions,
                 args.phenoFile,
                 residNames,
                 args.lancPrefix,

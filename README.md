@@ -90,6 +90,14 @@ The example below runs the **SPAsqr** method on two quantitative
 phenotypes (`Quantitative` and `Time`) jointly.  The options `--pheno`,
 `--pheno-name`, `--covar-name`, and `--out` are compatible
 with the PLINK 2 input and output conventions.
+
+Analysis results omit `Z` and `SPA_STATUS` columns by default. Add
+`--output-z` or `--output-spa-status` to include either column family, or
+combine both flags for the full output. Existing `Z_Norm` columns remain in
+the default output. These flags select written columns without changing
+statistical calculations. Run `grab2 --help output-z` or
+`grab2 --help output-spa-status` for details.
+
 `--sp-grm-plink2` consumes the output of `plink2 --make-grm-sparse`, for example:
 
 ```bash

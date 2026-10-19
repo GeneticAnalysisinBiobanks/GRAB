@@ -6,6 +6,7 @@
 //   3. Marker-level SPA tests via markerEngine (MethodBase interface)
 #pragma once
 
+#include "util/output_columns.hpp"
 #include "geno_factory/geno_data.hpp"
 #include <Eigen/Dense>
 #include <array>
@@ -207,7 +208,7 @@ class WtCoxGMethod : public MethodBase {
         return 11;
     }
 
-    std::string getHeaderColumns() const override;
+    ResultColumns getResultColumns() const override;
 
     void prepareChunk(const std::vector<uint64_t> &gIndices) override;
 
@@ -453,6 +454,7 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
 
 // --pheno path: compute regression residuals internally
 void runWtCoxGPheno(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &covarFile,                               // empty = no separate covar file
     const std::vector<std::string> &covarNames,                 // empty = intercept only
@@ -487,6 +489,7 @@ void runWtCoxGPheno(
 // to produce these via nullmodel::parsePhenoSpecAuto (with RegressionModel::Auto)
 // so the WtCoxG / LEAF survival syntax matches the other GWAS methods.
 void runWtCoxG(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
@@ -520,6 +523,7 @@ void runWtCoxG(
 // mu0/mu1 scan (Phase C) are residual-independent and are computed once.  The
 // pred.list is keyed on the canonical phenotype/spec name (e.g. "Time_Event").
 void runWtCoxGLoco(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,

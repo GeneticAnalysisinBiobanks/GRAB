@@ -407,17 +407,16 @@ class SPAsqrMethod : public MethodBase {
 // which dev-notes/methods/spa_unify/02_design.md places out of scope for the
 // per-method migration stages.  This is the encoding Stage 3 established for
 // SPACox, kept identical so all methods agree.
-    std::string getHeaderColumns() const override {
-        std::ostringstream oss;
-        oss << "\tLOG10P_CCT";
-        static const char *const kGroups[] = {"LOG10P_", "Z_", "Z_Norm_",
-                                              "SPA_STATUS_"};
-        for (const char *g : kGroups) {
+    ResultColumns getResultColumns() const override {
+        ResultColumns columns{{"LOG10P_CCT"}};
+        const ResultColumns groups{{"LOG10P_"}, {"Z_", ResultColumnKind::Z},
+                                   {"Z_Norm_"}, {"SPA_STATUS_", ResultColumnKind::SpaStatus}};
+        for (const auto &group : groups) {
             for (int i = 0; i < m_ntaus; ++i) {
-                oss << '\t' << g << m_tauLabels[i];
+                columns.push_back({group.name + m_tauLabels[i], group.kind});
             }
         }
-        return oss.str();
+        return columns;
     }
 
     // SPAsqr is unconditionally fuseable (see supportsFusedGemm below), and the
@@ -1170,6 +1169,7 @@ void runSPAsqr(const SPAsqrConfig &cfg) {
     // ── 8. Run multi-phenotype engine ───────────────────────────────
     infoMsg("SPAsqr: Starting multi-phenotype association (%d phenotypes, %d taus, %d threads)", K, ntaus, cfg.nthreads);
     multiPhenoEngine(
+        cfg.outputOptions,
         *genoData, tasks, cfg.outPrefix, "SPAsqr", cfg.compression, cfg.compressionLevel,
         cfg.nthreads, cfg.missingCutoff, cfg.minMafCutoff, cfg.minMacCutoff, cfg.hweCutoff
     );
@@ -1345,6 +1345,7 @@ void runSPAsqrLoco(const SPAsqrConfig &cfg) {
     infoMsg("SPAsqr-LOCO: Starting LOCO association (%d phenotypes, %d taus, %d chroms, %d threads)",
             K, ntaus, nChroms, cfg.nthreads);
     locoEngine(
+        cfg.outputOptions,
         *genoData,
         locoChroms,
         phenoNames,

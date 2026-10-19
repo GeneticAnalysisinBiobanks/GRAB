@@ -27,6 +27,7 @@
 // Branch B the paper's SPAGxE+ runs no Wald test.
 #pragma once
 
+#include "util/output_columns.hpp"
 #include <Eigen/Dense>
 #include <memory>
 #include <string>
@@ -144,7 +145,7 @@ class SPAGxEMethod : public MethodBase {
         return 5 + 7 * static_cast<int>(m_envNames.size());
     }
 
-    std::string getHeaderColumns() const override;
+    ResultColumns getResultColumns() const override;
 
     void getResultVec(
         Eigen::Ref<Eigen::VectorXd> GVec,
@@ -239,6 +240,7 @@ class SPAGxEMethod : public MethodBase {
 // supplied (--sp-grm-*, optional) the (+) variance correction engages; absent,
 // the base unrelated path runs.
 void runSPAGxE(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &envNames,
@@ -278,6 +280,7 @@ void runSPAGxE(
 // scope).  The Branch-B Wald + CCT leg is reused unchanged (the interaction
 // model trait ~ X + E + g + g:E is identical).
 void runSPAGxEmix(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &envNames,

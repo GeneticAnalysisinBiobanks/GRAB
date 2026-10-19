@@ -14,6 +14,7 @@
 // spacox_cgf.hpp.  See dev-notes/methods/spa_unify/02_design.md.
 #pragma once
 
+#include "util/output_columns.hpp"
 #include <Eigen/Dense>
 #include <string>
 #include <vector>
@@ -118,8 +119,9 @@ class SPACoxMethod : public MethodBase {
 // NA.  What is and is not measured about that substitution is recorded once,
 // on spa::statusIsFallback in src/util/spa.hpp; in particular it does NOT
 // concentrate at low MAC, which measurement refutes.
-    std::string getHeaderColumns() const override {
-        return "\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
+    ResultColumns getResultColumns() const override {
+        return {{"LOG10P"}, {"Z", ResultColumnKind::Z}, {"Z_Norm"},
+                {"BETA"}, {"SE"}, {"SPA_STATUS", ResultColumnKind::SpaStatus}};
     }
 
     void getResultVec(
@@ -220,6 +222,7 @@ class SPACoxMethod : public MethodBase {
 // ======================================================================
 
 void runSPACox(
+    const OutputOptions &outputOptions,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &covarNames,             // empty = no covariates
     const std::string &phenoFile,                            // pheno file (for residuals + covar columns)
@@ -252,6 +255,7 @@ void runSPACox(
 // --longitudinal are rejected upstream in dispatch.  The pred.list is keyed on
 // the canonical phenotype/spec name (e.g. "Time_Event" for a TIME:EVENT spec).
 void runSPACoxLoco(
+    const OutputOptions &outputOptions,
     const std::vector<std::string> &covarNames,
     const std::string &phenoFile,
     const std::string &covarFile,

@@ -1185,6 +1185,7 @@ void runPhiEstimation(
 // ======================================================================
 
 static void runUnifiedGWAS(
+    const OutputOptions &outputOptions,
     const LancData &admixData,
     const std::vector<MultiPhenoRprodSoA> &rphi,
     const Eigen::MatrixXd &R_mat,
@@ -1244,16 +1245,17 @@ static void runUnifiedGWAS(
     // trustworthy, 3..6 that the saddlepoint failed and LOG10P is the
     // substituted normal tail, >= 7 that LOG10P is NA.  Every column of an
     // ancestry that fails the MISS_RATE / MAF / MAC filters is NA.
+    const ResultColumns statisticColumns{{"LOG10P"}, {"BETA"}, {"SE"},
+                                         {"SPA_STATUS", ResultColumnKind::SpaStatus}};
+    const OutputLayout statisticLayout(statisticColumns, outputOptions);
     std::string header = "CHROM\tPOS\tID\tREF\tALT";
     for (int k = 0; k < K; ++k) {
         std::string pfx = "\tanc" + std::to_string(k) + "_";
         header += pfx + "MISS_RATE";
         header += pfx + "ALT_FREQ";
         header += pfx + "MAC";
-        header += pfx + "LOG10P";
-        header += pfx + "BETA";
-        header += pfx + "SE";
-        header += pfx + "SPA_STATUS";
+        for (size_t index : statisticLayout.indices)
+            header += pfx + statisticColumns[index].name;
     }
     header += '\n';
     for (int p = 0; p < K_pheno; ++p) writers[p].write(header);
@@ -1500,7 +1502,7 @@ static void runUnifiedGWAS(
                             buf += fmtBuf;
 
                             if (!as.pass) {
-                                buf += "\tNA\tNA\tNA\tNA";
+                                buf += statisticLayout.naSuffix;
                                 continue;
                             }
 
@@ -1526,15 +1528,12 @@ static void runUnifiedGWAS(
                             double seG   = (varS > 0.0) ? 1.0 / std::sqrt(varS)
                                                          : std::numeric_limits<double>::quiet_NaN();
 
-                            buf += '\t';
-                            writeNum(buf, fmtBuf, res.negLog10p);
-                            buf += '\t';
-                            writeNum(buf, fmtBuf, betaG);
-                            buf += '\t';
-                            writeNum(buf, fmtBuf, seG);
-                            buf += '\t';
-                            writeNum(buf, fmtBuf,
-                                     spamixlocalp_cgf::statusCode(res.status));
+                            const double statistics[] = {res.negLog10p, betaG, seG,
+                                spamixlocalp_cgf::statusCode(res.status)};
+                            for (size_t index : statisticLayout.indices) {
+                                buf += '\t';
+                                writeNum(buf, fmtBuf, statistics[index]);
+                            }
                         }
                         buf += '\n';
                     }
@@ -1591,6 +1590,7 @@ static void runUnifiedGWAS(
 // ======================================================================
 
 void runSPAmixLocalPlus(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::string &admixPrefix,
@@ -1740,6 +1740,7 @@ void runSPAmixLocalPlus(
     }
 
     runUnifiedGWAS(
+        outputOptions,
         admixData,
         rphi,
         R_mat,

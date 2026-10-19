@@ -7,6 +7,7 @@
 // dosage/hapcount data, and SparseGRM for related-pair structure.
 #pragma once
 
+#include "util/output_columns.hpp"
 #include "localplus/lanc_io.hpp"
 #include "util/outlier.hpp"
 #include "util/spa.hpp"
@@ -293,6 +294,7 @@ void runPhiEstimation(
 //     util/null_model.hpp) and the resulting residuals feed the same
 //     downstream pipeline as the residual-path.
 void runSPAmixLocalPlus(
+    const OutputOptions &outputOptions,
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::string &admixPrefix,

@@ -675,6 +675,7 @@ void SPAmixPlusMethod::fillResidualSums(double *dest) const {
 // ======================================================================
 
 void runSPAmixPlus(
+    const OutputOptions &outputOptions,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &pcColNames,
     const std::string &phenoFile,
@@ -1060,6 +1061,7 @@ void runSPAmixPlus(
 
     infoMsg("Running %s marker tests (%d thread(s), %d phenotype(s))...", methodLabel, nthread, K);
     multiPhenoEngine(
+        outputOptions,
         *genoData,
         tasks,
         outPrefix,
@@ -1087,6 +1089,7 @@ void runSPAmixPlus(
 // residual pools are overwritten.
 
 void runSPAmixPlusLoco(
+    const OutputOptions &outputOptions,
     const std::vector<std::string> &pcColNames,
     const std::string &phenoFile,
     const std::string &covarFile,
@@ -1359,6 +1362,7 @@ void runSPAmixPlusLoco(
     infoMsg("%s-LOCO: starting LOCO association (%d phenotype(s), %zu chroms, %d threads)",
             methodLabel, K, locoChroms.size(), nthread);
     locoEngine(
+        outputOptions,
         *genoData, locoChroms, specNames, buildTasks, outPrefix, methodLabel,
         compression, compressionLevel, nthread,
         missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);

@@ -1,6 +1,7 @@
 // cli.hpp — Public interface for the GRAB command-line layer
 #pragma once
 
+#include "util/output_columns.hpp"
 #include <cstdint>
 #include <string>
 
@@ -50,6 +51,7 @@ struct Args {
     std::string indAfFile;       // --ind-af-coef
     std::string pairwiseIBDFile;
     std::string outPrefix;        // --out PREFIX (always a prefix)
+    OutputOptions outputOptions;
     std::string compression;      // --compression (gz|zst, default: empty = plain text)
     std::string extractFile;      // --extract (SNP include list)
     std::string excludeFile;      // --exclude (SNP exclude list)
