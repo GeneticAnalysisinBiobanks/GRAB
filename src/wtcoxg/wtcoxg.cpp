@@ -1,0 +1,2351 @@
+// wtcoxg.cpp — WtCoxG full implementation (Phases 1–3)
+
+#include "wtcoxg/wtcoxg.hpp"
+#include "geno_factory/geno_data.hpp"
+#include "io/sparse_grm.hpp"
+#include "io/subject_data.hpp"
+#include "util/logging.hpp"
+#include "util/math_helper.hpp"
+#include "util/simd_dispatch.hpp"
+#include "util/simd_math.hpp"
+#include "util/spa.hpp"
+#include "util/text_scanner.hpp"
+#include "wtcoxg/conditional_p.hpp"
+#include "wtcoxg/wtcoxg_cgf.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <limits>
+#include <numeric>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <vector>
+
+using NaN = std::numeric_limits<double>;
+
+// ======================================================================
+// Anonymous-namespace helpers — SPA with 1.5×IQR outlier split.
+//
+// Non-outlier residuals contribute via their 2nd-order Taylor expansion of
+// the binomial CGF (a Gaussian closed form), avoiding the O(N) inner loop
+// for every Newton-Raphson iteration.  Outlier residuals retain the full
+// empirical CGF.
+//
+// The CGF kernel, the root finder and the tail are no longer here: they moved
+// to wtcoxg/wtcoxg_cgf.hpp on top of the unified util/spa.hpp solver and the
+// vectorized util/spa_cgf.hpp binomial kernels (spa_unify Stage 6).  The
+// sentence this comment used to carry — "Newton-Raphson reuses K2 for both the
+// saddle-point step and the Lugannani-Rice tail" — was never true: the finder
+// returned a K2 that no caller read, and the tail recomputed the whole CGF at
+// the root.  It is now true, and it is the solver that makes it so.
+// ======================================================================
+
+namespace {
+
+// ────────────────────────────────────────────────────────────────────
+// fow_kernel — N-length inner loop of fun_optimalWeight (Brent root
+// finder inside Brent min over b, inside Nelder-Mead over (η_T, η_S)).
+//
+// For each subject k the loop accumulates:
+//   mu_i  = 2·mu1_trial if y[k] == 1, else 2·mu0_val
+//   r_adj = R[k] − bm_loc
+//   S            += r_adj · mu_i
+//   mu_local_acc += mu_i
+//   var_int_acc  += r_adj²
+//   cov_val_acc  += w1_local[k] · r_adj
+//
+// Three variants are compiled (scalar / AVX2 / AVX-512); the runtime
+// dispatcher (pickFowFn) resolves the function pointer once.  The kernel
+// is called O(P · K · 10⁵) times per testBatchEffects call inside a deeply
+// nested numerical optimiser, so the per-call dispatch cost is amortised.
+// ────────────────────────────────────────────────────────────────────
+
+struct FOWAccum {
+    double S;
+    double mu_local_acc;
+    double var_int_acc;
+    double cov_val_acc;
+};
+
+static FOWAccum fow_kernel_scalar(
+    const double *R,
+    const double *y,
+    const double *w1l,
+    int n,
+    double mu1_trial2,    // pre-multiplied: 2·mu1_trial
+    double mu0_val2,      // pre-multiplied: 2·mu0_val
+    double bm_loc
+) {
+    double S = 0.0, mu_local_acc = 0.0, var_int_acc = 0.0, cov_val_acc = 0.0;
+    for (int k = 0; k < n; ++k) {
+        const double mu_i  = (y[k] == 1.0) ? mu1_trial2 : mu0_val2;
+        const double r_adj = R[k] - bm_loc;
+        S             += r_adj * mu_i;
+        mu_local_acc  += mu_i;
+        var_int_acc   += r_adj * r_adj;
+        cov_val_acc   += w1l[k] * r_adj;
+    }
+    return {S, mu_local_acc, var_int_acc, cov_val_acc};
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+__attribute__((target("avx2,avx512f,avx512vl,fma")))
+static FOWAccum fow_kernel_avx512(
+    const double *R,
+    const double *y,
+    const double *w1l,
+    int n,
+    double mu1_trial2,
+    double mu0_val2,
+    double bm_loc
+) {
+    const __m512d vmu1_2 = _mm512_set1_pd(mu1_trial2);
+    const __m512d vmu0_2 = _mm512_set1_pd(mu0_val2);
+    const __m512d vbm    = _mm512_set1_pd(bm_loc);
+    const __m512d vone   = _mm512_set1_pd(1.0);
+
+    __m512d vS   = _mm512_setzero_pd();
+    __m512d vMu  = _mm512_setzero_pd();
+    __m512d vVar = _mm512_setzero_pd();
+    __m512d vCov = _mm512_setzero_pd();
+
+    int i = 0;
+    const int n8 = n & ~7;
+    for (; i < n8; i += 8) {
+        const __m512d vR   = _mm512_loadu_pd(R + i);
+        const __m512d vy   = _mm512_loadu_pd(y + i);
+        const __m512d vw   = _mm512_loadu_pd(w1l + i);
+        const __mmask8 m   = _mm512_cmp_pd_mask(vy, vone, _CMP_EQ_OQ);
+        const __m512d vmu  = _mm512_mask_blend_pd(m, vmu0_2, vmu1_2);
+        const __m512d vradj = _mm512_sub_pd(vR, vbm);
+        vS   = _mm512_fmadd_pd(vradj, vmu, vS);
+        vMu  = _mm512_add_pd(vMu, vmu);
+        vVar = _mm512_fmadd_pd(vradj, vradj, vVar);
+        vCov = _mm512_fmadd_pd(vw, vradj, vCov);
+    }
+
+    if (i < n) {
+        const __mmask8 tail = static_cast<__mmask8>((1u << (n - i)) - 1u);
+        const __m512d vR    = _mm512_maskz_loadu_pd(tail, R + i);
+        const __m512d vy    = _mm512_maskz_loadu_pd(tail, y + i);
+        const __m512d vw    = _mm512_maskz_loadu_pd(tail, w1l + i);
+        const __mmask8 m    = _mm512_cmp_pd_mask(vy, vone, _CMP_EQ_OQ);
+        const __m512d vmu   = _mm512_mask_blend_pd(m, vmu0_2, vmu1_2);
+        const __m512d vradj = _mm512_sub_pd(vR, vbm);
+        // Use mask3-FMA so inactive lanes carry the accumulator (4th arg)
+        // unchanged.  `_mm512_mask_fmadd_pd(a,k,b,c)` writes `a` on k=0
+        // (wrong here); `_mm512_mask3_fmadd_pd(a,b,c,k)` writes `c` on k=0
+        // (what we want).  Same trick for the accumulator-preserving add.
+        vS   = _mm512_mask3_fmadd_pd(vradj, vmu, vS, tail);
+        vMu  = _mm512_mask_add_pd(vMu, tail, vMu, vmu);
+        vVar = _mm512_mask3_fmadd_pd(vradj, vradj, vVar, tail);
+        vCov = _mm512_mask3_fmadd_pd(vw, vradj, vCov, tail);
+    }
+
+    return {_mm512_reduce_add_pd(vS),
+            _mm512_reduce_add_pd(vMu),
+            _mm512_reduce_add_pd(vVar),
+            _mm512_reduce_add_pd(vCov)};
+}
+
+__attribute__((target("avx2,fma")))
+static FOWAccum fow_kernel_avx2(
+    const double *R,
+    const double *y,
+    const double *w1l,
+    int n,
+    double mu1_trial2,
+    double mu0_val2,
+    double bm_loc
+) {
+    const __m256d vmu1_2 = _mm256_set1_pd(mu1_trial2);
+    const __m256d vmu0_2 = _mm256_set1_pd(mu0_val2);
+    const __m256d vbm    = _mm256_set1_pd(bm_loc);
+    const __m256d vone   = _mm256_set1_pd(1.0);
+
+    __m256d vS   = _mm256_setzero_pd();
+    __m256d vMu  = _mm256_setzero_pd();
+    __m256d vVar = _mm256_setzero_pd();
+    __m256d vCov = _mm256_setzero_pd();
+
+    int i = 0;
+    const int n4 = n & ~3;
+    for (; i < n4; i += 4) {
+        const __m256d vR    = _mm256_loadu_pd(R + i);
+        const __m256d vy    = _mm256_loadu_pd(y + i);
+        const __m256d vw    = _mm256_loadu_pd(w1l + i);
+        const __m256d mask  = _mm256_cmp_pd(vy, vone, _CMP_EQ_OQ);
+        // blendv_pd selects second operand when mask MSB is set; cmp_pd
+        // returns all-1s on equality, MSB=1, so mask → vmu1_2.
+        const __m256d vmu   = _mm256_blendv_pd(vmu0_2, vmu1_2, mask);
+        const __m256d vradj = _mm256_sub_pd(vR, vbm);
+        vS   = _mm256_fmadd_pd(vradj, vmu, vS);
+        vMu  = _mm256_add_pd(vMu, vmu);
+        vVar = _mm256_fmadd_pd(vradj, vradj, vVar);
+        vCov = _mm256_fmadd_pd(vw, vradj, vCov);
+    }
+
+    auto hsum = [](__m256d v) -> double {
+        __m128d lo = _mm256_castpd256_pd128(v);
+        __m128d hi = _mm256_extractf128_pd(v, 1);
+        lo = _mm_add_pd(lo, hi);
+        return _mm_cvtsd_f64(lo) + _mm_cvtsd_f64(_mm_unpackhi_pd(lo, lo));
+    };
+    double S            = hsum(vS);
+    double mu_local_acc = hsum(vMu);
+    double var_int_acc  = hsum(vVar);
+    double cov_val_acc  = hsum(vCov);
+
+    for (; i < n; ++i) {
+        const double mu_i  = (y[i] == 1.0) ? mu1_trial2 : mu0_val2;
+        const double r_adj = R[i] - bm_loc;
+        S             += r_adj * mu_i;
+        mu_local_acc  += mu_i;
+        var_int_acc   += r_adj * r_adj;
+        cov_val_acc   += w1l[i] * r_adj;
+    }
+    return {S, mu_local_acc, var_int_acc, cov_val_acc};
+}
+
+#endif  // x86_64 SIMD variants
+
+using FOWFn = FOWAccum (*)(const double *, const double *, const double *,
+                           int, double, double, double);
+
+static FOWFn pickFowFn() {
+#if defined(__x86_64__) || defined(_M_X64)
+    switch (simdLevel()) {
+    case SimdLevel::AVX512: return fow_kernel_avx512;
+    case SimdLevel::AVX2:   return fow_kernel_avx2;
+    default: break;
+    }
+#endif
+    return fow_kernel_scalar;
+}
+
+static const FOWFn fow_kernel = pickFowFn();
+
+// ────────────────────────────────────────────────────────────────────
+// SPA — the saddlepoint test on one marker within one cluster.
+//
+// The CGF, the root finder and the Barndorff-Nielsen tail all live in
+// wtcoxg/wtcoxg_cgf.hpp over util/spa.hpp and util/spa_cgf.hpp; what remains
+// here is the tier-3 part, which is everything that decides what a subject
+// contributes: the MAF blend, the variance-ratio rescaling, the two
+// closed-form Gaussian blocks over the non-outliers and the normal
+// short-circuit.  See wtcoxg_cgf.hpp for what was replaced and why,
+// including D4's deliberately inconsistent (K, K'') pair.
+// ────────────────────────────────────────────────────────────────────
+
+struct SpaResult {
+    double negLog10p;   // -log10(p), from the log-domain assembly: the sole
+                        // p-value representation since log10p_unify D1
+    double score;       // S_raw, before the variance-ratio division
+    double zscore;
+    spa::Status status; // the nine-value spa::Status: <= 2 when negLog10p is
+                        // the saddlepoint or designed normal value, 3..6 when
+                        // it is the substituted normal tail, >= 7 when NA
+};
+
+// Every early return of the routine below reports a degenerate INPUT rather
+// than a saddlepoint failure: too few minor alleles for the approximation to
+// mean anything, or a score variance that is not positive.  There is no test
+// in those cases, and no root was ever sought, so the status is NA_NO_TEST and
+// the row is NA.  It is NOT eligible for the D5 normal fallback: there is
+// nothing to fall back to.
+//
+// This is the single site that produces LEAF's per-cluster "no informative
+// subject" rows.  A cluster in which the marker is monomorphic, or carries
+// fewer than ten minor alleles, arrives here through the MAC guard below and
+// leaves with NA_NO_TEST by name — not by letting a NaN propagate downstream
+// and be classified after the fact.
+inline SpaResult spaDegenerate(double score) {
+    const double nan = NaN::quiet_NaN();
+    return {nan, score, nan, spa::Status::NaNoTest};
+}
+
+// Scalar-input variant of spaGOneSnpHomo.  The only quantities derived
+// from g that the original routine uses are R.dot(g), g.sum(), and N;
+// supplying these directly lets a fused-GEMM caller skip materialising
+// the cluster-local g vector.
+SpaResult spaGOneSnpHomoFromScalars(
+    double R_dot_g,
+    double gSum,
+    int Nint,
+    const WtCoxGShared &shared,
+    double meanR,
+    double sumR,
+    double sqSumR,
+    double mu_ext,
+    double obs_ct,
+    double b,
+    double sigma2,
+    double var_ratio,
+    double SPA_Cutoff
+) {
+
+    if (std::isnan(mu_ext)) {
+        mu_ext = 0.0;
+        obs_ct = 0.0;
+    }
+
+    // Cluster MAC < 10 guard, mirroring R's SPA_G.one.SNP_homo line 448
+    //   (`sum(g) < min.mac | sum(2-g) < min.mac` with min.mac = 10).
+    // Without this guard the noext path would output SPA p-values on SNPs
+    // whose per-cluster allele count is too low for the saddle-point
+    // approximation to be reliable; the ext path is already guarded by
+    // the outer check in wtCoxGTestFromScalars, so this is effectively a
+    // no-op there.  Missing-rate (>0.15) guard from the same R block is
+    // omitted because per-cluster missing info is not plumbed to this
+    // scalar entry; for low-missing inputs the MAC guard catches the same
+    // cases in practice.
+    const double sum_g_chk   = gSum;
+    const double sum_2mg_chk = 2.0 * static_cast<double>(Nint) - gSum;
+    if (sum_g_chk < 10.0 || sum_2mg_chk < 10.0) {
+        return spaDegenerate(
+            R_dot_g - 2.0 * (gSum / std::max(1.0, static_cast<double>(Nint)) / 2.0) * sumR);
+    }
+
+    const double N = static_cast<double>(Nint);
+    double mu_int = (N > 0.0) ? (gSum / N) / 2.0 : 0.0;
+    double MAF = std::clamp((1.0 - b) * mu_int + b * mu_ext, 0.0, 1.0);
+    double N_all = N + obs_ct / 2.0;
+    // S = sum(R · (g − 2·MAF)) = R·g − 2·MAF·sumR  (provided by caller)
+    double S = R_dot_g - 2.0 * MAF * sumR;
+    double S_raw = S;
+    S /= var_ratio;
+
+    double g_var_est = 2.0 * MAF * (1.0 - MAF);
+    double var_mu_ext = (obs_ct == 0.0) ? 0.0 : (MAF * (1.0 - MAF) / obs_ct + sigma2);
+
+    // S_var: closed form from cached R reductions, no per-variant temp array.
+    // sum((R - bm)²) = sqSumR − 2·bm·sumR + N·bm²,  bm = (1-b)·meanR
+    const double bm = (1.0 - b) * meanR;
+    const double R_adj_sq_sum = sqSumR - 2.0 * bm * sumR + N * bm * bm;
+    double S_var = R_adj_sq_sum * g_var_est + 4.0 * b * b * sumR * sumR * var_mu_ext;
+
+    if (S_var <= 0.0) return spaDegenerate(S_raw);
+
+    double z = S / std::sqrt(S_var);
+    if (std::abs(z) <= SPA_Cutoff) {
+        // The saddlepoint is never attempted here.  spa::normalBranch supplies
+        // the log-domain magnitude and the NORMAL status.  The two linear
+        // fields this branch also filled — `pval` and the never-read `pval2` —
+        // went with the P column in log10p_unify Stage 8, and with them the
+        // `std::min(1.0, 2*pnorm(-|z|))` idiom D2 had to defuse here.
+        const spa::Result nb = spa::normalBranch(z);
+        return {nb.negLog10p, S_raw, z, spa::Status::Normal};
+    }
+
+    // Non-outlier Gaussian CGF terms (closed form, O(1) per variant).
+    const double n_non_d        = static_cast<double>(shared.nNonOutlier);
+    const double shifted_sum    = shared.sumR_nonOutlier - n_non_d * bm;
+    const double shifted_sumsq  = shared.sumR2_nonOutlier
+                                - 2.0 * bm * shared.sumR_nonOutlier
+                                + n_non_d * bm * bm;
+    const double mu_adj         = -2.0 * b * sumR * MAF;
+    const double var_adj_batch  = 4.0 * b * b * sumR * sumR * var_mu_ext;
+    const double var_adj_finite = obs_ct * (sumR / N_all) * (sumR / N_all) * MAF * (1.0 - MAF);
+    const double var_n_resid    = 2.0 * MAF * (1.0 - MAF) * shifted_sumsq;
+
+    wtcoxg_cgf::Context ctx;
+    ctx.nOutlier = static_cast<int>(shared.outlier.posOutlier.size());
+    ctx.maf      = MAF;
+    ctx.mean     = 2.0 * MAF * shifted_sum + mu_adj;
+    // D4: varK01 carries the batch-effect Gaussian variance and enters K and
+    // K'; varK2 carries the finite-reference-panel correction and enters K''.
+    // They differ exactly when obs_ct > 0.  Preserved, not repaired — see
+    // wtcoxg_cgf.hpp.
+    ctx.varK01   = var_n_resid + var_adj_batch;
+    ctx.varK2    = var_n_resid + var_adj_finite;
+
+    // P7: the centred outlier residuals come from the per-(cluster, b) table
+    // built once in the WtCoxGMethod constructor.  The fallback covers a b
+    // that Phase 2 never produced, which cannot happen on any reachable path
+    // but must not read a null pointer if it ever does.
+    Eigen::ArrayXd scratch;
+    ctx.resid = shared.residCenteredFor(b);
+    if (ctx.resid == nullptr) {
+        scratch = shared.outlier.residOutlier.array() - bm;
+        ctx.resid = scratch.data();
+    }
+
+    const spa::Result ts = wtcoxg_cgf::twoSidedSpa(ctx, std::abs(S), S_var, z);
+    return {ts.negLog10p, S_raw, z, ts.status};
+}
+
+} // namespace
+
+// ======================================================================
+// Phase 1 — File parsing & marker matching
+// ======================================================================
+
+std::vector<RefAfRecord> loadRefAfFile(
+    const std::string &filename,
+    bool *isNumericFallback
+) {
+    std::ifstream ifs(filename);
+    if (!ifs) throw std::runtime_error("Cannot open ref-af file: " + filename);
+
+    std::vector<RefAfRecord> recs;
+    recs.reserve(100000);
+    std::string line;
+
+    // ---- Detect column positions from header line ----
+    int colChrom = -1, colId = -1, colRef = -1, colAlt = -1;
+    int colAltFreqs = -1, colObsCt = -1;
+
+    while (std::getline(ifs, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        if (line[0] != '#') break; // first non-header line
+        // Parse header columns
+        text::TokenScanner hts(line);
+        int col = 0;
+        while (!hts.atEnd()) {
+            auto sv = hts.nextView();
+            if (sv.empty()) break;
+            // Strip leading '#' from the first token
+            if (col == 0 && !sv.empty() && sv[0] == '#') sv.remove_prefix(1);
+            if (sv == "CHROM")colChrom = col;
+            else if (sv == "ID")colId = col;
+            else if (sv == "REF")colRef = col;
+            else if (sv == "ALT" || sv == "ALT1")colAlt = col;
+            else if (sv == "ALT_FREQS" || sv == "ALT1_FREQ")colAltFreqs = col;
+            else if (sv == "OBS_CT")colObsCt = col;
+            ++col;
+        }
+        // Keep reading — last '#' line wins (plink2 puts one header line)
+    }
+
+    if (colChrom < 0 || colId < 0 || colRef < 0 || colAlt < 0 || colAltFreqs < 0 || colObsCt < 0) {
+        // ---- Two-column numeric fallback ----
+        // No valid header found.  If the first data line has exactly two
+        // numeric tokens, treat the whole file as (ALT_FREQS  OBS_CT) rows
+        // assumed to be in .bim order.
+        if (!line.empty() && line[0] != '#') {
+            text::TokenScanner probe(line);
+            auto sv1 = probe.nextView();
+            auto sv2 = probe.nextView();
+            probe.skipWS();
+            if (!sv1.empty() && !sv2.empty() && probe.atEnd()) {
+                char *end1 = nullptr, *end2 = nullptr;
+                std::strtod(sv1.data(), &end1);
+                std::strtod(sv2.data(), &end2);
+                if (end1 != sv1.data() && end2 != sv2.data()) {
+                    // Confirmed two-column numeric format
+                    if (isNumericFallback) *isNumericFallback = true;
+                    uint32_t lineNo = 0;
+                    auto parseNumLine = [&](const std::string &ln) {
+                        ++lineNo;
+                        if (ln.empty()) return;
+                        text::TokenScanner ts(ln);
+                        ts.skipWS();
+                        char *ep;
+                        RefAfRecord r;
+                        r.alt_freq = std::strtod(ts.pos(), &ep);
+                        if (ep == ts.pos()) throw std::runtime_error(
+                                      filename + " line " + std::to_string(lineNo) +
+                                      ": expected 2 numeric columns (ALT_FREQS OBS_CT)"
+                        );
+                        ts.p = ep;
+                        ts.skipWS();
+                        r.obs_ct = std::strtod(ts.pos(), &ep);
+                        if (ep == ts.pos()) throw std::runtime_error(
+                                      filename + " line " + std::to_string(lineNo) +
+                                      ": expected 2 numeric columns (ALT_FREQS OBS_CT)"
+                        );
+                        recs.push_back(std::move(r));
+                    };
+                    parseNumLine(line);
+                    while (std::getline(ifs, line)) {
+                        if (text::skipLine(line)) continue;
+                        parseNumLine(line);
+                    }
+                    return recs;
+                }
+            }
+        }
+        throw std::runtime_error(
+                  filename + ": missing required header columns "
+                  "(need #CHROM, ID, REF, ALT, ALT_FREQS, OBS_CT)"
+        );
+    }
+
+    if (isNumericFallback) *isNumericFallback = false;
+
+    const int maxCol = std::max({colChrom, colId, colRef, colAlt, colAltFreqs, colObsCt});
+
+    // ---- Parse data lines ----
+    // `line` already holds the first non-header line from the header scan
+    uint32_t lineNo = 0;
+    auto parseLine = [&](const std::string &ln) {
+        ++lineNo;
+        if (ln.empty()) return;
+        // Tokenise with zero-copy scanner, only allocate strings we keep
+        text::TokenScanner ts(ln);
+        // Read tokens up to maxCol+1
+        std::vector<std::string_view> tokViews;
+        tokViews.reserve(maxCol + 2);
+        while (!ts.atEnd()) {
+            auto sv = ts.nextView();
+            if (sv.empty()) break;
+            tokViews.push_back(sv);
+        }
+        if (static_cast<int>(tokViews.size()) <= maxCol) throw std::runtime_error(
+                      filename + " line " + std::to_string(lineNo) + ": expected at least " +
+                      std::to_string(maxCol + 1) + " columns, got " + std::to_string(tokViews.size())
+        );
+
+        RefAfRecord r;
+        r.chrom = std::string(tokViews[colChrom]);
+        r.id = std::string(tokViews[colId]);
+        r.ref_allele = std::string(tokViews[colRef]);
+        r.alt_allele = std::string(tokViews[colAlt]);
+        // Uppercase alleles for consistent matching
+        for (auto &ch : r.ref_allele)
+            ch = static_cast<char>(std::toupper(ch));
+        for (auto &ch : r.alt_allele)
+            ch = static_cast<char>(std::toupper(ch));
+
+        char *endPtr;
+        const auto &afSv = tokViews[colAltFreqs];
+        r.alt_freq = std::strtod(afSv.data(), &endPtr);
+        if (endPtr == afSv.data()) throw std::runtime_error(
+                      filename + " line " +
+                      std::to_string(lineNo) + ": invalid ALT_FREQS value"
+        );
+        const auto &ctSv = tokViews[colObsCt];
+        r.obs_ct = std::strtod(ctSv.data(), &endPtr);
+        if (endPtr == ctSv.data()) throw std::runtime_error(
+                      filename + " line " +
+                      std::to_string(lineNo) + ": invalid OBS_CT value"
+        );
+        recs.push_back(std::move(r));
+    };
+
+    // Process the first data line that was read during header scan
+    if (!line.empty() && line[0] != '#') parseLine(line);
+    while (std::getline(ifs, line)) {
+        if (text::skipLine(line)) continue;
+        parseLine(line);
+    }
+    return recs;
+}
+
+std::vector<MatchedMarkerInfo> matchMarkers(
+    const GenoMeta &plinkData,
+    const std::vector<RefAfRecord> &refAf
+) {
+
+    // Build ref lookup: key = "chrom:id" → index into refAf
+    auto makeKey = [](const std::string &chr, const std::string &id) -> std::string {
+        std::string k;
+        k.reserve(chr.size() + 1 + id.size());
+        k += chr;
+        k += ':';
+        k += id;
+        return k;
+    };
+
+    std::unordered_map<std::string, size_t> refMap;
+    refMap.reserve(refAf.size());
+    for (size_t i = 0; i < refAf.size(); ++i)
+        refMap.emplace(makeKey(refAf[i].chrom, refAf[i].id), i);
+
+    // Match each bim marker against reference by (CHROM, ID),
+    // then check allele orientation.  Across all genotype readers,
+    // mi.ref = REF and mi.alt = ALT (the allele counted by GVec).
+    std::vector<MatchedMarkerInfo> matched;
+    matched.reserve(plinkData.markerInfo().size());
+    for (const auto &mi : plinkData.markerInfo()) {
+        auto key = makeKey(mi.chrom, mi.id);
+        auto it = refMap.find(key);
+        if (it == refMap.end()) continue; // no match by CHROM+ID
+
+        const auto &ref = refAf[it->second];
+        MatchedMarkerInfo m;
+        m.genoIndex = mi.genoIndex;
+
+        // GVec doses count mi.alt (= file ALT across plink / pgen / bgen
+        // / vcf readers).  AF_ref must therefore be the frequency of
+        // mi.alt in the population panel.
+        //   Case 1: pop ALT == mi.alt AND pop REF == mi.ref
+        //           → same orientation, AF_ref = ALT_FREQS
+        //   Case 2: pop ALT == mi.ref AND pop REF == mi.alt
+        //           → flipped, AF_ref = 1 - ALT_FREQS
+        if (ref.alt_allele == mi.alt && ref.ref_allele == mi.ref) {
+            m.AF_ref = ref.alt_freq;
+        } else if (ref.alt_allele == mi.ref && ref.ref_allele == mi.alt) {
+            m.AF_ref = 1.0 - ref.alt_freq;
+        } else {
+            continue; // alleles don't match → drop
+        }
+        m.obs_ct = ref.obs_ct;
+
+        // mu0, mu1, n0, n1 will be filled later during genotype scanning
+        m.mu0 = m.mu1 = m.n0 = m.n1 = m.mu_int = 0.0;
+        matched.push_back(m);
+    }
+    return matched;
+}
+
+std::vector<MatchedMarkerInfo> matchMarkersNumeric(
+    const GenoMeta &plinkData,
+    const std::vector<RefAfRecord> &refAf
+) {
+
+    const auto &markers = plinkData.markerInfo();
+    if (refAf.size() != markers.size())throw std::runtime_error(
+                  "ref-af numeric fallback: row count (" + std::to_string(refAf.size()) +
+                  ") != bim marker count (" + std::to_string(markers.size()) + ")"
+    );
+
+    std::vector<MatchedMarkerInfo> matched;
+    matched.reserve(markers.size());
+    for (size_t i = 0; i < markers.size(); ++i) {
+        MatchedMarkerInfo m;
+        m.genoIndex = markers[i].genoIndex;
+        m.AF_ref = refAf[i].alt_freq; // col 5 frequency directly
+        m.obs_ct = refAf[i].obs_ct;
+        m.mu0 = m.mu1 = m.n0 = m.n1 = m.mu_int = 0.0;
+        matched.push_back(m);
+    }
+    return matched;
+}
+
+// ======================================================================
+// Genotype scanning — compute per-marker case/control allele freq
+// ======================================================================
+
+void computeMarkerStats(
+    std::vector<MatchedMarkerInfo> &matched,
+    const GenoMeta &plinkData,
+    const Eigen::VectorXd &indicator
+) {
+
+    const uint32_t n = plinkData.nSubjUsed();
+    auto cursor = plinkData.makeCursor();
+
+    if (!matched.empty()) cursor->beginSequentialBlock(matched.front().genoIndex);
+
+    Eigen::VectorXd gvec(n);
+
+    for (auto &m : matched) {
+        cursor->getGenotypesSimple(m.genoIndex, gvec);
+        double sum0 = 0.0, sum1 = 0.0;
+        double cnt0 = 0.0, cnt1 = 0.0;
+        for (uint32_t i = 0; i < n; ++i) {
+            if (std::isnan(gvec[i])) continue;
+            if (indicator[i] == 1.0) {
+                sum1 += gvec[i];
+                cnt1 += 1.0;
+            } else {
+                sum0 += gvec[i];
+                cnt0 += 1.0;
+            }
+        }
+        m.mu0 = (cnt0 > 0.0) ? (sum0 / cnt0 / 2.0) : 0.0;
+        m.mu1 = (cnt1 > 0.0) ? (sum1 / cnt1 / 2.0) : 0.0;
+        m.n0 = cnt0;
+        m.n1 = cnt1;
+        m.mu_int = (cnt0 + cnt1 > 0.0) ? (sum0 + sum1) / (2.0 * (cnt0 + cnt1)) : 0.0;
+    }
+}
+
+// ======================================================================
+// Phase 2 — Batch-effect testing
+// ======================================================================
+
+std::shared_ptr<WtCoxGRefVec> testBatchEffects(
+    const std::vector<MatchedMarkerInfo> &matched,
+    const Eigen::VectorXd &residuals,
+    const Eigen::VectorXd &weights,
+    const Eigen::VectorXd &indicator,
+    const SparseGRM *grm,
+    double refPrevalence,
+    double cutoff,
+    double globalSumWeight
+) {
+
+    const Eigen::Index nSubj = residuals.size();
+
+    // Precompute w1 and R_tilde.  LEAF.R mixes two normalisations for w1:
+    //   - GLOBAL (w / (2 · sum_over_full_pheno(weight))) — used for
+    //     var.ratio.w0 and for the var_Sbat that feeds the TPR / σ²
+    //     estimator (Summix-level quantities computed outside the inner
+    //     optim).
+    //   - LOCAL  (w / (2 · sum_within_cluster(weight))) — re-derived
+    //     inside fun.optimalWeight (and inside WtCoxG.test) on the cluster
+    //     slice.  Mixing the two scales is what the R script does; we
+    //     mirror it exactly.
+    // Single-cluster WtCoxG runs (default globalSumWeight = -1) collapse
+    // both to the local sum, leaving non-LEAF behaviour unchanged.
+    const double sumW_local = weights.sum();
+    const double sumW       = (globalSumWeight > 0.0) ? globalSumWeight : sumW_local;
+    Eigen::VectorXd w1       = weights / (2.0 * sumW);        // GLOBAL (or local fallback)
+    Eigen::VectorXd w1_local = weights / (2.0 * sumW_local);  // always cluster-local
+    double meanR = residuals.mean();
+    Eigen::VectorXd R_tilde = residuals.array() - meanR;
+
+    // --- Variance ratios from sparse GRM ---
+    // Use the symmetric quadratic form  x^T Φ x  = Σ_i Φ_ii x_i² +
+    // 2 · Σ_{i>j stored} Φ_ij x_i x_j.  This is the derivation in
+    // Li et al. (2025) and the form that matches the LEAF.R reference
+    // after its companion update to count each off-diagonal entry twice.
+    double grm_quad_w = 0.0; // w̃ᵀ Φ w̃
+    double grm_quad_R = 0.0; // R̃ᵀ Φ R̃
+    bool hasGRM = (grm != nullptr);
+    if (hasGRM) {
+        grm_quad_w = grm->quadForm(w1.data(), static_cast<uint32_t>(nSubj));
+        grm_quad_R = grm->quadForm(R_tilde.data(), static_cast<uint32_t>(nSubj));
+    }
+    double sum_w1_sq       = w1.array().square().sum();        // GLOBAL — TPR / σ² fit
+    double sum_w1_sq_local = w1_local.array().square().sum();  // LOCAL — fun.optimalWeight
+    double sum_Rtilde_sq = R_tilde.array().square().sum();
+    double var_ratio_int = hasGRM ? (grm_quad_R / sum_Rtilde_sq) : 1.0;
+
+    // --- Per-marker batch p-value ---
+    const size_t nMarkers = matched.size();
+    auto refInfoMap = std::make_shared<WtCoxGRefVec>();
+    refInfoMap->reserve(nMarkers);
+
+    // Temporary per-marker storage
+    struct MarkerBatchData {
+        uint64_t genoIndex;
+        double AF_ref, obs_ct;
+        double mu0, mu1, n0, n1, mu_int;
+        double var_ratio_w0;
+        double pvalue_bat;
+        double log10p_bat;
+    };
+
+    std::vector<MarkerBatchData> batchData(nMarkers);
+
+    for (size_t i = 0; i < nMarkers; ++i) {
+        const auto &m = matched[i];
+        auto &bd = batchData[i];
+        bd.genoIndex = m.genoIndex;
+        bd.AF_ref = m.AF_ref;
+        bd.obs_ct = m.obs_ct;
+        bd.mu0 = m.mu0;
+        bd.mu1 = m.mu1;
+        bd.n0 = m.n0;
+        bd.n1 = m.n1;
+        bd.mu_int = m.mu_int;
+
+        // var_ratio_w0 per marker (depends on obs_ct).  LEAF.R writes
+        //   (w̃ᵀ Φ w̃ + 1/(2·AN_ref)) / (Σ w̃ᵢ² + 1/(2·AN_ref))
+        // where AN_ref is the allele count (= obs_ct in plink2 terms).
+        // The factor of two on the offset matches var_mu_ext = mu(1-mu)/(2·n_ext)
+        // with n_ext = AN_ref/2; omitting it inflates the offset 2× and pulls
+        // the ratio toward 1.
+        const double offset = 1.0 / (2.0 * m.obs_ct);
+        bd.var_ratio_w0 = hasGRM ? (grm_quad_w + offset) / (sum_w1_sq + offset) : 1.0;
+
+        // Batch effect p-value (Batcheffect.TestOneMarker)
+        double er = m.n1 / (m.n1 + m.n0);
+        double w0_val = (1.0 - refPrevalence) / refPrevalence / ((1.0 - er) / er);
+        double w1_val = 1.0;
+        double weight_maf = (m.mu0 * w0_val * m.n0 + m.mu1 * w1_val * m.n1) / (w0_val * m.n0 + w1_val * m.n1);
+        double est_maf = (m.mu0 * w0_val * m.n0 + m.mu1 * w1_val * m.n1 + m.AF_ref * (m.obs_ct / 2.0) * w0_val) /
+                         (m.n1 * w1_val + m.n0 * w0_val + (m.obs_ct / 2.0) * w0_val);
+        double v =
+            ((m.n1 * w1_val * w1_val + m.n0 * w0_val * w0_val) / (2.0 * std::pow(m.n1 * w1_val + m.n0 * w0_val, 2.0)) +
+             1.0 / m.obs_ct) *
+            est_maf * (1.0 - est_maf);
+        double z = (v > 0.0) ? (weight_maf - m.AF_ref) / std::sqrt(v) : 0.0;
+        double z_adj = (bd.var_ratio_w0 > 0.0) ? z / std::sqrt(bd.var_ratio_w0) : z;
+        bd.pvalue_bat = 2.0 * math::pnorm(-std::abs(z_adj));
+        // The reported column is the magnitude, formed in the log domain so
+        // that it keeps rising past |z_adj| = 38.6 where `pvalue_bat` flushes
+        // to exactly zero (invariant C1).  `pvalue_bat` stays linear: its
+        // remaining consumers are the `p_cut` branch decision and the
+        // empirical pass-rate cutoffs, both input-side (decision D8).
+        bd.log10p_bat = -spa::normalTwoSidedLog(z_adj) / math::kLn10;
+    }
+
+    // --- Estimate TPR, sigma2, w.ext per MAF group ---
+    // MAF groups: [−1e-4, 0.05), [0.05, 0.10), … , [0.35, 0.40), [0.40, max_mu_int]
+    double max_mu_int = 0.0;
+    for (auto &bd : batchData)
+        max_mu_int = std::max(max_mu_int, bd.mu_int);
+
+    // Match LEAF.R: `maf.group = c(seq(-0.00001, 0.4, 0.05), max(mu.int))`.
+    // The leading -1e-5 (not -1e-4) makes mu_int == 0 fall into the first
+    // group via the (lo, hi] half-open interval, and the absolute values of
+    // each break match R to ~1e-12 so border markers (mu_int near 0.05·k)
+    // land in the same group in both pipelines.
+    std::vector<double> mafBreaks;
+    for (double x = -1e-5; x <= 0.40 + 1e-9; x += 0.05)
+        mafBreaks.push_back(x);
+    mafBreaks.push_back(max_mu_int + 1e-6);
+
+    for (size_t grp = 0; grp + 1 < mafBreaks.size(); ++grp) {
+        double lo = mafBreaks[grp];
+        double hi = mafBreaks[grp + 1];
+        double mu = (lo + hi) / 2.0;
+
+        // Collect markers in this group
+        std::vector<size_t> idx1; // narrow group: mu_int in (lo, hi]
+        for (size_t i = 0; i < nMarkers; ++i)
+            if (batchData[i].mu_int > lo && batchData[i].mu_int <= hi) idx1.push_back(i);
+        if (idx1.empty()) continue;
+
+        // Wider group for parameter estimation: mu_int in [lo-0.1, hi+0.1]
+        std::vector<double> vec_p_bat;
+        for (size_t i = 0; i < nMarkers; ++i)
+            if (batchData[i].mu_int >= std::max(lo - 0.1, 0.0) && batchData[i].mu_int < std::min(1.0, hi + 0.1) &&
+                !std::isnan(batchData[i].pvalue_bat))vec_p_bat.push_back(batchData[i].pvalue_bat);
+
+        if (vec_p_bat.empty()) continue;
+
+        double obs_ct_ext = batchData[idx1[0]].obs_ct;
+        if (std::isnan(obs_ct_ext) || obs_ct_ext <= 0.0) continue;
+        double var_mu_ext = mu * (1.0 - mu) / obs_ct_ext;
+
+        // var_Sbat for this MAF group
+        double vr_w0 = hasGRM ? batchData[idx1[0]].var_ratio_w0 : 1.0;
+        double var_Sbat = hasGRM ? vr_w0 * (sum_w1_sq * 2.0 * mu * (1.0 - mu) + var_mu_ext)
+                                 : sum_w1_sq * 2.0 * mu * (1.0 - mu) + var_mu_ext;
+
+        // Empirical pass rates at several cutoffs
+        static constexpr double vec_cutoff[] = {0.01, 0.11, 0.21, 0.31};
+        static constexpr int nCut = 4;
+        double vec_p_deno[nCut];
+        for (int j = 0; j < nCut; ++j) {
+            int cnt = 0;
+            for (double p : vec_p_bat)
+                if (p > vec_cutoff[j]) ++cnt;
+            vec_p_deno[j] = static_cast<double>(cnt) / static_cast<double>(vec_p_bat.size());
+        }
+
+        // BFGS in reparameterized (η_T, η_S) ∈ R² space.
+        //   TPR    = 1 / (1 + exp(−η_T))   ∈ (0, 1)
+        //   sigma2 = exp(η_S)              ∈ (0, ∞)
+        // Mirrors LEAF.R's updated fun.est.param: unconstrained search,
+        // no σ² upper bound, no post-hoc clamp.
+        auto opti_fun_eta = [&](const std::vector<double> &eta) -> double {
+            const double TPR    = 1.0 / (1.0 + std::exp(-eta[0]));
+            const double sigma2 = std::exp(eta[1]);
+            double diff = 0.0;
+            for (int j = 0; j < nCut; ++j) {
+                double p_cut = vec_cutoff[j];
+                double q = math::qnorm(1.0 - p_cut / 2.0);
+                double lb = -q * std::sqrt(var_Sbat);
+                double ub = q * std::sqrt(var_Sbat);
+                double var_Sbat_par2 = var_Sbat + sigma2;
+                if (var_Sbat_par2 <= 0.0) return 1e30;
+                double c_val = math::pnormLog(ub, 0.0, std::sqrt(var_Sbat_par2), true);
+                double d_val = math::pnormLog(lb, 0.0, std::sqrt(var_Sbat_par2), true);
+                double pro_cut =
+                    TPR * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) *
+                    (1.0 - p_cut);
+                double ratio = (vec_p_deno[j] - pro_cut) / (vec_p_deno[j] + 1e-300);
+                diff += ratio * ratio;
+            }
+            return diff;
+        };
+
+        // Nelder-Mead in η-space.  Avoids BFGS's drift-to-infinity in
+        // the degenerate regime where TPR is near 1 and σ² becomes
+        // asymptotically unidentifiable.
+        auto optResult = math::nelderMead(opti_fun_eta, {0.0, std::log(0.01)},
+                                          1e-10, 500);
+        const double TPR    = 1.0 / (1.0 + std::exp(-optResult.par[0]));
+        const double sigma2 = std::exp(optResult.par[1]);
+
+        // Optimal external weight via 1-D Brent minimisation
+        // The R code does a complex nested optimisation (optim + uniroot + pmvnorm).
+        // We replicate the same logic: for a given b, find mu1 via root-finding,
+        // then compute the power metric.
+        auto fun_optimalWeight = [&](double b) -> double {
+            auto p_fun = [&](double mu1_trial) -> double {
+                double mu0_val = mu;
+                double mu_pop = mu1_trial * refPrevalence + mu0_val *
+                                (1.0 - refPrevalence);
+                // Build per-subject mu_i
+                const auto &R = residuals;
+                const auto &y = indicator;
+                double nS = static_cast<double>(R.size());
+                double meanR_loc = R.mean();
+                double sumR_loc = R.sum();
+
+                // Fused single pass over R: accumulate S, mu_local, var_int, and
+                // cov_val (shared between p0 and p1 branches).  Dispatched to
+                // AVX-512 / AVX2 / scalar via fow_kernel.  Pre-multiplying mu0
+                // and mu1 by 2 here saves a multiply per SIMD lane inside the
+                // kernel.  Note: SIMD lane reductions reorder additions relative
+                // to scalar — see CLAUDE.md (the fun_optimalWeight result feeds
+                // an iterative optimiser whose tolerance is 1e-6, well above
+                // FMA reordering noise).
+                const double bm_loc = (1.0 - b) * meanR_loc;
+                const FOWAccum acc = fow_kernel(
+                    R.data(), y.data(), w1_local.data(),
+                    static_cast<int>(R.size()),
+                    2.0 * mu1_trial, 2.0 * mu0_val, bm_loc);
+                double S            = acc.S;
+                double mu_local_acc = acc.mu_local_acc;
+                double var_int_acc  = acc.var_int_acc;
+                double cov_val_acc  = acc.cov_val_acc;
+                S -= sumR_loc * 2.0 * b * mu_pop;
+
+                double w1sum2 = sum_w1_sq_local;                                 // LOCAL — matches LEAF.R fun.optimalWeight
+                double mu_local = mu_local_acc / (2.0 * nS);
+
+                double var_mu_ext_loc = mu_local * (1.0 - mu_local) / obs_ct_ext;
+                double var_Sbat_loc = w1sum2 * 2.0 * mu_local * (1.0 - mu_local) +
+                                      var_mu_ext_loc;
+
+                double p_cut = 0.1;
+                double q = math::qnorm(1.0 - p_cut / 2.0);
+                double lb = -q * std::sqrt(var_Sbat_loc);
+                double ub = q * std::sqrt(var_Sbat_loc);
+                double c_val = math::pnormLog(
+                    ub,
+                    0.0,
+                    std::sqrt(var_Sbat_loc + sigma2),
+                    true
+                );
+                double d_val = math::pnormLog(
+                    lb,
+                    0.0,
+                    std::sqrt(var_Sbat_loc + sigma2),
+                    true
+                );
+                double p_deno = TPR *
+                                (std::exp(d_val) *
+                                 (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) *
+                                (1.0 - p_cut);
+
+                const double mu_var_factor = 2.0 * mu_local * (1.0 - mu_local);
+                const double cov_resid     = cov_val_acc * mu_var_factor;
+                double var_int = var_int_acc * mu_var_factor;
+                double var_S = var_int + 4.0 * b * b * sumR_loc * sumR_loc *
+                               var_mu_ext_loc;
+
+                double cov_val = cov_resid + 2.0 * b * sumR_loc * var_mu_ext_loc;
+
+                // p0 = P(S ≤ −|S|, lb ≤ S_bat ≤ ub) via bivariate normal
+                double p0 = math::pmvnorm2dHalfRect(
+                    -std::abs(S),
+                    lb,
+                    ub,
+                    var_S,
+                    cov_val,
+                    var_Sbat_loc
+                );
+
+                // p1 with sigma2 — reuse cov_resid accumulator from the fused loop.
+                double var_S1 = var_int + 4.0 * b * b * sumR_loc * sumR_loc *
+                                (var_mu_ext_loc + sigma2);
+                double cov_val1 = cov_resid + 2.0 * b * sumR_loc * (var_mu_ext_loc + sigma2);
+                double var_Sbat1 = var_Sbat_loc + sigma2;
+
+                double p1 = math::pmvnorm2dHalfRect(
+                    -std::abs(S),
+                    lb,
+                    ub,
+                    var_S1,
+                    cov_val1,
+                    var_Sbat1
+                );
+
+                double p_con = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) /
+                               (p_deno + 1e-300);
+                return -std::log10(p_con / 5e-8 + 1e-300);
+            };
+
+            // Find mu1 such that p_fun(mu1) == 0 via Brent root finding
+            double mu1;
+            try {
+                mu1 = math::findRootBrent(p_fun, mu, 1.0 - 1e-6, 1e-6);
+            } catch (...) {
+                mu1 = mu;
+            }
+            return mu1;                          // optim minimises this → lower mu1 = more power
+        };
+
+        double w_ext = math::brentMin(fun_optimalWeight, 0.0, 1.0, 1e-6, 200);
+
+        // Compute var_ratio_ext from GRM (if available).  Symmetric
+        // quadratic form  R̃_w^T Φ R̃_w; matches the form used elsewhere
+        // and the updated LEAF.R reference.
+        double var_ratio_ext = 1.0;
+        if (hasGRM) {
+            Eigen::VectorXd R_tilde_w = residuals.array() - meanR * w_ext;
+            double grm_quad_Rext = grm->quadForm(R_tilde_w.data(), static_cast<uint32_t>(nSubj));
+            double sumR_sq_over_n = w_ext * w_ext * residuals.sum() * residuals.sum() * 2.0 / obs_ct_ext;
+            double num = grm_quad_Rext + sumR_sq_over_n;
+            double den = R_tilde_w.array().square().sum() + sumR_sq_over_n;
+            var_ratio_ext = (den > 0.0) ? num / den : 1.0;
+        }
+
+        // Populate refInfoMap for markers in this group
+        for (size_t i : idx1) {
+            WtCoxGRefInfo ri;
+            ri.AF_ref = batchData[i].AF_ref;
+            ri.obs_ct = batchData[i].obs_ct;
+            ri.TPR = TPR;
+            ri.sigma2 = sigma2;
+            ri.pvalue_bat = batchData[i].pvalue_bat;
+            ri.log10p_bat = batchData[i].log10p_bat;
+            ri.w_ext = w_ext;
+            ri.var_ratio_w0 = batchData[i].var_ratio_w0;
+            ri.var_ratio_int = var_ratio_int;
+            ri.var_ratio_ext = var_ratio_ext;
+            refInfoMap->emplace_back(batchData[i].genoIndex, ri);
+        }
+    }
+
+    // MAF groups are traversed in ascending mu_int, not genoIndex, so the
+    // per-group emplace_back leaves the vector unsorted.  Sort once before
+    // returning so downstream prepareChunk() can use std::lower_bound.
+    std::sort(refInfoMap->begin(), refInfoMap->end(),
+              [](const std::pair<uint64_t, WtCoxGRefInfo> &a,
+                 const std::pair<uint64_t, WtCoxGRefInfo> &b) {
+                  return a.first < b.first;
+              });
+    return refInfoMap;
+}
+
+// ======================================================================
+// Phase 3 — WtCoxGMethod (MethodBase implementation)
+// ======================================================================
+
+WtCoxGMethod::WtCoxGMethod(
+    Eigen::VectorXd R,
+    Eigen::VectorXd w,
+    double cutoff,
+    double SPA_Cutoff,
+    double outlierRatio,
+    std::shared_ptr<const WtCoxGRefVec> refMap
+)
+    : m_refMap(std::move(refMap))
+{
+    auto sh = std::make_shared<WtCoxGShared>();
+    sh->R  = std::move(R);
+    sh->w  = std::move(w);
+    sh->w1 = sh->w / (2.0 * sh->w.sum());
+    sh->meanR  = sh->R.mean();
+    sh->sumR   = sh->R.sum();
+    sh->sqSumR = sh->R.squaredNorm();
+    sh->w1Sq   = sh->w1.squaredNorm();
+    sh->w1DotR = sh->w1.dot(sh->R);
+    sh->cutoff       = cutoff;
+    sh->SPA_Cutoff   = SPA_Cutoff;
+    sh->outlierRatio = outlierRatio;
+    sh->outlier = detectOutliers(sh->R, outlierRatio);
+    sh->nNonOutlier      = static_cast<int>(sh->outlier.posNonOutlier.size());
+    sh->sumR_nonOutlier  = sh->outlier.residNonOutlier.sum();
+    sh->sumR2_nonOutlier = sh->outlier.resid2NonOutlier.sum();
+
+    // ── P7: build the per-b centred-residual table ──────────────────
+    //
+    // Every SPA entry needs r_i = R_i − (1−b)·meanR over the outliers.  b is
+    // 0 on every NOEXT call, on the no-external fallback and throughout
+    // Branch A, and is `info.w_ext` on the two Branch-B calls; w_ext is fitted
+    // once per MAF group in Phase 2, so the distinct values are few and all of
+    // them are already in the reference map handed to this constructor.
+    // Building the table here means the array is materialised once per
+    // (cluster, b) for the whole run rather than once per marker per variant,
+    // and the shared_ptr<const> makes it free for the worker clones.
+    {
+        std::vector<double> bs;
+        bs.push_back(0.0);
+        if (m_refMap) {
+            for (const auto &e : *m_refMap) {
+                const double b = e.second.w_ext;
+                if (!std::isfinite(b)) continue;
+                bool seen = false;
+                for (double v : bs)
+                    if (v == b) { seen = true; break; }
+                if (!seen) bs.push_back(b);
+            }
+        }
+        std::sort(bs.begin(), bs.end());
+        sh->residCenteredByB.reserve(bs.size());
+        for (double b : bs) {
+            const double bm = (1.0 - b) * sh->meanR;
+            sh->residCenteredByB.emplace_back(
+                b, Eigen::ArrayXd(sh->outlier.residOutlier.array() - bm));
+        }
+    }
+
+    m_shared = std::move(sh);
+}
+
+WtCoxGMethod::WtCoxGMethod(
+    std::shared_ptr<const WtCoxGShared> shared,
+    std::shared_ptr<const WtCoxGRefVec> refMap
+)
+    : m_shared(std::move(shared)),
+      m_refMap(std::move(refMap))
+{
+}
+
+std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
+    // Share the null-model state and ref map between every worker clone.
+    return std::make_unique<WtCoxGMethod>(m_shared, m_refMap);
+}
+
+ResultColumns WtCoxGMethod::getResultColumns() const {
+    return {{"LOG10P_EXT"}, {"LOG10P_NOEXT"},
+            {"Z_EXT", ResultColumnKind::Z}, {"Z_NOEXT", ResultColumnKind::Z},
+            {"Z_Norm_EXT"}, {"Z_Norm_NOEXT"}, {"LOG10P_BAT"}, {"PI_BAT"}, {"VAR_BAT"},
+            {"SPA_STATUS_EXT", ResultColumnKind::SpaStatus},
+            {"SPA_STATUS_NOEXT", ResultColumnKind::SpaStatus}};
+}
+
+// Push the 11 result cells in header order.  Shared by getResultVec and the
+// fused-GEMM processScoreBatch so the two cannot drift.
+void WtCoxGMethod::pushResult(
+    std::vector<double> &out,
+    const WtResult &ext,
+    const WtResult &noext,
+    const WtCoxGRefInfo &info
+) {
+    // LOG10P is the sole p-value column since log10p_unify Stage 8 (D1);
+    // a consumer that needs the linear p takes 10^(-LOG10P).
+    out.push_back(ext.negLog10p);     // LOG10P_EXT
+    out.push_back(noext.negLog10p);   // LOG10P_NOEXT
+    // Z from LOG10P, not from P (Stage 4): the linear inversion saturated at
+    // |Z| = 37.0470962993612 for every L >= 299.698970.
+    out.push_back(math::zFromNegLog10P(ext.negLog10p, ext.zscore));     // Z_EXT
+    out.push_back(math::zFromNegLog10P(noext.negLog10p, noext.zscore)); // Z_NOEXT
+    out.push_back(ext.zscore);                                // Z_Norm_EXT
+    out.push_back(noext.zscore);                              // Z_Norm_NOEXT
+    out.push_back(info.log10p_bat);   // LOG10P_BAT
+    out.push_back(info.TPR);
+    out.push_back(info.sigma2);
+    out.push_back(wtcoxg_cgf::statusCode(ext.status));        // SPA_STATUS_EXT
+    out.push_back(wtcoxg_cgf::statusCode(noext.status));      // SPA_STATUS_NOEXT
+}
+
+void WtCoxGMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
+    size_t n = gIndices.size();
+    m_chunkRefInfo.resize(n);
+    if (!m_refMap || m_refMap->empty()) {
+        for (size_t i = 0; i < n; ++i) m_chunkRefInfo[i] = WtCoxGRefInfo();
+        return;
+    }
+    const auto begin = m_refMap->begin();
+    const auto end   = m_refMap->end();
+    auto cmp = [](const std::pair<uint64_t, WtCoxGRefInfo> &p, uint64_t k) {
+        return p.first < k;
+    };
+    for (size_t i = 0; i < n; ++i) {
+        const uint64_t key = gIndices[i];
+        auto it = std::lower_bound(begin, end, key, cmp);
+        if (it != end && it->first == key) m_chunkRefInfo[i] = it->second;
+        else m_chunkRefInfo[i] = WtCoxGRefInfo();
+    }
+}
+
+void WtCoxGMethod::getResultVec(
+    Eigen::Ref<Eigen::VectorXd> GVec,
+    double /*altFreq*/,
+    int markerInChunkIdx,
+    std::vector<double> &result
+) {
+
+    const auto &info = m_chunkRefInfo[markerInChunkIdx];
+
+    // With external reference
+    WtResult res_ext =
+        wtCoxGTest(
+            GVec,
+            info.pvalue_bat,
+            info.TPR,
+            info.sigma2,
+            info.w_ext,
+            info.var_ratio_int,
+            info.var_ratio_w0,
+            info.var_ratio_w0,
+            info.var_ratio_ext,
+            info.var_ratio_ext,
+            info.AF_ref,
+            info.obs_ct,
+            m_shared->cutoff
+        );
+
+    // Without external reference
+    WtResult res_noext = wtCoxGTest(
+        GVec,
+        info.pvalue_bat,
+        NaN::quiet_NaN(),
+        NaN::quiet_NaN(),
+        0.0,
+        info.var_ratio_int,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        NaN::quiet_NaN(),
+        NaN::quiet_NaN(),
+        m_shared->cutoff
+    );
+
+    pushResult(result, res_ext, res_noext, info);
+}
+
+WtCoxGMethod::DualResult WtCoxGMethod::computeDual(
+    Eigen::Ref<Eigen::VectorXd> GVec,
+    int markerInChunkIdx
+) {
+    return computeDualFromScalars(
+        m_shared->R.dot(GVec), GVec.sum(), static_cast<int>(GVec.size()),
+        markerInChunkIdx);
+}
+
+WtCoxGMethod::DualResult WtCoxGMethod::computeDualFromScalars(
+    double R_dot_g,
+    double gSum,
+    int N,
+    int markerInChunkIdx
+) {
+
+    const auto &info = m_chunkRefInfo[markerInChunkIdx];
+
+    WtResult res_ext =
+        wtCoxGTestFromScalars(
+            R_dot_g, gSum, N,
+            info.pvalue_bat,
+            info.TPR,
+            info.sigma2,
+            info.w_ext,
+            info.var_ratio_int,
+            info.var_ratio_w0,
+            info.var_ratio_w0,
+            info.var_ratio_ext,
+            info.var_ratio_ext,
+            info.AF_ref,
+            info.obs_ct,
+            m_shared->cutoff
+        );
+
+    WtResult res_noext = wtCoxGTestFromScalars(
+        R_dot_g, gSum, N,
+        info.pvalue_bat,
+        NaN::quiet_NaN(),
+        NaN::quiet_NaN(),
+        0.0,
+        info.var_ratio_int,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        NaN::quiet_NaN(),
+        NaN::quiet_NaN(),
+        m_shared->cutoff
+    );
+
+    return {res_ext.negLog10p, res_noext.negLog10p,
+            res_ext.score, res_noext.score, gSum, N,
+            res_ext.status, res_noext.status};
+}
+
+// ── Fused-GEMM hooks ────────────────────────────────────────────────
+
+void WtCoxGMethod::fillUnionResiduals(
+    Eigen::Ref<Eigen::MatrixXd> dest,
+    const std::vector<uint32_t> &unionToLocal
+) const {
+    const uint32_t nUnion = static_cast<uint32_t>(unionToLocal.size());
+    for (uint32_t i = 0; i < nUnion; ++i) {
+        const uint32_t li = unionToLocal[i];
+        if (li != UINT32_MAX) dest(i, 0) = m_shared->R[li];
+    }
+}
+
+void WtCoxGMethod::fillResidualSums(double *dest) const {
+    dest[0] = m_shared->sumR;
+}
+
+void WtCoxGMethod::processScoreBatch(
+    const Eigen::Ref<const Eigen::MatrixXd> &scores,
+    const double *gSums,
+    const double *gSumSqs,
+    uint32_t nUsed,
+    const std::vector<double> &altFreqs,
+    const std::vector<int> &chunkIdxs,
+    const MethodBase::UnionGenotypes & /*geno*/,
+    std::vector<std::vector<double> > &results
+) {
+    (void)gSumSqs; (void)altFreqs;
+
+    const int B = static_cast<int>(scores.cols());
+    results.resize(B);
+
+    const int Nint = static_cast<int>(nUsed);
+
+    for (int b = 0; b < B; ++b) {
+        const double R_dot_g = scores(0, b);
+        const double gSum    = gSums[b];
+        const int chunkIdx   = chunkIdxs[b];
+        const auto &info     = m_chunkRefInfo[chunkIdx];
+
+        WtResult res_ext = wtCoxGTestFromScalars(
+            R_dot_g, gSum, Nint,
+            info.pvalue_bat,
+            info.TPR,
+            info.sigma2,
+            info.w_ext,
+            info.var_ratio_int,
+            info.var_ratio_w0,
+            info.var_ratio_w0,
+            info.var_ratio_ext,
+            info.var_ratio_ext,
+            info.AF_ref,
+            info.obs_ct,
+            m_shared->cutoff);
+
+        WtResult res_noext = wtCoxGTestFromScalars(
+            R_dot_g, gSum, Nint,
+            info.pvalue_bat,
+            NaN::quiet_NaN(),
+            NaN::quiet_NaN(),
+            0.0,
+            info.var_ratio_int,
+            1.0, 1.0, 1.0, 1.0,
+            NaN::quiet_NaN(),
+            NaN::quiet_NaN(),
+            m_shared->cutoff);
+
+        auto &r = results[b];
+        r.clear();
+        r.reserve(13);
+        pushResult(r, res_ext, res_noext, info);
+    }
+}
+
+// A marker for which no test exists: MAC below 10, a non-positive variance, an
+// unmatched batch-effect p-value.  NA_NO_TEST names exactly that, and is
+// outside the D5 fallback block because there is no statistic to approximate.
+WtCoxGMethod::WtResult WtCoxGMethod::wtDegenerate() {
+    const double nan = NaN::quiet_NaN();
+    return {nan, nan, nan, spa::Status::NaNoTest};
+}
+
+// The two conditional branches below assemble their p-value through
+// wtcoxg_cond::conditionalP (src/wtcoxg/conditional_p.hpp), which also owns
+// the rule for a mixture leg whose joint probability could not be computed.
+using wtcoxg_cond::ConditionalP;
+using wtcoxg_cond::conditionalP;
+
+WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
+    const Eigen::Ref<const Eigen::VectorXd> &g_input,
+    double p_bat,
+    double TPR,
+    double sigma2,
+    double b,
+    double var_ratio_int,
+    double var_ratio_w0,
+    double var_ratio_w1,
+    double var_ratio0,
+    double var_ratio1,
+    double mu_ext,
+    double obs_ct,
+    double p_cut
+) const {
+    // Delegate to the scalar variant; g_input is only used via R.dot(g),
+    // g.sum(), and g.size() in the original implementation.
+    return wtCoxGTestFromScalars(
+        m_shared->R.dot(g_input), g_input.sum(), static_cast<int>(g_input.size()),
+        p_bat, TPR, sigma2, b, var_ratio_int, var_ratio_w0, var_ratio_w1,
+        var_ratio0, var_ratio1, mu_ext, obs_ct, p_cut);
+}
+
+WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
+    double R_dot_g,
+    double gSum,
+    int Nint,
+    double p_bat,
+    double TPR,
+    double sigma2,
+    double b,
+    double var_ratio_int,
+    double var_ratio_w0,
+    double var_ratio_w1,
+    double var_ratio0,
+    double var_ratio1,
+    double mu_ext,
+    double obs_ct,
+    double p_cut
+) const {
+
+    // No external info → delegate to SPA-only
+    if (std::isnan(mu_ext)) {
+        double vr = (std::isnan(TPR) && std::isnan(sigma2)) ? var_ratio_int : 1.0;
+        SpaResult spa = spaGOneSnpHomoFromScalars(
+            R_dot_g, gSum, Nint, *m_shared,
+            m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
+            0.0, 0.0, 0.0, 0.0, vr, m_shared->SPA_Cutoff);
+        return {spa.negLog10p, spa.score, spa.zscore, spa.status};
+    }
+
+    const double sum_g = gSum;
+    const double sum_2mg = 2.0 * static_cast<double>(Nint) - gSum;
+    if (std::isnan(p_bat) || sum_g < 10 || sum_2mg < 10)
+        return wtDegenerate();
+
+    const double N_d = static_cast<double>(Nint);
+
+    // ────────────────────────────────────────────────────────────────────
+    // Branch A — p_bat < p_cut: batch effect detected.  Drop the external
+    // MAF, score with internal MAF only, and integrate the conditional
+    // p-value over the complement region {|S_bat| > threshold}.  This
+    // mirrors LEAF.R's `else if (p_bat < p_cut)` branch after its
+    // var.ratio-sqrt fix.
+    // ────────────────────────────────────────────────────────────────────
+    if (p_bat < p_cut) {
+        if (std::isnan(TPR) || std::isnan(sigma2)) {
+            // No batch parameters: fall back to plain internal SPA.
+            SpaResult spa = spaGOneSnpHomoFromScalars(
+                R_dot_g, gSum, Nint, *m_shared,
+                m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
+                NaN::quiet_NaN(), 0.0, 0.0, 0.0, var_ratio_int, m_shared->SPA_Cutoff);
+            return {spa.negLog10p, spa.score, spa.zscore, spa.status};
+        }
+
+        const double mu_loc = (N_d > 0.0) ? (gSum / N_d) / 2.0 : 0.0;
+        const double S_loc  = R_dot_g - 2.0 * mu_loc * m_shared->sumR;
+        const double var_mu_ext_loc = (obs_ct > 0.0) ? mu_loc * (1.0 - mu_loc) / obs_ct : 0.0;
+        const double var_Sbat = m_shared->w1Sq * 2.0 * mu_loc * (1.0 - mu_loc) + var_mu_ext_loc;
+        if (var_Sbat <= 0.0) return wtDegenerate();
+
+        const double qnorm_val = math::qnorm(1.0 - p_cut / 2.0);
+        const double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
+        const double ub = -lb;
+
+        // m1 / m0: the conditioning mass P(|S_bat| > threshold | component)
+        // that each mixture component carries.  Branch A conditions on the
+        // COMPLEMENT of the acceptance interval, so m0 is p_cut exactly, by
+        // construction of lb and ub, and m1 is the same complement's mass
+        // under the sigma2-inflated law.  Their TPR-mixture is p_deno.
+        const double c_val = math::pnormLog(lb / std::sqrt(var_ratio_w1), 0.0,
+                                            std::sqrt(var_Sbat + sigma2), true);
+        // Stage 6: the weights, the two conditioning masses and their mixture
+        // stay in the log domain from here to the reported LOG10P.  m1 is the
+        // complement mass 2*Phi(lb) under the sigma2-inflated law, which is
+        // what c_val already holds the logarithm of, so exp/log round trips
+        // disappear rather than being rearranged.  p_deno had been spelled
+        // `TPR * 2.0 * exp(c_val) + ...` to the letter to keep a fixed
+        // association; that pin is gone with the linear quantity itself, and
+        // the resulting shift is one ULP of a denominator, ~1e-16 relative.
+        const double lnW1   = std::log(TPR);
+        const double lnW0   = std::log1p(-TPR);
+        const double lnM1   = math::kLn2 + c_val;
+        const double lnM0   = std::log(p_cut);
+        const double lnDeno = math::logAddExp(lnW1 + lnM1, lnW0 + lnM0);
+
+        SpaResult spa_s0 = spaGOneSnpHomoFromScalars(
+            R_dot_g, gSum, Nint, *m_shared,
+            m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
+            NaN::quiet_NaN(), 0.0, 0.0, 0.0, var_ratio0, m_shared->SPA_Cutoff);
+        // D2.  The conditional branches recover a variance by inverting the
+        // SPA p-value; when the saddlepoint failed, that p is now NaN with a
+        // status rather than a masked 1.0, so the failure must be intercepted
+        // here and reported rather than inverted.
+        //
+        // Stage 4: the inversion is `math::chisq1FromNegLog10P` of the
+        // magnitude, not `math::qchisq` of the linear p.  The df = 1 upper-tail
+        // quantile is analytic (it is the square of the two-sided normal
+        // quantile), so the recovered variance no longer bottoms out at the
+        // q = 1373.87 that qchisq's own 1e-300 argument clamp imposed on it.
+        // The guard now tests the magnitude, which is the quantity being
+        // inverted; it is NaN on exactly the markers whose p was NaN.
+        if (!std::isfinite(spa_s0.negLog10p))
+            return {NaN::quiet_NaN(), S_loc, NaN::quiet_NaN(), spa_s0.status};
+        const double qchi0 = math::chisq1FromNegLog10P(spa_s0.negLog10p);
+        const double var_S = (qchi0 > 0.0)
+            ? S_loc * S_loc / var_ratio0 / qchi0
+            : std::numeric_limits<double>::quiet_NaN();
+        if (!std::isfinite(var_S) || var_S <= 0.0) return wtDegenerate();
+
+        // Closed-form var.int / cov from cached scalars (b = 0 ⇒ bm = meanR).
+        const double bm_loc = m_shared->meanR;
+        const double N_R = static_cast<double>(m_shared->R.size());
+        const double R_adj_sq_sum = m_shared->sqSumR
+            - 2.0 * bm_loc * m_shared->sumR
+            + N_R * bm_loc * bm_loc;
+        const double w1_dot_R_adj = m_shared->w1DotR - 0.5 * bm_loc;
+        const double var_int_loc = R_adj_sq_sum * 2.0 * mu_loc * (1.0 - mu_loc);
+        if (var_int_loc <= 0.0) return wtDegenerate();
+
+        double cov_val = w1_dot_R_adj * 2.0 * mu_loc * (1.0 - mu_loc);
+        cov_val *= std::sqrt(var_S / var_int_loc);
+
+        const double z_loc = S_loc / std::sqrt(var_S);
+        const double negInf = -std::numeric_limits<double>::infinity();
+        const double posInf =  std::numeric_limits<double>::infinity();
+
+        // sigma² = 0: integrate over {S' ≤ -|s|} × ({S_bat ≤ lb_r0} ∪ {S_bat ≥ ub_r0}).
+        // The two half-infinite pieces are disjoint, so their sum is a
+        // logaddexp.  Branch A is where the switch to the log-domain integral
+        // changes the most: the linear routine sends a half-infinite Y range
+        // through math::bvnCdf, whose |r| < 0.925 arm is Genz's 6-point
+        // Plackett rule with ~1e-7 ABSOLUTE accuracy — no statement at all
+        // about a probability below 1e-7.  Measured against a long double
+        // Simpson reference it is wrong by twelve orders of magnitude at
+        // (h, rho, k) = (-8, -0.4, -6); pmvnorm2dHalfRectLog integrates the
+        // same conditional tail directly (RESULTS.md, Stage 1).
+        const double s_bound  = -std::abs(S_loc / std::sqrt(var_ratio0));
+        const double sb_lo    = lb / std::sqrt(var_ratio_w0);
+        const double sb_hi    = ub / std::sqrt(var_ratio_w0);
+        const double lnP0 = math::logAddExp(
+            math::pmvnorm2dHalfRectLog(s_bound, negInf, sb_lo, var_S, cov_val, var_Sbat),
+            math::pmvnorm2dHalfRectLog(s_bound, sb_hi, posInf, var_S, cov_val, var_Sbat));
+
+        // sigma² ≠ 0: inflate batch-test variance only; var_S and cov_val unchanged
+        // (R LEAF.R branch 1 reuses var_S1 = var_S, cov_Sbat_S1 = cov_Sbat_S).
+        const double var_Sbat1 = var_Sbat + sigma2;
+        const double s_bound1  = -std::abs(S_loc / std::sqrt(var_ratio1));
+        const double sb_lo1    = lb / std::sqrt(var_ratio_w1);
+        const double sb_hi1    = ub / std::sqrt(var_ratio_w1);
+        const double lnP1 = math::logAddExp(
+            math::pmvnorm2dHalfRectLog(s_bound1, negInf, sb_lo1, var_S, cov_val, var_Sbat1),
+            math::pmvnorm2dHalfRectLog(s_bound1, sb_hi1, posInf, var_S, cov_val, var_Sbat1));
+
+        // Both legs of Branch A are built from the same var_S and cov_val, so
+        // spa_s0 failing takes both (intercepted above) and the immaterial-leg
+        // rule can only ever fire here for a leg that
+        // math::pmvnorm2dHalfRectLog itself declined to integrate.
+        const ConditionalP con = conditionalP(
+            lnW1, lnM1, lnP1, spa_s0.status,
+            lnW0, lnM0, lnP0, spa_s0.status,
+            lnDeno);
+        return {con.negLog10p, S_loc, z_loc, con.status};
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Branch B — p_bat ≥ p_cut: external MAF retained; conditional p-value
+    // integrates over {|S_bat| ≤ threshold}.
+    // ────────────────────────────────────────────────────────────────────
+    double mu_int = (N_d > 0.0) ? (gSum / N_d) / 2.0 : 0.0;
+    double mu = (1.0 - b) * mu_int + b * mu_ext;
+    double S = R_dot_g - 2.0 * mu * m_shared->sumR;
+
+    double var_mu_ext = mu * (1.0 - mu) / obs_ct;
+    double var_Sbat = m_shared->w1Sq * 2.0 * mu * (1.0 - mu) + var_mu_ext;
+
+    double qnorm_val = math::qnorm(1.0 - p_cut / 2.0);
+    double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
+    double ub = qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
+
+    double c_val = math::pnormLog(ub / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true);
+    double d_val = math::pnormLog(lb / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true);
+    // m1 / m0: the conditioning mass P(S_bat in [lb, ub] | component) each
+    // mixture component carries.  m0 is 1 - p_cut exactly, because lb and ub
+    // ARE the +/-(1 - p_cut/2) quantiles of the sigma2 = 0 batch law; m1 is
+    // the same interval under the sigma2-inflated law, i.e. Phi(ub') - Phi(lb'),
+    // which the two pnormLog calls above already deliver as logarithms.
+    //
+    // Stage 6: they stop being exponentiated.  ln m1 = logSubExp(c_val, d_val)
+    // is the same difference of two CDFs, taken where the two are held; the
+    // linear spelling `exp(d)*(exp(c-d)-1)` had to reassociate around expm1
+    // for exactly the same reason and could still overflow for a wide enough
+    // acceptance interval.  p_deno follows as one logaddexp, and the pin that
+    // fixed its multiplication order goes with the linear quantity it was
+    // protecting; the shift is ~1e-16 relative on a denominator.
+    const double lnW1   = std::log(TPR);
+    const double lnW0   = std::log1p(-TPR);
+    const double lnM1   = math::logSubExp(c_val, d_val);
+    const double lnM0   = std::log1p(-p_cut);
+    const double lnDeno = math::logAddExp(lnW1 + lnM1, lnW0 + lnM0);
+
+    // Internal SPA (no sigma2)
+    SpaResult spa_s0 = spaGOneSnpHomoFromScalars(
+        R_dot_g, gSum, Nint, *m_shared,
+        m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
+        mu_ext, obs_ct, b, 0.0, var_ratio0, m_shared->SPA_Cutoff);
+    // D2, as in Branch A: the conditional branches recover a variance by
+    // inverting the SPA p-value, so a failed saddlepoint must be intercepted
+    // before the inversion.  Unlike Branch A it does not abort the marker:
+    // leaving var_S non-finite makes this leg's joint probability non-finite,
+    // and conditionalP decides from the interval that leg spans whether the
+    // marker still has an answer.  Stage 4 inverts the magnitude analytically
+    // (`chisq1FromNegLog10P`) instead of the linear p through `qchisq`, whose
+    // 1e-300 argument clamp capped the recovered variance at q = 1373.87.
+    double var_S = NaN::quiet_NaN();
+    if (std::isfinite(spa_s0.negLog10p)) {
+        const double qchi = math::chisq1FromNegLog10P(spa_s0.negLog10p);
+        if (qchi > 0.0) var_S = S * S / var_ratio0 / qchi;
+    }
+
+    // Covariance between S_bat and S — closed form from cached scalars.
+    // sum((R - bm)²)  = sqSumR - 2·bm·sumR + N·bm²,  bm = (1-b)·meanR
+    // sum(w1·(R-bm)) = w1DotR - bm·sum(w1) = w1DotR - bm·0.5  (sum(w1) = 0.5 by construction)
+    const double bm = (1.0 - b) * m_shared->meanR;
+    const double N_R = static_cast<double>(m_shared->R.size());
+    const double R_adj_sq_sum = m_shared->sqSumR - 2.0 * bm * m_shared->sumR + N_R * bm * bm;
+    const double w1_dot_R_adj = m_shared->w1DotR - 0.5 * bm;
+    double var_int_denom = R_adj_sq_sum * 2.0 * mu * (1.0 - mu) + 4.0 * b * b * m_shared->sumR * m_shared->sumR * var_mu_ext;
+    if (var_int_denom <= 0.0) return wtDegenerate();
+
+    double cov_val = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_shared->sumR * var_mu_ext;
+    cov_val *= std::sqrt(var_S / var_int_denom);
+    double z = S / std::sqrt(var_S);
+
+    const double lnP0 = math::pmvnorm2dHalfRectLog(
+        -std::abs(S / std::sqrt(var_ratio0)),
+        lb / std::sqrt(var_ratio_w0),
+        ub / std::sqrt(var_ratio_w0),
+        var_S,
+        cov_val,
+        var_Sbat
+    );
+
+    // External SPA (with sigma2)
+    SpaResult spa_s1 = spaGOneSnpHomoFromScalars(
+        R_dot_g, gSum, Nint, *m_shared,
+        m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
+        mu_ext, obs_ct, b, sigma2, var_ratio1, m_shared->SPA_Cutoff);
+    // As for spa_s0: a failed saddlepoint leaves var_S1 non-finite rather than
+    // aborting the marker, and the inversion is the analytic df = 1 quantile of
+    // the magnitude (Stage 4).
+    double var_S1 = NaN::quiet_NaN();
+    if (std::isfinite(spa_s1.negLog10p))
+        var_S1 = S * S / var_ratio1 / math::chisq1FromNegLog10P(spa_s1.negLog10p);
+    double cov_val1 = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_shared->sumR * (var_mu_ext + sigma2);
+    cov_val1 *= std::sqrt(var_S1 / var_int_denom);
+    double var_Sbat1 = var_Sbat + sigma2;
+
+    // This is the call that loses the sigma2 > 0 leg on a degenerate batch
+    // fit.  cov_val1 carries sigma2 linearly while sd(S_bat1) carries it as a
+    // square root, so rho1 grows like sigma and passes 1: the triple is not a
+    // covariance matrix, math::pmvnorm2dHalfRectLog returns NaN, and the leg
+    // has no joint probability — with the saddlepoint that produced var_S1
+    // having converged perfectly well.  See the note on kImmaterialLeg.
+    const double lnP1 = math::pmvnorm2dHalfRectLog(
+        -std::abs(S / std::sqrt(var_ratio1)),
+        lb / std::sqrt(var_ratio_w1),
+        ub / std::sqrt(var_ratio_w1),
+        var_S1,
+        cov_val1,
+        var_Sbat1
+    );
+
+    const ConditionalP con = conditionalP(
+        lnW1, lnM1, lnP1, spa_s1.status,
+        lnW0, lnM0, lnP0, spa_s0.status,
+        lnDeno);
+    // z is the plain normal statistic S/sd(S); it is not a saddlepoint output
+    // and is reported whether or not the conditional assembly succeeded, as
+    // the predecessor did.
+    return {con.negLog10p, S, z, con.status};
+}
+
+// ======================================================================
+// Top-level orchestration
+// ======================================================================
+
+#include "engine/loco.hpp"
+#include "util/null_model.hpp"
+#include "util/regression.hpp"
+#include "wtcoxg/regression.hpp"
+
+void runWtCoxGPheno(
+    const OutputOptions &outputOptions,
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    const std::vector<std::string> &phenoNames,
+    const GenoSpec &geno,
+    const std::string &refAfFile,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    double outlierRatio,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
+
+    // Determine phenotype mode from phenoNames
+    // If 2 columns → survival (TIME, EVENT); if 1 column → binary
+    const bool isSurv = (phenoNames.size() >= 2);
+
+    // ---- Load phenotype / covariate data ----
+    infoMsg("Loading phenotype file: %s", phenoFile.c_str());
+    auto famIIDs = parseGenoIIDs(geno);
+    SubjectData sd(std::move(famIIDs));
+    sd.loadPhenoFile(phenoFile);
+    if (!covarFile.empty()) {
+        infoMsg("Loading covariate file: %s", covarFile.c_str());
+        sd.loadCovar(covarFile, covarNames);
+    }
+    sd.setKeepRemove(keepFile, removeFile);
+    if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile,
+                                                                                                      spgrmGctaFile,
+                                                                                                      sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
+    sd.finalize();
+    // Drop subjects with NA in the selected phenotype column(s)
+    if (isSurv) {
+        sd.dropNaInColumns({phenoNames[0], phenoNames[1]});
+    } else {
+        sd.dropNaInColumns({phenoNames[0]});
+    }
+    infoMsg("  %u subjects loaded", sd.nUsed());
+
+    const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
+
+    // ---- Extract response ----
+    Eigen::VectorXd indicator; // case/control or event
+    Eigen::VectorXd survTime;  // only for Cox
+
+    if (isSurv) {
+        survTime = sd.getColumn(phenoNames[0]);
+        indicator = sd.getColumn(phenoNames[1]);
+        infoMsg("  Survival phenotype: time=%s, event=%s", phenoNames[0].c_str(), phenoNames[1].c_str());
+    } else {
+        indicator = sd.getColumn(phenoNames[0]);
+        // Validate binary: all values must be 0 or 1
+        for (Eigen::Index i = 0; i < indicator.size(); ++i) {
+            double v = indicator[i];
+            if (v != 0.0 && v != 1.0)
+                throw std::runtime_error(
+                          "Phenotype '" + phenoNames[0] + "' is not binary"
+                          " (found value " + std::to_string(v) + ")."
+                          " For survival phenotypes use --pheno-name TIME:EVENT.");
+        }
+        infoMsg("  Binary phenotype: %s", phenoNames[0].c_str());
+    }
+
+    // ---- Build design matrices ----
+    // Logistic: [1 | covariates] (intercept needed)
+    // Cox PH:   [covariates]     (no intercept — absorbed into baseline hazard)
+    Eigen::MatrixXd covarMat;
+    if (!covarNames.empty()) {
+        covarMat = sd.getColumns(covarNames);
+    } else if (sd.hasCovar()) {
+        covarMat = sd.covar();
+    }
+    const int nCov = static_cast<int>(covarMat.cols());
+    if (nCov > 0) infoMsg("  %d covariate(s)", nCov);
+
+    // ---- Compute regression weights ----
+    Eigen::VectorXd regrWeight = regression::calRegrWeight(refPrevalence, indicator);
+    infoMsg("  Regression weights computed (prevalence=%.6f)", refPrevalence);
+
+    // ---- Fit null model and compute residuals ----
+    Eigen::VectorXd resid;
+    if (isSurv) {
+        infoMsg("Fitting weighted Cox PH model...");
+        resid = regression::coxResiduals(survTime, indicator, covarMat, regrWeight);
+    } else {
+        // Logistic needs intercept
+        Eigen::MatrixXd designMat(N, 1 + nCov);
+        designMat.col(0).setOnes();
+        if (nCov > 0) designMat.rightCols(nCov) = covarMat;
+        infoMsg("Fitting weighted logistic regression...");
+        resid = regression::logisticResiduals(indicator, designMat, regrWeight);
+    }
+    infoMsg("  Residuals computed (N=%d)", static_cast<int>(N));
+
+    // ---- Set on SubjectData ----
+    sd.setResidWeightIndicator(std::move(resid), std::move(regrWeight), indicator);
+
+    // ---- From here, same pipeline as runWtCoxG ----
+    infoMsg("Loading ref-af file: %s", refAfFile.c_str());
+    bool refAfNumeric = false;
+    auto refAf = loadRefAfFile(refAfFile, &refAfNumeric);
+    infoMsg("  %zu reference records loaded%s", refAf.size(), refAfNumeric ? " (numeric fallback)" : "");
+
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    infoMsg("  %u subjects matched, %u markers available", genoData->nSubjUsed(), genoData->nMarkers());
+
+    infoMsg("Matching markers against reference allele frequencies...");
+    auto matched = refAfNumeric ? matchMarkersNumeric(*genoData, refAf) : matchMarkers(*genoData, refAf);
+    infoMsg("  %zu markers matched", matched.size());
+
+    infoMsg("Computing per-marker case/control allele frequencies...");
+    computeMarkerStats(matched, *genoData, sd.indicator());
+
+    // ---- Batch-effect testing ----
+    infoMsg("Batch-effect testing and parameter estimation...");
+    std::unique_ptr<SparseGRM> grm;
+    if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
+        infoMsg("  Loading sparse GRM...");
+        grm = std::make_unique<SparseGRM>(SparseGRM::load(spgrmGrabFile, spgrmGctaFile, sd.usedIIDs(), sd.famIIDs()));
+        infoMsg("  Sparse GRM: %u subjects, %zu non-zeros", grm->nSubjects(), grm->nnz());
+    }
+    auto refInfoMap =
+        testBatchEffects(matched, sd.residuals(), sd.weights(), sd.indicator(), grm.get(), refPrevalence, cutoff);
+    infoMsg("  %zu markers retained after batch-effect QC", refInfoMap->size());
+
+    // ---- Marker-level SPA tests ----
+    infoMsg("Running marker-level WtCoxG tests (%d thread(s))...", nthread);
+    auto method = std::make_unique<WtCoxGMethod>(sd.residuals(), sd.weights(), cutoff, spaCutoff, outlierRatio, refInfoMap);
+
+    // Build PhenoTask (single trait)
+    std::string traitName = isSurv ? phenoNames[0] + "_" + phenoNames[1] : phenoNames[0];
+    std::vector<PhenoTask> tasks(1);
+    tasks[0].phenoName = traitName;
+    tasks[0].method = std::move(method);
+    // Identity mapping: all subjects in union = all subjects in phenotype (K=1)
+    tasks[0].unionToLocal.resize(sd.nUsed());
+    std::iota(tasks[0].unionToLocal.begin(), tasks[0].unionToLocal.end(), 0u);
+    tasks[0].nUsed = sd.nUsed();
+
+    multiPhenoEngine(
+        outputOptions,
+        *genoData,
+        tasks,
+        outPrefix,
+        "WtCoxG",
+        compression,
+        compressionLevel,
+        nthread,
+        missingCutoff,
+        minMafCutoff,
+        minMacCutoff,
+        hweCutoff
+    );
+}
+
+// ======================================================================
+// runWtCoxG — multi-phenotype entry point
+//
+// Phases:
+//   A  Shared data loading (SubjectData, ref-AF, genoData, GRM)
+//   B  Parallel null-model regression  (min(T, P) threads)
+//   C  Shared matched-marker scan (1× I/O, all P phenotypes)
+//   D  Parallel batch-effect testing   (min(T, P) threads)
+//   E  Single multiPhenoEngine call    (T-thread chunk parallel)
+// ======================================================================
+
+// PhenoSpec parsing is centralised in nullmodel::parsePhenoSpecAuto; this
+// removes the previous WtCoxG-local parser and aligns survival syntax with
+// SPACox / SPAGRM / SPAmix.  Both binary ("COL") and survival ("TIME:EVENT")
+// forms are inferred per token.
+
+void runWtCoxG(
+    const OutputOptions &outputOptions,
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    const std::vector<nullmodel::PhenoSpec> &parsedSpecs,
+    const GenoSpec &geno,
+    const std::string &refAfFile,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    double outlierRatio,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
+    const int P = static_cast<int>(parsedSpecs.size());
+
+    // ── Collect the union of phenotype columns the regression will touch ──
+    std::vector<std::string> allPhenoCols;
+    for (int p = 0; p < P; ++p) {
+        if (nullmodel::isCoxSpec(parsedSpecs[p])) {
+            allPhenoCols.push_back(parsedSpecs[p].timeColumn);
+            allPhenoCols.push_back(parsedSpecs[p].eventColumn);
+        } else {
+            allPhenoCols.push_back(parsedSpecs[p].yColumn);
+        }
+    }
+
+    // ── Phase A: shared data loading ────────────────────────────────
+    infoMsg("WtCoxG: Loading data (%d phenotypes)", P);
+    auto famIIDs = parseGenoIIDs(geno);
+    SubjectData sd(std::move(famIIDs));
+    sd.loadPhenoFile(phenoFile);
+    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
+    sd.setKeepRemove(keepFile, removeFile);
+    if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
+        sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
+    sd.finalize();
+    sd.dropNaInColumns(allPhenoCols);
+
+    const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
+    infoMsg("  %lld subjects after intersection", static_cast<long long>(N));
+
+    // Shared covariate matrix
+    Eigen::MatrixXd covarMat;
+    if (!covarNames.empty()) {
+        covarMat = sd.getColumns(covarNames);
+    } else if (sd.hasCovar()) {
+        covarMat = sd.covar();
+    }
+    const int nCov = static_cast<int>(covarMat.cols());
+
+    // Shared ref-AF
+    infoMsg("Loading ref-af file: %s", refAfFile.c_str());
+    bool refAfNumeric = false;
+    auto refAf = loadRefAfFile(refAfFile, &refAfNumeric);
+    infoMsg("  %zu reference records loaded", refAf.size());
+
+    // Shared genotype data
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    infoMsg("  %u subjects, %u markers", genoData->nSubjUsed(), genoData->nMarkers());
+
+    // Shared marker matching (AF_ref, obs_ct only; mu0/mu1 zeroed)
+    auto matchedBase = refAfNumeric
+        ? matchMarkersNumeric(*genoData, refAf)
+        : matchMarkers(*genoData, refAf);
+    infoMsg("  %zu markers matched", matchedBase.size());
+
+    // Shared GRM
+    std::unique_ptr<SparseGRM> grm;
+    if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
+        grm = std::make_unique<SparseGRM>(
+            SparseGRM::load(spgrmGrabFile, spgrmGctaFile, sd.usedIIDs(), sd.famIIDs()));
+        infoMsg("  Sparse GRM: %u subjects, %zu non-zeros", grm->nSubjects(), grm->nnz());
+    }
+
+    // ── Phase B: parallel null-model regression ─────────────────────
+    struct PhenoData {
+        Eigen::VectorXd indicator;
+        Eigen::VectorXd survTime;
+        Eigen::VectorXd weights;
+        Eigen::VectorXd residuals;
+        bool isSurv = false;
+        std::string traitName;
+        std::string error;
+    };
+
+    std::vector<PhenoData> pd(P);
+
+    const std::vector<std::string> unionIIDsForInfer = sd.usedIIDs();
+    {
+        const int nWorkers = std::min(nthreads, P);
+        infoMsg("WtCoxG: Fitting %d null models with %d threads", P, nWorkers);
+        std::atomic<int> nextPheno{0};
+
+        auto regrWorker = [&]() {
+            for (;;) {
+                int p = nextPheno.fetch_add(1, std::memory_order_relaxed);
+                if (p >= P) break;
+                try {
+                    const auto &spec = parsedSpecs[p];
+                    pd[p].isSurv = nullmodel::isCoxSpec(spec);
+                    pd[p].traitName = spec.name;
+
+                    if (pd[p].isSurv) {
+                        pd[p].survTime = sd.getColumn(spec.timeColumn);
+                        pd[p].indicator = sd.getColumn(spec.eventColumn);
+                        // Strict {0,1} event + time > 0 check.
+                        nullmodel::inferCoxSurvival(
+                            pd[p].survTime, pd[p].indicator,
+                            spec.timeColumn, spec.eventColumn,
+                            unionIIDsForInfer);
+                    } else {
+                        pd[p].indicator = sd.getColumn(spec.yColumn);
+                        // WtCoxG only fits binary phenotypes for non-survival
+                        // specs; reject any column that infers to something
+                        // other than logistic, and apply the lenient recode
+                        // ({v0, v1} -> {0, 1}) when the inputs are not 0/1.
+                        auto info = nullmodel::inferModelFromColumn(
+                            pd[p].indicator, spec.yColumn, unionIIDsForInfer);
+                        if (info.model != nullmodel::RegressionModel::Logistic)
+                            throw std::runtime_error(
+                                "WtCoxG requires a binary phenotype for '" +
+                                spec.yColumn + "' but inference returned " +
+                                nullmodel::regressionModelName(info.model) +
+                                " (use --pheno-name TIME:EVENT for survival)");
+                        if (info.needRecode) {
+                            double v0 = info.sortedDistinct[0];
+                            double v1 = info.sortedDistinct[1];
+                            for (Eigen::Index i = 0; i < pd[p].indicator.size(); ++i) {
+                                double v = pd[p].indicator[i];
+                                if (std::isnan(v)) continue;
+                                pd[p].indicator[i] = (v == v0) ? 0.0 : 1.0;
+                            }
+                            infoMsg("  Recoded binary column '%s': {%g, %g} -> {0, 1}",
+                                    spec.yColumn.c_str(), v0, v1);
+                        }
+                    }
+
+                    pd[p].weights = regression::calRegrWeight(
+                        refPrevalence, pd[p].indicator);
+
+                    if (pd[p].isSurv) {
+                        pd[p].residuals = regression::coxResiduals(
+                            pd[p].survTime, pd[p].indicator, covarMat, pd[p].weights);
+                    } else {
+                        Eigen::MatrixXd designMat(N, 1 + nCov);
+                        designMat.col(0).setOnes();
+                        if (nCov > 0) designMat.rightCols(nCov) = covarMat;
+                        pd[p].residuals = regression::logisticResiduals(
+                            pd[p].indicator, designMat, pd[p].weights);
+                    }
+                    infoMsg("  [%s] null model done", pd[p].traitName.c_str());
+                } catch (const std::exception &ex) {
+                    pd[p].error = ex.what();
+                }
+            }
+        };
+
+        std::vector<std::thread> threads;
+        threads.reserve(nWorkers - 1);
+        for (int t = 0; t < nWorkers - 1; ++t)
+            threads.emplace_back(regrWorker);
+        regrWorker();  // main thread participates
+        for (auto &th : threads) th.join();
+    }
+    for (int p = 0; p < P; ++p)
+        if (!pd[p].error.empty())
+            throw std::runtime_error(
+                      "WtCoxG null model failed for '" + pd[p].traitName + "': " + pd[p].error);
+
+    // ── Phase C: shared matched-marker scan ─────────────────────────
+    // One I/O pass over matched markers; compute per-phenotype mu0/mu1
+    infoMsg("WtCoxG: Scanning %zu matched markers for %d phenotypes",
+            matchedBase.size(), P);
+    std::vector<std::vector<MatchedMarkerInfo> > phenoMatched(P);
+    for (int p = 0; p < P; ++p)
+        phenoMatched[p] = matchedBase;  // copies AF_ref/obs_ct; mu0/mu1 zeroed
+
+    {
+        const uint32_t n = genoData->nSubjUsed();
+        auto cursor = genoData->makeCursor();
+        if (!matchedBase.empty())
+            cursor->beginSequentialBlock(matchedBase.front().genoIndex);
+        Eigen::VectorXd gvec(n);
+
+        for (size_t mi = 0; mi < matchedBase.size(); ++mi) {
+            cursor->getGenotypesSimple(matchedBase[mi].genoIndex, gvec);
+            for (int p = 0; p < P; ++p) {
+                const auto &ind = pd[p].indicator;
+                double sum0 = 0, sum1 = 0, cnt0 = 0, cnt1 = 0;
+                for (uint32_t i = 0; i < n; ++i) {
+                    if (std::isnan(gvec[i])) continue;
+                    if (ind[i] == 1.0) { sum1 += gvec[i]; cnt1 += 1.0; }
+                    else                { sum0 += gvec[i]; cnt0 += 1.0; }
+                }
+                auto &m = phenoMatched[p][mi];
+                m.mu0   = (cnt0 > 0) ? sum0 / cnt0 / 2.0 : 0.0;
+                m.mu1   = (cnt1 > 0) ? sum1 / cnt1 / 2.0 : 0.0;
+                m.n0    = cnt0;
+                m.n1    = cnt1;
+                m.mu_int = (cnt0 + cnt1 > 0)
+                    ? (sum0 + sum1) / (2.0 * (cnt0 + cnt1))
+                    : 0.0;
+            }
+        }
+    }
+
+    // ── Phase D: parallel batch-effect testing ──────────────────────
+    std::vector<std::shared_ptr<WtCoxGRefVec> > refMaps(P);
+    {
+        const int nWorkers = std::min(nthreads, P);
+        infoMsg("WtCoxG: Batch-effect testing for %d phenotypes with %d threads",
+                P, nWorkers);
+        std::atomic<int> nextPheno{0};
+        std::vector<std::string> batchErrors(P);
+
+        auto batchWorker = [&]() {
+            for (;;) {
+                int p = nextPheno.fetch_add(1, std::memory_order_relaxed);
+                if (p >= P) break;
+                try {
+                    refMaps[p] = testBatchEffects(
+                        phenoMatched[p], pd[p].residuals, pd[p].weights,
+                        pd[p].indicator, grm.get(), refPrevalence, cutoff);
+                    infoMsg("  [%s] %zu markers retained",
+                            pd[p].traitName.c_str(), refMaps[p]->size());
+                } catch (const std::exception &ex) {
+                    batchErrors[p] = ex.what();
+                }
+            }
+        };
+
+        std::vector<std::thread> threads;
+        threads.reserve(nWorkers - 1);
+        for (int t = 0; t < nWorkers - 1; ++t)
+            threads.emplace_back(batchWorker);
+        batchWorker();
+        for (auto &th : threads) th.join();
+
+        for (int p = 0; p < P; ++p)
+            if (!batchErrors[p].empty())
+                throw std::runtime_error(
+                          "WtCoxG batch-effect failed for '" + pd[p].traitName + "': " + batchErrors[p]);
+    }
+
+    // ── Phase E: multi-phenotype marker engine ──────────────────────
+    std::vector<PhenoTask> tasks(P);
+    for (int p = 0; p < P; ++p) {
+        auto method = std::make_unique<WtCoxGMethod>(
+            pd[p].residuals, pd[p].weights, cutoff, spaCutoff, outlierRatio, refMaps[p]);
+        tasks[p].phenoName = pd[p].traitName;
+        tasks[p].method    = std::move(method);
+        tasks[p].unionToLocal.resize(genoData->nSubjUsed());
+        std::iota(tasks[p].unionToLocal.begin(), tasks[p].unionToLocal.end(), 0u);
+        tasks[p].nUsed = genoData->nSubjUsed();
+    }
+
+    infoMsg("WtCoxG: Starting multi-phenotype association (%d phenotypes, %d threads)",
+            P, nthreads);
+    multiPhenoEngine(
+        outputOptions,
+        *genoData,
+        tasks,
+        outPrefix,
+        "WtCoxG",
+        compression,
+        compressionLevel,
+        nthreads,
+        missingCutoff,
+        minMafCutoff,
+        minMacCutoff,
+        hweCutoff
+    );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// runWtCoxGLoco — LOCO orchestration
+// ══════════════════════════════════════════════════════════════════════
+//
+// WtCoxG fits its null model directly via regression::coxResiduals /
+// logisticResiduals (not nullmodel::fitAll), so the LOCO PGS is appended to the
+// covariate design.  The per-phenotype indicator / survival / weights columns
+// (Phase B inputs) and the matched-marker mu0/mu1 scan (Phase C) are residual-
+// independent and are computed once.  Per chromosome only the residuals and the
+// batch-effect map (Phase D) are recomputed.  WtCoxGMethod copies the residuals
+// into a shared snapshot, so no reference-lifetime discipline is required.
+
+void runWtCoxGLoco(
+    const OutputOptions &outputOptions,
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    const std::vector<nullmodel::PhenoSpec> &parsedSpecs,
+    const GenoSpec &geno,
+    const std::string &refAfFile,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    double outlierRatio,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
+    const int P = static_cast<int>(parsedSpecs.size());
+    std::vector<std::string> specNames(P);
+    for (int p = 0; p < P; ++p) specNames[p] = parsedSpecs[p].name;
+
+    infoMsg("WtCoxG-LOCO: %d phenotype(s), per-chromosome LOCO PGS as covariate", P);
+    validatePredListPhenos(predListFile, specNames);
+
+    std::vector<std::string> allPhenoCols;
+    for (int p = 0; p < P; ++p) {
+        if (nullmodel::isCoxSpec(parsedSpecs[p])) {
+            allPhenoCols.push_back(parsedSpecs[p].timeColumn);
+            allPhenoCols.push_back(parsedSpecs[p].eventColumn);
+        } else {
+            allPhenoCols.push_back(parsedSpecs[p].yColumn);
+        }
+    }
+
+    // ── Phase A: shared data loading (residual-independent) ──────────
+    infoMsg("WtCoxG: Loading data (%d phenotypes)", P);
+    auto famIIDs = parseGenoIIDs(geno);
+    SubjectData sd(std::move(famIIDs));
+    sd.loadPhenoFile(phenoFile);
+    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
+    sd.setKeepRemove(keepFile, removeFile);
+    if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
+        sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
+    sd.finalize();
+    sd.dropNaInColumns(allPhenoCols);
+
+    const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
+    infoMsg("  %lld subjects after intersection", static_cast<long long>(N));
+
+    Eigen::MatrixXd covarMat;
+    if (!covarNames.empty()) covarMat = sd.getColumns(covarNames);
+    else if (sd.hasCovar()) covarMat = sd.covar();
+
+    infoMsg("Loading ref-af file: %s", refAfFile.c_str());
+    bool refAfNumeric = false;
+    auto refAf = loadRefAfFile(refAfFile, &refAfNumeric);
+    infoMsg("  %zu reference records loaded", refAf.size());
+
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    infoMsg("  %u subjects, %u markers", genoData->nSubjUsed(), genoData->nMarkers());
+
+    auto matchedBase = refAfNumeric
+        ? matchMarkersNumeric(*genoData, refAf)
+        : matchMarkers(*genoData, refAf);
+    infoMsg("  %zu markers matched", matchedBase.size());
+
+    std::unique_ptr<SparseGRM> grm;
+    if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
+        grm = std::make_unique<SparseGRM>(
+            SparseGRM::load(spgrmGrabFile, spgrmGctaFile, sd.usedIIDs(), sd.famIIDs()));
+        infoMsg("  Sparse GRM: %u subjects, %zu non-zeros", grm->nSubjects(), grm->nnz());
+    }
+
+    // ── Phase B (residual-independent part): indicator / survival / weights ──
+    struct PhenoBase {
+        Eigen::VectorXd indicator, survTime, weights;
+        bool isSurv = false;
+        std::string traitName;
+    };
+    std::vector<PhenoBase> pb(P);
+    const std::vector<std::string> unionIIDsForInfer = sd.usedIIDs();
+    for (int p = 0; p < P; ++p) {
+        const auto &spec = parsedSpecs[p];
+        pb[p].isSurv = nullmodel::isCoxSpec(spec);
+        pb[p].traitName = spec.name;
+        if (pb[p].isSurv) {
+            pb[p].survTime = sd.getColumn(spec.timeColumn);
+            pb[p].indicator = sd.getColumn(spec.eventColumn);
+            nullmodel::inferCoxSurvival(pb[p].survTime, pb[p].indicator,
+                                        spec.timeColumn, spec.eventColumn,
+                                        unionIIDsForInfer);
+        } else {
+            pb[p].indicator = sd.getColumn(spec.yColumn);
+            auto info = nullmodel::inferModelFromColumn(
+                pb[p].indicator, spec.yColumn, unionIIDsForInfer);
+            if (info.model != nullmodel::RegressionModel::Logistic)
+                throw std::runtime_error(
+                    "WtCoxG requires a binary phenotype for '" + spec.yColumn +
+                    "' but inference returned " +
+                    nullmodel::regressionModelName(info.model) +
+                    " (use --pheno-name TIME:EVENT for survival)");
+            if (info.needRecode) {
+                double v0 = info.sortedDistinct[0];
+                double v1 = info.sortedDistinct[1];
+                for (Eigen::Index i = 0; i < pb[p].indicator.size(); ++i) {
+                    double v = pb[p].indicator[i];
+                    if (std::isnan(v)) continue;
+                    pb[p].indicator[i] = (v == v0) ? 0.0 : 1.0;
+                }
+                infoMsg("  Recoded binary column '%s': {%g, %g} -> {0, 1}",
+                        spec.yColumn.c_str(), v0, v1);
+            }
+        }
+        pb[p].weights = regression::calRegrWeight(refPrevalence, pb[p].indicator);
+    }
+
+    // ── Phase C: shared matched-marker scan (residual-independent) ───
+    infoMsg("WtCoxG: Scanning %zu matched markers for %d phenotypes",
+            matchedBase.size(), P);
+    std::vector<std::vector<MatchedMarkerInfo> > phenoMatched(P);
+    for (int p = 0; p < P; ++p) phenoMatched[p] = matchedBase;
+    {
+        const uint32_t n = genoData->nSubjUsed();
+        auto cursor = genoData->makeCursor();
+        if (!matchedBase.empty())
+            cursor->beginSequentialBlock(matchedBase.front().genoIndex);
+        Eigen::VectorXd gvec(n);
+        for (size_t mi = 0; mi < matchedBase.size(); ++mi) {
+            cursor->getGenotypesSimple(matchedBase[mi].genoIndex, gvec);
+            for (int p = 0; p < P; ++p) {
+                const auto &ind = pb[p].indicator;
+                double sum0 = 0, sum1 = 0, cnt0 = 0, cnt1 = 0;
+                for (uint32_t i = 0; i < n; ++i) {
+                    if (std::isnan(gvec[i])) continue;
+                    if (ind[i] == 1.0) { sum1 += gvec[i]; cnt1 += 1.0; }
+                    else               { sum0 += gvec[i]; cnt0 += 1.0; }
+                }
+                auto &m = phenoMatched[p][mi];
+                m.mu0   = (cnt0 > 0) ? sum0 / cnt0 / 2.0 : 0.0;
+                m.mu1   = (cnt1 > 0) ? sum1 / cnt1 / 2.0 : 0.0;
+                m.n0    = cnt0;
+                m.n1    = cnt1;
+                m.mu_int = (cnt0 + cnt1 > 0)
+                    ? (sum0 + sum1) / (2.0 * (cnt0 + cnt1))
+                    : 0.0;
+            }
+        }
+    }
+
+    // ── LOCO predictions ────────────────────────────────────────────
+    // All N subjects are complete after dropNaInColumns, so every subject must
+    // have a finite PGS.
+    std::vector<bool> nonMissingAll(static_cast<size_t>(N), true);
+    LocoData loco = LocoData::load(predListFile, specNames, sd.usedIIDs(), sd.famIIDs());
+    auto locoChroms = loco.availableChromosomes();
+    infoMsg("LOCO: %zu chromosomes available across all phenotypes", locoChroms.size());
+
+    std::vector<Eigen::VectorXd> pResid(P);
+    std::vector<std::shared_ptr<WtCoxGRefVec> > refMaps(P);
+
+    auto buildTasks = [&](const std::string &chr, std::vector<PhenoTask> &tasks) {
+        tasks.resize(P);
+        for (int p = 0; p < P; ++p) {
+            Eigen::MatrixXd covarMat_p = appendLocoCovariate(
+                loco, specNames[p], chr, covarMat, nonMissingAll, "WtCoxG-LOCO");
+            if (pb[p].isSurv) {
+                pResid[p] = regression::coxResiduals(
+                    pb[p].survTime, pb[p].indicator, covarMat_p, pb[p].weights);
+            } else {
+                const int nc = static_cast<int>(covarMat_p.cols());
+                Eigen::MatrixXd designMat(N, 1 + nc);
+                designMat.col(0).setOnes();
+                if (nc > 0) designMat.rightCols(nc) = covarMat_p;
+                pResid[p] = regression::logisticResiduals(
+                    pb[p].indicator, designMat, pb[p].weights);
+            }
+            refMaps[p] = testBatchEffects(
+                phenoMatched[p], pResid[p], pb[p].weights, pb[p].indicator,
+                grm.get(), refPrevalence, cutoff);
+            auto method = std::make_unique<WtCoxGMethod>(
+                pResid[p], pb[p].weights, cutoff, spaCutoff, outlierRatio, refMaps[p]);
+            tasks[p].phenoName = pb[p].traitName;
+            tasks[p].method    = std::move(method);
+            tasks[p].unionToLocal.resize(genoData->nSubjUsed());
+            std::iota(tasks[p].unionToLocal.begin(), tasks[p].unionToLocal.end(), 0u);
+            tasks[p].nUsed = genoData->nSubjUsed();
+        }
+    };
+
+    infoMsg("WtCoxG-LOCO: starting LOCO association (%d phenotype(s), %zu chroms, %d threads)",
+            P, locoChroms.size(), nthreads);
+    locoEngine(
+        outputOptions,
+        *genoData, locoChroms, specNames, buildTasks, outPrefix, "WtCoxG",
+        compression, compressionLevel, nthreads,
+        missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
+}

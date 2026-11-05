@@ -1,0 +1,472 @@
+// ibd.cpp — Pairwise IBD estimation (C++17 / Eigen)
+//
+// Translates the R function getPairwiseIBD() into a single-pass streaming
+// algorithm over the PLINK .bed file.
+//
+// Algorithm outline:
+//   1. Load sparse GRM via SparseGRM; extract off-diagonal (related) pairs.
+//   2. Create genotype data for the analysed subject set (genotype .fam
+//      intersected with the GRM subjects, then --keep / --remove), so the
+//      per-marker ALT frequency is computed over exactly those subjects.
+//      The R original instead read MAF from a PLINK .frq computed over the
+//      whole cohort; the two coincide when the GRM covers every genotyped
+//      subject and differ otherwise.
+//   3. Stream through every marker once.  For markers with MAF ≥ threshold,
+//      mean-impute missing genotypes and accumulate weighted IBS0 statistics
+//      for each related pair.
+//   4. Derive (pa, pb, pc) from the accumulated statistics + GRM value.
+//   5. Write output in the same pair order as the sparse GRM.
+
+#include "spagrm/ibd.hpp"
+
+#include "geno_factory/geno_data.hpp"
+#include "io/sparse_grm.hpp"
+#include "io/subject_data.hpp"
+#include "io/subject_set.hpp"
+#include "util/logging.hpp"
+#include "util/text_stream.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <mutex>
+#include <numeric>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include <Eigen/Dense>
+#if defined(__x86_64__) || defined(_M_X64)
+#  include <immintrin.h>
+#endif
+#include "util/simd_dispatch.hpp"
+
+// ── IBD pair accumulation — multi-versioned SIMD kernels ─────────────
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+__attribute__((target("avx2,avx512f,avx512vl,fma")))
+static void ibdAccPairs_avx512(
+    const double *genoPtr,
+    const int32_t *i1,
+    const int32_t *i2,
+    double *localXW,
+    double *localW,
+    double inv_pv,
+    double w,
+    size_t nPairs
+) {
+    const __m512d signmask = _mm512_set1_pd(-0.0);
+    const __m512d vones = _mm512_set1_pd(1.0);
+    const __m512d vtwos = _mm512_set1_pd(2.0);
+    const __m512d vinv_pv = _mm512_set1_pd(inv_pv);
+    const __m512d vw = _mm512_set1_pd(w);
+
+    const size_t nPairs8 = nPairs & ~size_t(7);
+    size_t k = 0;
+
+    for (; k < nPairs8; k += 8) {
+        __m256i vi1 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(i1 + k));
+        __m256i vi2 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(i2 + k));
+        __m512d g1 = _mm512_i32gather_pd(vi1, genoPtr, 8);
+        __m512d g2 = _mm512_i32gather_pd(vi2, genoPtr, 8);
+
+        __m512d d = _mm512_sub_pd(g1, g2);
+        // |d - 1| + |d + 1| - 2
+        __m512d dm1 = _mm512_sub_pd(d, vones);
+        __m512d dp1 = _mm512_add_pd(d, vones);
+        // abs via andnot(signmask, x) — clear sign bit
+        __m512d abs_dm1 = (__m512d)_mm512_andnot_si512((__m512i)signmask, (__m512i)dm1);
+        __m512d abs_dp1 = (__m512d)_mm512_andnot_si512((__m512i)signmask, (__m512i)dp1);
+        __m512d x = _mm512_mul_pd(_mm512_sub_pd(_mm512_add_pd(abs_dm1, abs_dp1), vtwos), vinv_pv);
+
+        _mm512_storeu_pd(localXW + k, _mm512_fmadd_pd(x, vw, _mm512_loadu_pd(localXW + k)));
+        _mm512_storeu_pd(localW + k, _mm512_add_pd(_mm512_loadu_pd(localW + k), vw));
+    }
+
+    // Scalar tail
+    for (; k < nPairs; ++k) {
+        const double d = genoPtr[i1[k]] - genoPtr[i2[k]];
+        const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
+        localXW[k] += x * w;
+        localW[k] += w;
+    }
+}
+
+__attribute__((target("avx2,fma")))
+static void ibdAccPairs_avx2(
+    const double *genoPtr,
+    const int32_t *i1,
+    const int32_t *i2,
+    double *localXW,
+    double *localW,
+    double inv_pv,
+    double w,
+    size_t nPairs
+) {
+    const __m256d signmask = _mm256_set1_pd(-0.0);
+    const __m256d vones = _mm256_set1_pd(1.0);
+    const __m256d vtwos = _mm256_set1_pd(2.0);
+    const __m256d vinv_pv = _mm256_set1_pd(inv_pv);
+    const __m256d vw = _mm256_set1_pd(w);
+
+    const size_t nPairs4 = nPairs & ~size_t(3);
+    size_t k = 0;
+
+    for (; k < nPairs4; k += 4) {
+        __m128i vi1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(i1 + k));
+        __m128i vi2 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(i2 + k));
+        __m256d g1 = _mm256_i32gather_pd(genoPtr, vi1, 8);
+        __m256d g2 = _mm256_i32gather_pd(genoPtr, vi2, 8);
+
+        __m256d d = _mm256_sub_pd(g1, g2);
+        __m256d abs_dm1 = _mm256_andnot_pd(signmask, _mm256_sub_pd(d, vones));
+        __m256d abs_dp1 = _mm256_andnot_pd(signmask, _mm256_add_pd(d, vones));
+        __m256d x = _mm256_mul_pd(_mm256_sub_pd(_mm256_add_pd(abs_dm1, abs_dp1), vtwos), vinv_pv);
+
+        _mm256_storeu_pd(localXW + k, _mm256_fmadd_pd(x, vw, _mm256_loadu_pd(localXW + k)));
+        _mm256_storeu_pd(localW + k, _mm256_add_pd(_mm256_loadu_pd(localW + k), vw));
+    }
+
+    // Scalar tail
+    for (; k < nPairs; ++k) {
+        const double d = genoPtr[i1[k]] - genoPtr[i2[k]];
+        const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
+        localXW[k] += x * w;
+        localW[k] += w;
+    }
+}
+
+#endif  // x86_64 SIMD variants
+
+static void ibdAccPairs_scalar(
+    const double *genoPtr,
+    const int32_t *i1,
+    const int32_t *i2,
+    double *localXW,
+    double *localW,
+    double inv_pv,
+    double w,
+    size_t nPairs
+) {
+    for (size_t k = 0; k < nPairs; ++k) {
+        const double d = genoPtr[i1[k]] - genoPtr[i2[k]];
+        const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
+        localXW[k] += x * w;
+        localW[k] += w;
+    }
+}
+
+using IbdAccFn = void (*)(const double *, const int32_t *, const int32_t *,
+                          double *, double *, double, double, size_t);
+
+static IbdAccFn pickIbdAccFn() {
+#if defined(__x86_64__) || defined(_M_X64)
+    switch (simdLevel()) {
+    case SimdLevel::AVX512: return ibdAccPairs_avx512;
+    case SimdLevel::AVX2:   return ibdAccPairs_avx2;
+    default: break;
+    }
+#endif
+    return ibdAccPairs_scalar;
+}
+
+static const IbdAccFn ibdAccPairs = pickIbdAccFn();
+
+// ══════════════════════════════════════════════════════════════════════════════
+// runPairwiseIBD
+// ══════════════════════════════════════════════════════════════════════════════
+
+void runPairwiseIBD(
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const GenoSpec &geno,
+    const std::string &outputFile,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    double minMafIBD,
+    int nthreads
+) {
+    // ── 1. Read sample IDs and apply keep/remove filters ────────────
+    std::vector<std::string> allIIDs = parseGenoIIDs(geno);
+    infoMsg("Read %u subjects from genotype file", static_cast<uint32_t>(allIIDs.size()));
+
+    // Build filtered subject set via SubjectSet.  Intersect the genotype
+    // .fam IIDs with the GRM subjects first: the IBD analysis only concerns
+    // related pairs drawn from the GRM, and the subsequent
+    // SparseGRM::load(... filteredIIDs ...) builds its diagonal over exactly
+    // filteredIIDs.  Without this intersection every genotype subject absent
+    // from the GRM would lack a diagonal entry and trigger the
+    // "N of M subjects have no diagonal entry" error in buildDiagonal().
+    SubjectSet ss(std::move(allIIDs));
+    ss.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, ss.famIIDs()));
+    ss.setKeepRemove(keepFile, removeFile);
+    ss.setGenoLabel(geno.flagLabel());
+    ss.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
+    ss.finalize();
+
+    const uint32_t nFam = ss.nFam();
+    const uint32_t nFiltered = ss.nUsed();
+    const auto &usedMask = ss.usedMask();
+    auto filteredIIDs = ss.usedIIDs();
+
+    // ── 2. Load sparse GRM against filtered subjects ─────────────────
+    SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile, filteredIIDs, filteredIIDs);
+    infoMsg("Loaded sparse GRM: %zu entries", grm.nnz());
+
+    // ── 3. Extract off-diagonal pairs (sorted by row, col — same as GRM) ─
+    struct IndexedPair {
+        uint32_t idx1, idx2;
+        double grmValue;
+    };
+
+    std::vector<IndexedPair> pairs;
+    for (const auto &e : grm.entries()) {
+        if (e.row != e.col) pairs.push_back({e.row, e.col, e.value});
+    }
+    infoMsg("Found %zu off-diagonal (related) pairs", pairs.size());
+
+    if (pairs.empty()) {
+        TextWriter writer(outputFile);
+        writer.write("ID1\tID2\tpa\tpb\tpc\n");
+        infoMsg("No related pairs found — wrote empty output to %s", outputFile.c_str());
+        return;
+    }
+
+    // ── 4. Create genotype data for filtered subjects ─────────────────
+    auto genoData = makeGenoData(geno, usedMask, nFam, nFiltered, 1024);
+
+    const uint32_t nSubj = genoData->nSubjUsed();
+    const uint32_t nMarkers = genoData->nMarkers();
+
+    if (nMarkers > 200000) {
+        infoMsg("WARNING: %u markers provided. "
+                "IBD estimation is intended for LD-pruned markers (~100k). "
+                "Consider pruning for speed and accuracy.",
+                nMarkers);
+    }
+
+    infoMsg("IBD analysis: %u subjects, %u markers (MAF threshold %.4f)", nSubj, nMarkers, minMafIBD);
+
+    // ── 5. SoA pair indices for AVX2 gather ──────────────────────────
+    const size_t nPairs = pairs.size();
+    std::vector<int32_t> pairIdx1(nPairs), pairIdx2(nPairs);
+    for (size_t k = 0; k < nPairs; ++k) {
+        pairIdx1[k] = static_cast<int32_t>(pairs[k].idx1);
+        pairIdx2[k] = static_cast<int32_t>(pairs[k].idx2);
+    }
+
+    // ── 6. Stream markers (multi-threaded, AVX2) ──────────────────────
+    const auto &chunks = genoData->chunkIndices();
+    const size_t nChunks = chunks.size();
+    if (nthreads < 1) nthreads = 1;
+    const int nt = std::min(nthreads, static_cast<int>(nChunks));
+
+    struct ThreadAcc {
+        std::vector<double> sumXW, sumW;
+        uint32_t nUsed = 0;
+    };
+
+    std::vector<ThreadAcc> threadAccs(nt);
+    for (auto &ta : threadAccs) {
+        ta.sumXW.assign(nPairs, 0.0);
+        ta.sumW.assign(nPairs, 0.0);
+    }
+
+    std::atomic<size_t> nextChunk(0);
+    std::atomic<size_t> chunksDone(0);
+
+    auto workerFn = [&](int tid) {
+        auto cursor = genoData->makeCursor();
+        Eigen::VectorXd genoVec(nSubj);
+        std::vector<uint32_t> missingIdx;
+
+        double *localXW = threadAccs[tid].sumXW.data();
+        double *localW = threadAccs[tid].sumW.data();
+        uint32_t localUsed = 0;
+
+        const int32_t *i1 = pairIdx1.data();
+        const int32_t *i2 = pairIdx2.data();
+
+        while (true) {
+            const size_t ci = nextChunk.fetch_add(1);
+            if (ci >= nChunks) break;
+
+            const auto &chunk = chunks[ci];
+            if (!chunk.empty()) cursor->beginSequentialBlock(chunk.front());
+
+            for (uint64_t gi : chunk) {
+                const GenoStats gs = cursor->getGenotypes(gi, genoVec, missingIdx);
+                const double altFreq = gs.altFreq, maf = gs.maf;
+                if (maf < minMafIBD) continue;
+
+                const double meanGeno = 2.0 * altFreq;
+                for (uint32_t mi : missingIdx)
+                    genoVec[mi] = meanGeno;
+
+                const double pq = altFreq * (1.0 - altFreq);
+                const double pv = 2.0 * pq * pq;
+                const double opv = 1.0 - pv;
+                if (pv < 1e-30 || opv <= 0.0) continue;
+
+                const double inv_pv = 1.0 / pv;
+                const double w = std::sqrt(pv / opv);
+                const double *genoPtr = genoVec.data();
+
+                ibdAccPairs(genoPtr, i1, i2, localXW, localW, inv_pv, w, nPairs);
+
+                ++localUsed;
+            }
+
+            const size_t done = chunksDone.fetch_add(1) + 1;
+            if (nChunks >= 10 && done % (nChunks / 10) == 0) infoMsg("  IBD progress: %zu/%zu chunks", done, nChunks);
+        }
+        threadAccs[tid].nUsed = localUsed;
+    };
+
+    infoMsg("IBD: streaming %u markers (%zu chunks) with %d threads", nMarkers, nChunks, nt);
+
+    if (nt == 1) {
+        workerFn(0);
+    } else {
+        std::vector<std::thread> workers;
+        workers.reserve(nt - 1);
+        for (int t = 1; t < nt; ++t)
+            workers.emplace_back(workerFn, t);
+        workerFn(0);
+        for (auto &w : workers)
+            w.join();
+    }
+
+    // Reduce thread-local accumulators
+    uint32_t nUsed = 0;
+    for (int t = 0; t < nt; ++t)
+        nUsed += threadAccs[t].nUsed;
+    for (int t = 1; t < nt; ++t) {
+        const double *txw = threadAccs[t].sumXW.data();
+        const double *tw = threadAccs[t].sumW.data();
+        double *rxw = threadAccs[0].sumXW.data();
+        double *rw = threadAccs[0].sumW.data();
+        for (size_t k = 0; k < nPairs; ++k) {
+            rxw[k] += txw[k];
+            rw[k] += tw[k];
+        }
+    }
+
+    infoMsg("IBD: used %u / %u markers (MAF >= %.4f)", nUsed, nMarkers, minMafIBD);
+
+    // ── 7. Derive (pa, pb, pc) for each pair ───────────────────────────
+    const double *sumXW = threadAccs[0].sumXW.data();
+    const double *sumW = threadAccs[0].sumW.data();
+    //
+    // The estimator is Eq. (17) of the SPAGRM paper (Nat Commun 16:1413),
+    // written there in terms of rho1 = 2*phi (the sparse-GRM off-diagonal)
+    // and rho2 (the IBS0 method-of-moments estimator of zero-IBD sharing):
+    //
+    //     delta0 = rho2                    == pc
+    //     delta1 = 2*(1 - rho1 - rho2)     == pb
+    //     delta2 = 2*rho1 + rho2 - 1       == pa
+    //
+    // The third of the paper's three defining equations is the normalization
+    // delta0 + delta1 + delta2 = 1, which the algebra above satisfies as an
+    // identity.  Everything downstream depends on it: nsGRMNull::
+    // buildChowLiuTree mixes three conditional joint tables that each have
+    // marginal p0 with these three weights, so the family table is a
+    // probability distribution — and the family CGF satisfies K(0) = 0 —
+    // exactly when the weights sum to one.
+    //
+    // (pa, pb, pc) is a valid IBD vector iff three inequalities hold.  Writing
+    // rho± for the roots of x² - 2*rho1*x + delta2 = 0, which are the
+    // per-allele sharing probabilities the two-subject CGF factorizes through
+    // (grm_null.cpp's `Rho ± midterm`):
+    //
+    //   (i)   delta2 >= 0   <=>  pc >= 1 - 2v        the lower clamp
+    //   (ii)  rho± real     <=>  pc <= (1 - v)^2     the upper clamp; also
+    //                                                the non-inbred
+    //                                                admissibility inequality
+    //                                                delta1^2 >= 4*delta0*delta2
+    //   (iii) rho+ <= 1     <=>  v <= 1              the monozygotic bound
+    //
+    // Given (i) and (ii), delta1 >= 0 follows automatically PROVIDED v <= 1,
+    // because 1 - v - pc >= 1 - v - (1-v)^2 = v*(1-v).  The predecessor
+    // enforced (i) and (ii) but not (iii), and carried an `if (pb < 0)`
+    // repair branch that is unreachable for v <= 1 and therefore fired only
+    // on v > 1.  Its effect was pa += 0.5*pb, pb = pc = 0, which evaluates to
+    // pa = v exactly: it emitted pa > 1 with pa + pb + pc = v != 1, breaking
+    // the paper's own normalization equation and, through it, K(0) = 0.  On
+    // the bundled 1kg fixture that was 173 of 39 799 pairs, and it is what
+    // put 14 markers of the cross-format Binary run into GUARD_TEMP — a
+    // status that cannot arise from a genuine CGF, since zeta*s - K(zeta) is
+    // the Legendre transform and is non-negative by construction.
+    //
+    // (iii) is now enforced at its source by capping v at 1.  At v = 1 the
+    // clamps give pc = 0, pb = 0, pa = 1: the duplicate / monozygotic
+    // interpretation.  It sums to one, keeps rho± = 1, and maximizes the
+    // modelled dependence, so it is conservative.  v > 1 is nevertheless a
+    // statement about the GRM rather than about the pair — 2*phi cannot
+    // exceed 1 for any relationship — so the count is reported.
+
+    struct IBDResult {
+        uint32_t idx1, idx2;
+        double pa, pb, pc;
+    };
+
+    std::vector<IBDResult> results(nPairs);
+
+    size_t nCapped = 0, nFloored = 0;
+    double maxGrm = 0.0, minGrm = 0.0;
+
+    for (size_t k = 0; k < nPairs; ++k) {
+        const double pcRaw = (sumW[k] > 0.0) ? 0.5 * sumXW[k] / sumW[k] : 0.0;
+        const double grmRaw = pairs[k].grmValue;
+        if (grmRaw > 1.0) { ++nCapped; if (grmRaw > maxGrm) maxGrm = grmRaw; }
+        if (grmRaw < 0.0) { ++nFloored; if (grmRaw < minGrm) minGrm = grmRaw; }
+
+        // The derivation itself lives in ibd.hpp so that tests/
+        // spagrm_ibd_test.cpp can exercise it directly; this loop supplies
+        // the two moment estimates and nothing else.
+        const ibd::Triple t = ibd::deriveIBD(grmRaw, pcRaw);
+
+        results[k] = {pairs[k].idx1, pairs[k].idx2, t.pa, t.pb, t.pc};
+    }
+
+    // Report what was DONE.  SparseGRM::checkValueRange has already reported
+    // the same entries as out of range at load, so this message states only
+    // the consequence and stays inside warnMsg's 512-byte buffer, which
+    // silently truncates (util/logging.hpp).
+    if (nCapped > 0) {
+        warnMsg(
+            "  %zu of %zu pairs had their GRM off-diagonal capped at 1.0 "
+            "(max %.6g) before deriving (pa, pb, pc): 2*phi > 1 is outside "
+            "the IBD model, and the cap yields the duplicate vector (1, 0, 0).",
+            nCapped, nPairs, maxGrm
+        );
+    }
+    if (nFloored > 0) {
+        warnMsg(
+            "  %zu of %zu pairs had a negative GRM off-diagonal floored at 0 "
+            "(min %.6g), giving the unrelated vector (0, 0, 1).",
+            nFloored, nPairs, minGrm
+        );
+    }
+
+    // ── 8. Write output (same pair order as the sparse GRM) ────────────
+    TextWriter writer(outputFile);
+    writer.write("ID1\tID2\tpa\tpb\tpc\n");
+    char buf[128];
+    for (const auto &r : results) {
+        std::string line;
+        line.reserve(128);
+        line += filteredIIDs[r.idx1];
+        line += '\t';
+        line += filteredIIDs[r.idx2];
+        line += '\t';
+        int n = std::snprintf(buf, sizeof(buf), "%.17g\t%.17g\t%.17g\n", r.pa, r.pb, r.pc);
+        line.append(buf, n);
+        writer.write(line);
+    }
+
+    infoMsg("Wrote %zu IBD records to %s", results.size(), outputFile.c_str());
+}

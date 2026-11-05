@@ -1,0 +1,329 @@
+// spamixplus.hpp — Unified SPAmix / SPAmixPlus implementation
+//
+// When a sparse GRM is provided the variance uses GRM-based covariance
+// (SPAmixPlus mode); otherwise the diagonal  Σ resid²·2·AF·(1−AF) is
+// used (SPAmix mode).  Passing an identity GRM to SPAmixPlus produces
+// results identical to SPAmix.
+//
+// Output columns: [Pvalue, zScore, BETA]
+#pragma once
+
+#include "util/output_columns.hpp"
+#include "geno_factory/geno_data.hpp"
+#include <Eigen/Dense>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "engine/marker.hpp"
+#include "spamix/spamix_cgf.hpp"
+#include "spamix/indiv_af.hpp"
+#include "io/sparse_grm.hpp"
+#include "util/outlier.hpp"
+
+// ======================================================================
+// SPAmixAFCache — per-thread shared cache of per-marker AFVec / W
+//
+// Phenotypes with identical missingness patterns (same maskIdx) within a
+// fused-GEMM group reuse the same AFVec across all batch markers.  The
+// engine processes one group's full window in a single processScoreBatch
+// call sequence, so a per-thread cache keyed by (maskIdx, chunkIdxs) is
+// sufficient: the first phenotype in a group fills the cache, the rest
+// reuse it.  Recomputed when the chunkIdxs vector changes.
+// ======================================================================
+
+struct SPAmixAFCache {
+    std::vector<int> lastChunkIdxs;
+    Eigen::MatrixXd  afBatch;   // N × B (one AFVec column per marker)
+    Eigen::MatrixXd  wBatch;    // N × B,  W = 2 · AF · (1 − AF)
+};
+
+// ======================================================================
+// SPAmixPlusMethod — MethodBase implementation (unified SPAmix/SPAmixPlus)
+// ======================================================================
+
+class SPAmixPlusMethod : public MethodBase {
+  public:
+// ── With GRM (SPAmixPlus) ──────────────────────────────────────
+
+// Pre-computed AF + GRM
+    SPAmixPlusMethod(
+        const Eigen::VectorXd &residuals,
+        const Eigen::VectorXd &resid2,
+        const Eigen::MatrixXd &onePlusPCs,
+        const OutlierData &outlier,
+        double spaCutoff,
+        const SparseGRM &grm,
+        const std::vector<AFModel> &afModels,
+        const std::vector<uint32_t> &genoToFlat,
+        int maskIdx = 0
+    );
+
+// On-the-fly AF + GRM
+    SPAmixPlusMethod(
+        const Eigen::VectorXd &residuals,
+        const Eigen::VectorXd &resid2,
+        const Eigen::MatrixXd &onePlusPCs,
+        const OutlierData &outlier,
+        double spaCutoff,
+        const SparseGRM &grm,
+        const Eigen::MatrixXd &XtX_inv_Xt,
+        const Eigen::VectorXd &sqrt_XtX_inv_diag,
+        int nPC,
+        int maskIdx = 0
+    );
+
+// ── Without GRM (SPAmix) ──────────────────────────────────────
+
+// Pre-computed AF, no GRM
+    SPAmixPlusMethod(
+        const Eigen::VectorXd &residuals,
+        const Eigen::VectorXd &resid2,
+        const Eigen::MatrixXd &onePlusPCs,
+        const OutlierData &outlier,
+        double spaCutoff,
+        const std::vector<AFModel> &afModels,
+        const std::vector<uint32_t> &genoToFlat,
+        int maskIdx = 0
+    );
+
+// On-the-fly AF, no GRM
+    SPAmixPlusMethod(
+        const Eigen::VectorXd &residuals,
+        const Eigen::VectorXd &resid2,
+        const Eigen::MatrixXd &onePlusPCs,
+        const OutlierData &outlier,
+        double spaCutoff,
+        const Eigen::MatrixXd &XtX_inv_Xt,
+        const Eigen::VectorXd &sqrt_XtX_inv_diag,
+        int nPC,
+        int maskIdx = 0
+    );
+
+    std::unique_ptr<MethodBase> clone() const override;
+
+    int resultSize() const override {
+        return 6;
+    }
+
+    // spa_unify L2 and L3.  LOG10P is -log10(P) carried through the log-domain
+    // tail assembly, so it stays meaningful past the point where the linear
+    // sum of the two tails underflows to zero, and since log10p_unify Stage 8
+    // it is the sole p-value column (decision D1); a consumer that needs the
+    // linear p takes 10^(-LOG10P).  SPA_STATUS is
+    // static_cast<uint8_t>(spa::Status), the encoding Stages 3 and 4 gave
+    // SPACox, SPAGRM and SPAsqr.  Column order matches those three exactly.
+    ResultColumns getResultColumns() const override {
+        return {{"LOG10P"}, {"Z", ResultColumnKind::Z}, {"Z_Norm"},
+                {"BETA"}, {"SE"}, {"SPA_STATUS", ResultColumnKind::SpaStatus}};
+    }
+
+    void prepareChunk(const std::vector<uint64_t> &gIndices) override;
+
+    void getResultVec(
+        Eigen::Ref<Eigen::VectorXd> GVec,
+        double altFreq,
+        int markerInChunkIdx,
+        std::vector<double> &result
+    ) override;
+
+    void getResultBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+        const std::vector<double> &altFreqs,
+        const std::vector<int> &chunkIdxs,
+        std::vector<std::vector<double> > &results
+    ) override;
+
+    int preferredBatchSize() const override {
+        return 16;
+    }
+
+// Enable / disable the N × B AFVec cache used by getResultBatch (the
+// non-fused on-the-fly AF path).  The cache only pays off when ≥2
+// phenotypes share this maskIdx and therefore co-occupy a single
+// MissBatch; with one phenotype per maskIdx it merely consumes
+// ~2 · N · B · 8 bytes per (thread, maskIdx) without any reuse.
+// Orchestration sets this to (maskGroupSize ≥ 2) for each method.
+    void setUseAFCacheBatch(bool b) {
+        m_useAFCacheBatch = b;
+    }
+
+// ── Fused-GEMM interface ──────────────────────────────────────
+// Enabled only in pre-computed AF mode.  On-the-fly AF needs a
+// phenotype-local genotype vector to fit the AF model, which the
+// fused path does not currently expose, so on-the-fly stays on
+// the non-fused getResultBatch path.
+
+    bool supportsFusedGemm() const override {
+        return m_afModels != nullptr;
+    }
+
+    int fusedGemmColumns() const override {
+        return 1;
+    }
+
+    void fillUnionResiduals(
+        Eigen::Ref<Eigen::MatrixXd> dest,
+        const std::vector<uint32_t> &unionToLocal
+    ) const override;
+
+    void fillResidualSums(double *dest) const override;
+
+    void processScoreBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &scores,
+        const double *gSums,
+        const double *gSumSqs,
+        uint32_t nUsed,
+        const std::vector<double> &altFreqs,
+        const std::vector<int> &chunkIdxs,
+        const UnionGenotypes &geno,
+        std::vector<std::vector<double> > &results
+    ) override;
+
+  private:
+    spa::Result markerPvalFromAF(
+        const Eigen::Ref<const Eigen::VectorXd> &afVec,
+        const Eigen::Ref<const Eigen::VectorXd> &wVec,
+        double rawScore,
+        double &zScore,
+        double &outVarS
+    );
+
+    // The seven result cells, from the two-sided saddlepoint result and the
+    // score-level quantities.  One definition rather than four copies: the
+    // scalar, fused and both batched paths assemble the identical row.
+    static void pushResult(
+        std::vector<double> &r,
+        const spa::Result &ts,
+        double zScore,
+        double varS
+    );
+
+    void fillAFVecForMarker(
+        const Eigen::Ref<const Eigen::VectorXd> &GVec,
+        double altFreq,
+        int markerInChunkIdx,
+        Eigen::Ref<Eigen::VectorXd> outAF
+    );
+
+    void ensureAFCacheFused(
+        const std::vector<int> &chunkIdxs,
+        const std::vector<double> &altFreqs
+    );
+
+// Read-only shared data (stable references — owner outlives all clones)
+    const Eigen::VectorXd &m_resid;
+    const Eigen::VectorXd &m_resid2;
+    const Eigen::MatrixXd &m_onePlusPCs;
+    const OutlierData &m_outlier;
+    double m_spaCutoff;
+    bool m_hasGRM;
+    const SparseGRM *m_grm; // nullptr when !m_hasGRM
+    int m_N;
+    int m_nPC;
+    int m_maskIdx; // identifies the dedup mask group (shared by phenotypes
+                   // with identical missingness pattern)
+
+    double m_residSum;
+
+// Pre-computed AF (non-null in pre-computed mode)
+    const std::vector<AFModel> *m_afModels;
+    const std::vector<uint32_t> *m_genoToFlat;
+
+// On-the-fly AF (non-null in on-the-fly mode)
+    const Eigen::MatrixXd *m_XtX_inv_Xt;
+    const Eigen::VectorXd *m_sqrt_XtX_inv_diag;
+
+// Per-thread scratch (mutable, freshly allocated in clone)
+    Eigen::VectorXd m_AFVec;
+    Eigen::VectorXd m_WVec;  // W = 2 AF (1 - AF) scratch for batched path
+    Eigen::VectorXd m_R_new; // only used when m_hasGRM
+    Eigen::VectorXd m_mafOutlier;
+
+// Per-thread AFVec cache, shared between clones with the same maskIdx.
+// Populated lazily by clone() through a thread_local registry.
+    std::shared_ptr<SPAmixAFCache> m_afCache;
+
+// When false, getResultBatch (the non-fused on-the-fly AF path) bypasses
+// the N × B cache and computes AFVec / WVec marker-by-marker into the
+// per-clone scratch m_AFVec / m_WVec.  Set by orchestration based on
+// maskGroupSize.  Default true preserves the original behavior for any
+// caller that constructs an SPAmixPlusMethod directly.
+    bool m_useAFCacheBatch = true;
+
+// Chunk state.  Pointer into the engine-owned vector (alive for the chunk).
+    const std::vector<uint64_t> *m_chunkGenoIndices;
+};
+
+// ======================================================================
+// Orchestration — unified for SPAmix and SPAmixPlus
+// ======================================================================
+
+// spgrmGrabFile + spgrmGctaFile both empty → SPAmix (diagonal variance).
+void runSPAmixPlus(
+    const OutputOptions &outputOptions,
+    const std::vector<std::string> &residNames,
+    const std::vector<std::string> &pcColNames,
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const GenoSpec &geno,
+    const std::string &spgrmGrabFile,                // empty → no GRM
+    const std::string &spgrmGctaFile,                // empty → no GRM
+    const std::string &afFile,                       // empty → compute on-the-fly
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double spaCutoff,
+    double outlierRatio,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {},
+    const std::string &regressionModelStr = {},
+    const std::string &phenoNameSpec = {},
+    const std::vector<std::string> &covarNames = {},
+    bool saveResid = false,
+    bool longitudinal = false                             // --longitudinal: fit Y ~ X + (1|IID), use R_G
+);
+
+// LOCO variant of runSPAmixPlus (serves both --method SPAmix and SPAmixPlus).
+// For each chromosome the null model is refit with that chromosome's LOCO PGS
+// appended as one estimated covariate column, and each SPAmixPlusMethod is
+// reconstructed with the refreshed residuals.  The per-individual AF model
+// (--pc-cols), the OLS/GRM pools, and the AF-model cache are residual-
+// independent and are built once.  Requires the in-process fit path
+// (--pheno-name); precomputed residuals and --longitudinal are rejected in
+// dispatch.  Because SPAmixPlusMethod stores const references into the residual
+// pools, the previous chromosome's methods are destroyed before the residual
+// pools are overwritten.
+void runSPAmixPlusLoco(
+    const OutputOptions &outputOptions,
+    const std::vector<std::string> &pcColNames,
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const GenoSpec &geno,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &afFile,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double spaCutoff,
+    double outlierRatio,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &regressionModelStr,
+    const std::string &phenoNameSpec,
+    const std::vector<std::string> &covarNames
+);

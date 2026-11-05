@@ -1,0 +1,1155 @@
+// marker.cpp — Thread-pool marker engine (pure C++17 / Eigen)
+//
+// Architecture:
+//   - N worker threads pull chunks via atomic counter (work-stealing).
+//   - 1 writer thread drains completed chunks in order (plain or gzip).
+//   - Each worker owns a MethodBase clone + an independent PlinkCursor.
+//   - Per-thread buffers (GVec, indexForMissing, result, fmtBuf) are
+//     allocated once and reused across all markers to minimize heap traffic,
+//     which matters because this pipeline is memory-bound.
+
+#include "engine/marker.hpp"
+#include "engine/marker_impl.hpp"
+#include "geno_factory/geno_data.hpp"
+#include "util/logging.hpp"
+#include "util/text_stream.hpp"
+
+#include <atomic>
+#include <cmath>
+#include <condition_variable>
+#include <cstdint>
+#include <exception>
+#include <mutex>
+#include <thread>
+
+using namespace engine_impl;
+
+// ══════════════════════════════════════════════════════════════════════
+// Engine
+// ══════════════════════════════════════════════════════════════════════
+
+void markerEngine(
+    const OutputOptions &outputOptions,
+    const GenoMeta &genoData,
+    const MethodBase &method,
+    const std::string &outputFile,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+) {
+    const size_t nTotalChunks = genoData.chunkIndices().size();
+    const int effective_nthreads = std::min(nthreads, static_cast<int>(nTotalChunks));
+    const double hweLog10Cutoff = hweLog10CutoffOf(hweCutoff);
+
+    infoMsg("Number of subjects in the input file: %u", genoData.nSubjInFile());
+    infoMsg("Number of subjects to test: %u", genoData.nSubjUsed());
+    infoMsg("Number of markers in the input file: %u", genoData.nMarkers());
+    infoMsg("Number of markers to test: %zu", genoData.markerInfo().size());
+    infoMsg("Number of chunks for all markers: %zu", nTotalChunks);
+    infoMsg("Start chunk-level parallel processing with %d worker threads.", effective_nthreads);
+
+    const auto layout = makeOutputLayout(method, outputOptions);
+    const std::string header = buildHeader(layout);
+
+    // Per-chunk output buffer + cache-line-padded ready flag.
+    std::vector<std::string> chunkOutput(nTotalChunks);
+    std::vector<PaddedFlag> chunkReady(nTotalChunks, {0});
+    std::atomic<size_t> nextChunk(0);
+
+    std::exception_ptr workerError = nullptr;
+    std::mutex errorMutex;
+    std::mutex writeMutex;
+    std::condition_variable writeCv;
+    std::atomic<bool> stopWriter{false};
+
+    // ── Writer thread ──────────────────────────────────────────────────
+    std::thread writerThread([&]() {
+        try {
+            TextWriter writer(outputFile);
+
+            writer.write(header + "\n");
+
+            for (size_t i = 0; i < chunkOutput.size(); ++i) {
+                std::string tmp;
+                {
+                    std::unique_lock<std::mutex> lk(writeMutex);
+                    writeCv.wait(lk, [&]() {
+                        return chunkReady[i].ready || stopWriter.load();
+                    });
+                    if (!chunkReady[i].ready) break;
+                    tmp = std::move(chunkOutput[i]);
+                }
+                writer.write(tmp);
+                infoMsg("Writing finished: chunk %zu/%zu", i + 1, chunkOutput.size());
+            }
+
+            writer.close();
+        } catch (...) {
+            std::lock_guard<std::mutex> lock(errorMutex);
+            workerError = std::current_exception();
+            stopWriter.store(true);
+        }
+    });
+
+    // ── Worker function ────────────────────────────────────────────────
+    auto workerFn = [&]() {
+        try {
+            ThreadContext ctx(method, genoData);
+            const GenoMeta &gd = genoData;
+            GenoCursor &cursor = *ctx.cursor;
+            MethodBase &meth = *ctx.method;
+            const auto &localChunks = gd.chunkIndices();
+            const std::string &naSuffix = layout.naSuffix;
+
+            // Per-thread reusable buffers — allocated once, reused for every marker.
+            Eigen::VectorXd GVec(gd.nSubjUsed());
+            std::vector<uint32_t> indexForMissing;
+            indexForMissing.reserve(gd.nSubjUsed() / 10);
+            std::vector<double> rv;
+            rv.reserve(16);
+            char fmtBuf[32];
+
+            // ── Batch buffers (GEMV → GEMM optimisation) ───────────────
+            const int batchB = meth.preferredBatchSize();
+
+            struct MarkerMeta {
+                double altFreq, missingRate, mac, log10pHwe;
+                std::string_view chr, ref, alt, marker;
+                uint32_t pos;
+                bool passQC;
+            };
+
+            Eigen::MatrixXd GBatch;
+            std::vector<double> passAltFreqs;
+            std::vector<int> passChunkIdxs;
+            std::vector<std::vector<double> > batchResults;
+            std::vector<MarkerMeta> batchMeta;
+
+            if (batchB > 1) {
+                GBatch.resize(gd.nSubjUsed(), batchB);
+                passAltFreqs.reserve(batchB);
+                passChunkIdxs.reserve(batchB);
+                batchMeta.resize(batchB);
+            }
+
+            while (!stopWriter.load(std::memory_order_relaxed)) {
+                const size_t cidx = nextChunk.fetch_add(1);
+                if (cidx >= localChunks.size()) break;
+
+                const auto &gIdx = localChunks[cidx];
+                std::string out;
+                out.reserve(gIdx.size() * 256);
+
+                if (!gIdx.empty()) cursor.beginSequentialBlock(gIdx.front());
+                meth.prepareChunk(gIdx);
+
+                if (batchB > 1) {
+                    // ── Batched path: process batchB markers at a time ─────
+                    const size_t B = static_cast<size_t>(batchB);
+                    for (size_t bstart = 0; bstart < gIdx.size(); bstart += B) {
+                        const size_t blen = std::min(B, gIdx.size() - bstart);
+
+                        passAltFreqs.clear();
+                        passChunkIdxs.clear();
+                        int passCount = 0;
+
+                        for (size_t bi = 0; bi < blen; ++bi) {
+                            const size_t i = bstart + bi;
+                            const GenoStats gs =
+                                cursor.getGenotypes(gIdx[i], GVec, indexForMissing);
+                            const double altFreq = gs.altFreq, maf = gs.maf, mac = gs.mac;
+                            const double missingRate = gs.missingRate, log10pHwe = gs.log10pHwe;
+
+                            auto &mi = batchMeta[bi];
+                            mi.altFreq = altFreq;
+                            mi.missingRate = missingRate;
+                            mi.mac = mac;
+                            mi.log10pHwe = log10pHwe;
+                            mi.chr = gd.chr(gIdx[i]);
+                            mi.ref = gd.ref(gIdx[i]);
+                            mi.alt = gd.alt(gIdx[i]);
+                            mi.marker = gd.markerId(gIdx[i]);
+                            mi.pos = gd.pos(gIdx[i]);
+                            mi.passQC = !(missingRate > missingCutoff || maf < minMafCutoff ||
+                                          mac < minMacCutoff || (hweCutoff > 0 && log10pHwe > hweLog10Cutoff));
+
+                            if (mi.passQC) {
+                                imputeMissingAt(GVec.data(), indexForMissing, 2.0 * altFreq);
+                                GBatch.col(passCount) = GVec;
+                                passAltFreqs.push_back(altFreq);
+                                passChunkIdxs.push_back(static_cast<int>(i));
+                                ++passCount;
+                            }
+                        }
+
+                        if (passCount > 0)
+                            meth.getResultBatch(GBatch.leftCols(passCount), passAltFreqs,
+                                                passChunkIdxs, batchResults);
+
+                        int ri = 0;
+                        for (size_t bi = 0; bi < blen; ++bi) {
+                            const auto &mi = batchMeta[bi];
+                            if (!mi.passQC) {
+                                formatLineNA(out, fmtBuf, mi.chr, mi.pos, mi.marker,
+                                             mi.ref, mi.alt, mi.missingRate, mi.altFreq,
+                                             mi.mac, mi.log10pHwe, naSuffix);
+                            } else {
+                                formatLine(layout, out, fmtBuf, mi.chr, mi.pos, mi.marker,
+                                           mi.ref, mi.alt, mi.missingRate, mi.altFreq,
+                                           mi.mac, mi.log10pHwe, batchResults[ri++]);
+                            }
+                        }
+                    }
+                } else {
+                    // ── Original single-marker path ────────────────────────
+                    for (size_t i = 0; i < gIdx.size(); ++i) {
+                        const GenoStats gs =
+                            cursor.getGenotypes(gIdx[i], GVec, indexForMissing);
+                        const double altFreq = gs.altFreq, maf = gs.maf, mac = gs.mac;
+                        const double missingRate = gs.missingRate, log10pHwe = gs.log10pHwe;
+
+                        const std::string_view chr = gd.chr(gIdx[i]);
+                        const std::string_view ref = gd.ref(gIdx[i]);
+                        const std::string_view alt = gd.alt(gIdx[i]);
+                        const std::string_view marker = gd.markerId(gIdx[i]);
+                        const uint32_t pos = gd.pos(gIdx[i]);
+
+                        const bool passQC = !(missingRate > missingCutoff || maf < minMafCutoff ||
+                                              mac < minMacCutoff || (hweCutoff > 0 && log10pHwe > hweLog10Cutoff));
+
+                        if (!passQC) {
+                            formatLineNA(out, fmtBuf, chr, pos, marker, ref, alt,
+                                         missingRate, altFreq, mac, log10pHwe, naSuffix);
+                            continue;
+                        }
+
+                        imputeMissingAt(GVec.data(), indexForMissing, 2.0 * altFreq);
+
+                        rv.clear();
+                        meth.getResultVec(GVec, altFreq, static_cast<int>(i), rv);
+
+                        formatLine(layout, out, fmtBuf, chr, pos, marker, ref, alt,
+                                   missingRate, altFreq, mac, log10pHwe, rv);
+                    }
+                }
+
+                {
+                    std::lock_guard<std::mutex> lk(writeMutex);
+                    chunkOutput[cidx] = std::move(out);
+                    chunkReady[cidx].ready = 1;
+                }
+                infoMsg("Calculation finished: chunk %zu/%zu", cidx + 1, nTotalChunks);
+                writeCv.notify_all();
+            }
+        } catch (...) {
+            {
+                std::lock_guard<std::mutex> lk(errorMutex);
+                if (!workerError) workerError = std::current_exception();
+            }
+            {
+                std::lock_guard<std::mutex> lk(writeMutex);
+                stopWriter = true;
+            }
+            writeCv.notify_all();
+        }
+    };
+
+    // ── Launch ─────────────────────────────────────────────────────────
+    if (effective_nthreads <= 1) {
+        workerFn();
+    } else {
+        std::vector<std::thread> workers;
+        workers.reserve(effective_nthreads);
+        for (int t = 0; t < effective_nthreads; ++t)
+            workers.emplace_back(workerFn);
+        for (auto &th : workers)
+            th.join();
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(writeMutex);
+        stopWriter = true;
+    }
+    writeCv.notify_all();
+    writerThread.join();
+
+    if (workerError) std::rethrow_exception(workerError);
+
+    infoMsg("Output written to: %s", outputFile.c_str());
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// MultiMethod implementation
+// ──────────────────────────────────────────────────────────────────────
+
+MultiMethod::MultiMethod(
+    std::vector<std::unique_ptr<MethodBase> > methods,
+    std::vector<std::string> residNames,
+    std::vector<std::string> suffixes
+)
+    : m_methods(std::move(methods)),
+      m_residNames(std::move(residNames)),
+      m_suffixes(std::move(suffixes))
+{
+}
+
+std::unique_ptr<MethodBase> MultiMethod::clone() const {
+    std::vector<std::unique_ptr<MethodBase> > cloned;
+    cloned.reserve(m_methods.size());
+    for (const auto &m : m_methods)
+        cloned.push_back(m->clone());
+    return std::make_unique<MultiMethod>(std::move(cloned), m_residNames, m_suffixes);
+}
+
+int MultiMethod::resultSize() const {
+    return static_cast<int>(m_methods.size() * m_suffixes.size());
+}
+
+ResultColumns MultiMethod::getResultColumns() const {
+    ResultColumns columns;
+    for (size_t i = 0; i < m_methods.size(); ++i) {
+        auto inner = m_methods[i]->getResultColumns();
+        if (inner.size() != m_suffixes.size())
+            throw std::logic_error("MultiMethod suffix count does not match its result schema");
+        for (size_t j = 0; j < inner.size(); ++j)
+            columns.push_back({m_residNames[i] + m_suffixes[j], inner[j].kind});
+    }
+    return columns;
+}
+
+void MultiMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
+    for (auto &m : m_methods)
+        m->prepareChunk(gIndices);
+}
+
+void MultiMethod::getResultVec(
+    Eigen::Ref<Eigen::VectorXd> GVec,
+    double altFreq,
+    int markerInChunkIdx,
+    std::vector<double> &result
+) {
+    std::vector<double> inner;
+    for (auto &m : m_methods) {
+        inner.clear();
+        m->getResultVec(GVec, altFreq, markerInChunkIdx, inner);
+        result.insert(result.end(), inner.begin(), inner.end());
+    }
+}
+
+void MultiMethod::getResultBatch(
+    const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+    const std::vector<double> &altFreqs,
+    const std::vector<int> &chunkIdxs,
+    std::vector<std::vector<double> > &results
+) {
+    const int B = static_cast<int>(GBatch.cols());
+    results.resize(B);
+    for (int b = 0; b < B; ++b)
+        results[b].clear();
+
+    std::vector<std::vector<double> > innerResults;
+    for (auto &m : m_methods) {
+        m->getResultBatch(GBatch, altFreqs, chunkIdxs, innerResults);
+        for (int b = 0; b < B; ++b)
+            results[b].insert(results[b].end(), innerResults[b].begin(), innerResults[b].end());
+    }
+}
+
+int MultiMethod::preferredBatchSize() const {
+    int best = 0;
+    for (const auto &m : m_methods)
+        best = std::max(best, m->preferredBatchSize());
+    return best;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// multiPhenoEngineRange — shared worker+writer loop for a chunk range
+// ══════════════════════════════════════════════════════════════════════
+
+void multiPhenoEngineRange(
+    const GenoMeta &genoData,
+    std::vector<PhenoTask> &tasks,
+    const std::vector<OutputLayout> &layouts,
+    size_t chunkStart,
+    size_t chunkEnd,
+    std::vector<TextWriter> &writers,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+) {
+    const size_t K = tasks.size();
+    const size_t nChunks = chunkEnd - chunkStart;
+    const int effective_nthreads = std::min(nthreads, static_cast<int>(nChunks));
+    const double hweLog10Cutoff = hweLog10CutoffOf(hweCutoff);
+    const uint32_t nUnion = genoData.nSubjUsed();
+    const auto &allChunks = genoData.chunkIndices();
+
+    // ── Fused union-level GEMM setup ───────────────────────────────────
+    // Methods that support fused GEMM (Score = resid^T × G) contribute
+    // their residual columns to a shared AugResid matrix.  The engine
+    // does ONE GEMM per window for ALL fuseable phenotypes, eliminating
+    // per-phenotype extraction entirely.
+    //
+    // AugResid layout (N_union × totalFusedCols):
+    //   [residCols_0 | ... | residCols_{K-1}]
+    //
+    // Per-phenotype genotype sums (gSum = Σ mask·G) are NOT computed by the
+    // GEMM.  Each fused QC group carries a 1-bit subject bitset (groupMaskBits)
+    // and gSum is accumulated inside statsFromUnionVec's per-marker scan, so
+    // AugResid holds only residual columns (no fp64 mask columns).
+
+    struct FusedPhenoInfo {
+        size_t taskIdx;        // index into tasks[]
+        int colOffset;         // start column in AugResid (residual columns)
+        int nCols;             // fusedGemmColumns() for this phenotype
+        uint32_t nUsed;        // this phenotype's sample count
+    };
+
+    std::vector<FusedPhenoInfo> fusedPhenos;
+    std::vector<size_t> nonFusedPhenos;       // task indices of non-fuseable phenotypes
+    int totalFusedCols = 0;
+
+    for (size_t p = 0; p < K; ++p) {
+        if (tasks[p].method->supportsFusedGemm()) {
+            FusedPhenoInfo fi;
+            fi.taskIdx = p;
+            fi.colOffset = totalFusedCols;
+            fi.nCols = tasks[p].method->fusedGemmColumns();
+            fi.nUsed = tasks[p].nUsed;
+            totalFusedCols += fi.nCols;
+            fusedPhenos.push_back(fi);
+        } else {
+            nonFusedPhenos.push_back(p);
+        }
+    }
+
+    const size_t nFuseable = fusedPhenos.size();
+    // Mask columns are no longer stored in AugResid.  The per-phenotype genotype
+    // sum (gSum = Σ mask·G) is folded into the per-marker statsFromUnionVec scan
+    // via a 1-bit subject bitset (groupMaskBits, built below), so AugResid holds
+    // only the residual columns — halving the streamed left operand for c=1
+    // methods (e.g. SPAGRM: 2K → K columns).
+    const int augCols = totalFusedCols;
+
+    // Build shared AugResid matrix (read-only, shared across all threads).
+    // Also store per-fuseable residual sums.
+    Eigen::MatrixXd AugResid;
+    std::vector<double> allResidSums;    // length totalFusedCols
+
+    const bool hasFused = nFuseable > 0;
+
+    if (hasFused) {
+        AugResid.setZero(nUnion, augCols);
+        allResidSums.resize(totalFusedCols, 0.0);
+
+        for (size_t fi = 0; fi < nFuseable; ++fi) {
+            const auto &fp = fusedPhenos[fi];
+            const size_t p = fp.taskIdx;
+
+            // Fill residual columns (zero-padded for absent samples).
+            tasks[p].method->fillUnionResiduals(
+                AugResid.middleCols(fp.colOffset, fp.nCols),
+                tasks[p].unionToLocal);
+
+            // Fill residual sums.
+            tasks[p].method->fillResidualSums(allResidSums.data() + fp.colOffset);
+        }
+
+        infoMsg("Fused GEMM: %zu fuseable phenotypes (%d residual cols), "
+                "%zu non-fuseable phenotypes",
+                nFuseable, totalFusedCols, nonFusedPhenos.size());
+    }
+
+    // ── Group fuseable phenotypes by identical subject sets (D1) ───────
+    // Phenotypes sharing the same unionToLocal (same subjects) produce
+    // identical statsFromUnionVec results, so we compute QC once per group.
+    struct FusedStatsGroup {
+        size_t repFi;                   // representative index in fusedPhenos[]
+        std::vector<size_t> fiIndices;  // all fusedPhenos[] indices in this group
+    };
+
+    std::vector<FusedStatsGroup> fusedGroups;
+    if (hasFused) {
+        std::vector<bool> grouped(nFuseable, false);
+        for (size_t fi = 0; fi < nFuseable; ++fi) {
+            if (grouped[fi]) continue;
+            FusedStatsGroup g;
+            g.repFi = fi;
+            g.fiIndices.push_back(fi);
+            grouped[fi] = true;
+            const size_t pi = fusedPhenos[fi].taskIdx;
+            for (size_t fj = fi + 1; fj < nFuseable; ++fj) {
+                if (grouped[fj]) continue;
+                const size_t pj = fusedPhenos[fj].taskIdx;
+                if (tasks[pi].nUsed == tasks[pj].nUsed &&
+                    tasks[pi].unionToLocal == tasks[pj].unionToLocal) {
+                    g.fiIndices.push_back(fj);
+                    grouped[fj] = true;
+                }
+            }
+            fusedGroups.push_back(std::move(g));
+        }
+        if (fusedGroups.size() < nFuseable)
+            infoMsg("Fused QC groups: %zu groups for %zu fuseable phenotypes (%.0f%% QC savings)",
+                    fusedGroups.size(), nFuseable,
+                    100.0 * (1.0 - static_cast<double>(fusedGroups.size()) / static_cast<double>(nFuseable)));
+    }
+
+    // ── Per-group 1-bit subject masks ─────────────────────────────────
+    // Each group's representative defines the shared subject set.  Storing
+    // the mask as a bitset (1 bit/subject) instead of an fp64 AugResid column
+    // (64 bits/subject) removes nFuseable columns from the streamed GEMM left
+    // operand; gSum = Σ mask·G is recovered inside statsFromUnionVec's
+    // existing per-marker scan (no extra memory pass).
+    const size_t maskWords = (static_cast<size_t>(nUnion) + 63) / 64;
+    std::vector<std::vector<uint64_t> > groupMaskBits(fusedGroups.size());
+    if (hasFused) {
+        for (size_t gi = 0; gi < fusedGroups.size(); ++gi) {
+            groupMaskBits[gi].assign(maskWords, 0ULL);
+            const auto &rep = fusedPhenos[fusedGroups[gi].repFi];
+            const auto &u2l = tasks[rep.taskIdx].unionToLocal;
+            for (uint32_t i = 0; i < nUnion; ++i)
+                if (u2l[i] != UINT32_MAX)
+                    groupMaskBits[gi][i >> 6] |= (1ULL << (i & 63));
+        }
+    }
+
+    // Flat views over the per-group masks and sample counts, shared read-only
+    // across worker threads, for the single-pass multi-group QC scan
+    // (statsFromUnionVecMultiGroup): one mask-word pointer and one nUsed per
+    // group, indexed by group position.
+    std::vector<const uint64_t *> groupMaskPtrs(fusedGroups.size());
+    std::vector<uint32_t> groupNUsedArr(fusedGroups.size());
+    if (hasFused) {
+        for (size_t gi = 0; gi < fusedGroups.size(); ++gi) {
+            groupMaskPtrs[gi] = groupMaskBits[gi].data();
+            groupNUsedArr[gi] = fusedPhenos[fusedGroups[gi].repFi].nUsed;
+        }
+    }
+    const uint32_t nFusedGroups = static_cast<uint32_t>(fusedGroups.size());
+
+    // ── Missingness-pattern batching (non-fuseable phenotypes only) ────
+    struct MissBatch {
+        size_t rep;
+        std::vector<size_t> members;
+        std::vector<uint32_t> presentIndices;
+        std::vector<uint64_t> presentMask;
+        bool identity;
+    };
+
+    std::vector<MissBatch> missBatches;
+    if (!nonFusedPhenos.empty()) {
+        std::vector<bool> assigned(K, false);
+        // Mark all fuseable phenotypes as assigned.
+        for (const auto &fp : fusedPhenos)
+            assigned[fp.taskIdx] = true;
+
+        for (size_t ni = 0; ni < nonFusedPhenos.size(); ++ni) {
+            const size_t p = nonFusedPhenos[ni];
+            if (assigned[p]) continue;
+            MissBatch batch;
+            batch.rep = p;
+            batch.members.push_back(p);
+            assigned[p] = true;
+            for (size_t nj = ni + 1; nj < nonFusedPhenos.size(); ++nj) {
+                const size_t q = nonFusedPhenos[nj];
+                if (assigned[q]) continue;
+                if (tasks[p].nUsed == tasks[q].nUsed &&
+                    tasks[p].unionToLocal == tasks[q].unionToLocal) {
+                    batch.members.push_back(q);
+                    assigned[q] = true;
+                }
+            }
+            const uint32_t *utl = tasks[p].unionToLocal.data();
+            batch.identity = isIdentityMapping(utl, nUnion, tasks[p].nUsed);
+            if (!batch.identity) {
+                batch.presentIndices = buildPresentIndices(utl, nUnion);
+                batch.presentMask = buildPresentMask(utl, nUnion);
+            }
+            missBatches.push_back(std::move(batch));
+        }
+        infoMsg("Non-fuseable MissBatch: %zu unique patterns for %zu non-fuseable phenotypes",
+                missBatches.size(), nonFusedPhenos.size());
+    }
+    const size_t nMissBatches = missBatches.size();
+
+    // Per-chunk, per-phenotype output buffers + ready flags.
+    std::vector<std::vector<std::string> > chunkOutput(nChunks, std::vector<std::string>(K));
+    std::vector<PaddedFlag> chunkReady(nChunks, {0});
+    std::atomic<size_t> nextChunk(0);
+
+    std::exception_ptr workerError = nullptr;
+    std::mutex errorMutex;
+    std::mutex writeMutex;
+    std::condition_variable writeCv;
+    std::atomic<bool> stopFlag{false};
+
+    // ── Writer thread ──────────────────────────────────────────────────
+    std::thread writerThread([&]() {
+        try {
+            for (size_t ci = 0; ci < nChunks; ++ci) {
+                {
+                    std::unique_lock<std::mutex> lk(writeMutex);
+                    writeCv.wait(lk, [&]() {
+                        return chunkReady[ci].ready || stopFlag.load();
+                    });
+                    if (!chunkReady[ci].ready) break;
+                }
+                for (size_t p = 0; p < K; ++p)
+                    writers[p].write(chunkOutput[ci][p]);
+                infoMsg("Writing finished: chunk %zu/%zu", ci + 1, nChunks);
+            }
+        } catch (...) {
+            std::lock_guard<std::mutex> lk(errorMutex);
+            if (!workerError) workerError = std::current_exception();
+            stopFlag = true;
+        }
+    });
+
+    // ── Worker function ────────────────────────────────────────────────
+    auto workerFn = [&]() {
+        try {
+            auto cursor = genoData.makeCursor();
+            std::vector<std::unique_ptr<MethodBase> > methods(K);
+            for (size_t p = 0; p < K; ++p)
+                methods[p] = tasks[p].method->clone();
+
+            char fmtBuf[32];
+
+            // ── Fused GEMM buffers ─────────────────────────────────────
+            // Batch size: use preferredBatchSize from methods, default 16.
+            int commonB = 16;
+            for (size_t p = 0; p < K; ++p)
+                commonB = std::max(commonB, methods[p]->preferredBatchSize());
+
+            struct WindowMarkerMeta {
+                std::string_view chr, ref, alt, marker;
+                uint32_t pos;
+            };
+
+            const size_t B = static_cast<size_t>(commonB);
+
+            // Union-level batch matrix: ONE per thread (N_union × B).
+            Eigen::MatrixXd GBatch_union(nUnion, commonB);
+
+            // Fused GEMM result: augCols × B (scores + gSums). Tiny.
+            Eigen::MatrixXd allScoresAndSums;
+            if (hasFused)
+                allScoresAndSums.resize(augCols, commonB);
+
+            std::vector<WindowMarkerMeta> winMarkers(B);
+
+            // Per-fuseable-phenotype: QC stats per window marker.
+            // winGSums[fi][bi] = genotype sum for fuseable pheno fi, marker bi
+            // (from mask column dot product).
+            std::vector<std::vector<double> > winGSums;
+            std::vector<double> passAltFreqs;
+            std::vector<uint32_t> passUnionCols;   // GBatch_union column per passing marker
+            std::vector<double> passMacs;          // MAC per passing marker
+            std::vector<double> passGSums;
+            std::vector<double> passGSumSqs;
+            std::vector<int> passChunkIdxs;
+            std::vector<std::vector<double> > fusedResultsBuf;
+
+            if (hasFused) {
+                winGSums.resize(nFuseable, std::vector<double>(B, 0.0));
+                passAltFreqs.reserve(B);
+                passUnionCols.reserve(B);
+                passMacs.reserve(B);
+                passGSums.reserve(B);
+                passGSumSqs.reserve(B);
+                passChunkIdxs.reserve(B);
+            }
+
+            // Pre-allocated passScores buffer (A2): reused across windows.
+            int maxFusedNCols = 0;
+            Eigen::MatrixXd passScoresBuf;
+            if (hasFused) {
+                for (size_t fi = 0; fi < nFuseable; ++fi)
+                    maxFusedNCols = std::max(maxFusedNCols, fusedPhenos[fi].nCols);
+                passScoresBuf.resize(maxFusedNCols, commonB);
+            }
+
+            // ── Non-fuseable fallback buffers ──────────────────────────
+            uint32_t maxNonFusedN = 0;
+            std::vector<Eigen::VectorXd> GVec_phenos_nf;       // per non-fuseable phenotype
+            std::vector<uint32_t> nfNPhenoArr;                  // nUsed for each
+            std::vector<double *> nfPhenoGPtrs;
+            std::vector<PhenoGenoStats> nfBatchStats;
+            std::vector<std::vector<uint32_t> > nfBatchMissings;
+            Eigen::MatrixXd GBatch_pheno_nf;
+            std::vector<double> nfPassAltFreqs;
+            std::vector<int> nfPassChunkIdxs;
+            std::vector<std::vector<double> > nfBatchResultsBuf;
+            std::vector<PhenoGenoStats> nfWinStats;
+            std::vector<char> nfWinPassQC;
+
+            if (!nonFusedPhenos.empty()) {
+                GVec_phenos_nf.resize(nonFusedPhenos.size());
+                nfNPhenoArr.resize(nonFusedPhenos.size());
+                nfPhenoGPtrs.resize(nonFusedPhenos.size());
+                nfBatchStats.resize(nonFusedPhenos.size());
+                nfBatchMissings.resize(nonFusedPhenos.size());
+
+                for (size_t ni = 0; ni < nonFusedPhenos.size(); ++ni) {
+                    const size_t p = nonFusedPhenos[ni];
+                    nfNPhenoArr[ni] = tasks[p].nUsed;
+                    GVec_phenos_nf[ni].resize(tasks[p].nUsed);
+                    nfPhenoGPtrs[ni] = GVec_phenos_nf[ni].data();
+                    nfBatchMissings[ni].reserve(tasks[p].nUsed / 10);
+                    maxNonFusedN = std::max(maxNonFusedN, tasks[p].nUsed);
+                }
+
+                GBatch_pheno_nf.resize(maxNonFusedN, commonB);
+                nfPassAltFreqs.reserve(B);
+                nfPassChunkIdxs.reserve(B);
+                nfWinStats.resize(B);
+                nfWinPassQC.resize(B, 0);
+            }
+
+            // Shared result + format buffers.
+            std::vector<double> rv;
+            rv.reserve(16);
+
+            // ── Per-window scratch, sized to B ─────────────────────────
+            // Heap-allocated once per thread (was a [64] stack array), so the
+            // fused GEMM window B is no longer capped at 64.
+            struct FusedMarkerQC {
+                double missingRate, altFreq, mac, log10pHwe;
+                bool pass;
+            };
+            std::vector<char> winIsDosage(B);    // per-marker dosage flag
+            std::vector<FusedMarkerQC> wmQC(B);  // per-marker QC (fused path)
+
+            // ── Single-pass multi-group QC scratch ─────────────────────
+            // gStatsWin[gi*B + bi] holds group gi's QC stats for window marker
+            // bi (contiguous in bi for the per-group consume loop below).
+            // accGSum/accSumSq/accCnt are the per-marker fan-out accumulators,
+            // reused across markers (statsFromUnionVecMultiGroup zeroes them).
+            std::vector<PhenoGenoStats> gStatsWin;
+            std::vector<double> accGSum, accSumSq;
+            std::vector<uint32_t> accCnt;
+            // Per-window-column originally-missing (pre-impute NaN) mask, so the
+            // fused multi-group QC computes HWE from the raw genotype pattern
+            // rather than the mean-imputed values (plink2 never imputes for HWE).
+            const size_t nUnionWords = (static_cast<size_t>(nUnion) + 63) / 64;
+            std::vector<uint64_t> origMissBits;
+            if (hasFused) {
+                gStatsWin.resize(static_cast<size_t>(nFusedGroups) * B);
+                accGSum.resize(nFusedGroups);
+                accSumSq.resize(nFusedGroups);
+                accCnt.resize(static_cast<size_t>(nFusedGroups) * 4);
+                origMissBits.assign(nUnionWords * B, 0);
+            }
+
+            while (!stopFlag.load(std::memory_order_relaxed)) {
+                const size_t localIdx = nextChunk.fetch_add(1);
+                if (localIdx >= nChunks) break;
+
+                const size_t globalIdx = chunkStart + localIdx;
+                const auto &gIdx = allChunks[globalIdx];
+
+                std::vector<std::string> phenoOut(K);
+                for (size_t p = 0; p < K; ++p)
+                    phenoOut[p].reserve(gIdx.size() * 128);
+
+                if (!gIdx.empty()) cursor->beginSequentialBlock(gIdx.front());
+                for (size_t p = 0; p < K; ++p)
+                    methods[p]->prepareChunk(gIdx);
+
+                // ── Window loop ────────────────────────────────────────
+                for (size_t wstart = 0; wstart < gIdx.size(); wstart += B) {
+                    const size_t wlen = std::min(B, gIdx.size() - wstart);
+
+                    // Phase 1: Decode wlen markers into GBatch_union.
+                    for (size_t bi = 0; bi < wlen; ++bi) {
+                        const size_t i = wstart + bi;
+                        winMarkers[bi].chr = genoData.chr(gIdx[i]);
+                        winMarkers[bi].ref = genoData.ref(gIdx[i]);
+                        winMarkers[bi].alt = genoData.alt(gIdx[i]);
+                        winMarkers[bi].marker = genoData.markerId(gIdx[i]);
+                        winMarkers[bi].pos = genoData.pos(gIdx[i]);
+
+                        // Decode straight into the destination column: the
+                        // cursor owns whatever shortcut its format allows, and
+                        // the engine never sees a format-specific encoding.
+                        cursor->getGenotypesSimple(
+                            gIdx[i], GBatch_union.col(static_cast<Eigen::Index>(bi)));
+                    }
+
+                    // Per-marker dosage flag winIsDosage[bi] (declared above,
+                    // sized B): set for every bi in [0,wlen) in Phase 1b — true
+                    // ⇒ a fractional dosage was seen, so QC must come from the
+                    // dosage sum, not exact 0/1/2 counts.
+
+                    // Phase 1b: Impute NaN genotypes to 2*AF in GBatch_union.
+                    // This prevents NaN from propagating through the fused GEMM.
+                    // For imputed data (dosages) there are no NaNs → this is a no-op.
+                    // For BED data with missingness, this matches the standard
+                    // mean-imputation approach used by the non-fused path.
+                    if (hasFused) {
+                        for (size_t bi = 0; bi < wlen; ++bi) {
+                            auto col = GBatch_union.col(static_cast<Eigen::Index>(bi));
+                            uint64_t *missCol = &origMissBits[bi * nUnionWords];
+                            for (size_t w = 0; w < nUnionWords; ++w) missCol[w] = 0;
+                            double gSum = 0.0;
+                            uint32_t nValid = 0;
+                            bool isDosage = false;
+                            for (Eigen::Index r = 0; r < static_cast<Eigen::Index>(nUnion); ++r) {
+                                const double v = col[r];
+                                if (!std::isnan(v)) {
+                                    gSum += v;
+                                    ++nValid;
+                                    if (v != 0.0 && v != 1.0 && v != 2.0)
+                                        isDosage = true;  // fractional → dosage marker
+                                } else {
+                                    // Record the raw NaN so the fused QC excludes
+                                    // it from HWE even after mean-imputation below.
+                                    missCol[static_cast<size_t>(r) >> 6] |=
+                                        (uint64_t(1) << (static_cast<size_t>(r) & 63));
+                                }
+                            }
+                            winIsDosage[bi] = isDosage;
+                            if (nValid > 0 && nValid < nUnion)
+                                imputeMissingNaN(col.data(), nUnion,
+                                                 gSum / static_cast<double>(nValid));
+                        }
+                    }
+
+                    // Phase 2: Fused GEMM for all fuseable phenotypes.
+                    if (hasFused) {
+                        const auto wlenI = static_cast<Eigen::Index>(wlen);
+
+                        // ONE GEMM: AugResid^T × GBatch_union → (augCols × wlen)
+                        // All augCols rows are raw scores (augCols == totalFusedCols;
+                        // gSums are no longer GEMM rows — see groupMaskBits /
+                        // statsFromUnionVec).
+                        allScoresAndSums.leftCols(wlenI).noalias() =
+                            AugResid.transpose() * GBatch_union.leftCols(wlenI);
+
+                        // Phase 3a: Single-pass multi-group QC.  Read each union
+                        // genotype column ONCE and fan its per-subject
+                        // contribution into all QC groups' accumulators, instead
+                        // of re-streaming the column once per group.  Fills
+                        // gStatsWin[gi*B + bi] for every group gi and window
+                        // marker bi (byte-identical to per-group statsFromUnionVec
+                        // — see statsFromUnionVecMultiGroup).
+                        for (size_t bi = 0; bi < wlen; ++bi) {
+                            const double *unionCol = GBatch_union.col(
+                                static_cast<Eigen::Index>(bi)).data();
+                            statsFromUnionVecMultiGroup(
+                                unionCol, groupMaskPtrs.data(),
+                                groupNUsedArr.data(), nFusedGroups, nUnion,
+                                winIsDosage[bi] != 0, genoData.hardCallThreshold,
+                                &origMissBits[bi * nUnionWords], accGSum.data(),
+                                accSumSq.data(), accCnt.data(),
+                                &gStatsWin[bi], B);
+                        }
+
+                        // Phase 3b: Per fuseable-phenotype group — shared QC + processScoreBatch.
+                        // D1: Phenotypes with identical subjects share statsFromUnionVec results.
+                        // (wmQC[] and winIsDosage[] are per-thread buffers sized B, declared above.)
+
+                        for (size_t gi = 0; gi < fusedGroups.size(); ++gi) {
+                            const auto &group = fusedGroups[gi];
+                            // ── QC already computed in Phase 3a (gStatsWin) ──
+                            const auto &repFp = fusedPhenos[group.repFi];
+
+                            passAltFreqs.clear();
+                            passUnionCols.clear();
+                            passMacs.clear();
+                            passGSums.clear();
+                            passGSumSqs.clear();
+                            passChunkIdxs.clear();
+                            int passCount = 0;
+
+                            for (size_t bi = 0; bi < wlen; ++bi) {
+                                PhenoGenoStats gs =
+                                    gStatsWin[gi * B + bi];
+
+                                const double gSum = gs.gSum;
+                                if (gs.fromDosage) {
+                                    // Dosage AF/MAC come from the GEMM's genotype
+                                    // sum, which is post-imputation — every subject
+                                    // carries a value by then, so the denominator is
+                                    // the full phenotype count, not the non-missing
+                                    // one the reader used.  Mean imputation preserves
+                                    // the frequency, so only the scale differs.
+                                    const AlleleFreq af =
+                                        alleleFreqFromTotal(gSum, repFp.nUsed);
+                                    gs.altFreq = af.altFreq;
+                                    gs.mac = af.mac;
+                                }
+
+                                wmQC[bi].missingRate = gs.missingRate;
+                                wmQC[bi].altFreq = gs.altFreq;
+                                wmQC[bi].mac = gs.mac;
+                                wmQC[bi].log10pHwe = gs.log10pHwe;
+
+                                double maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
+                                wmQC[bi].pass = !(maf < minMafCutoff ||
+                                                  gs.mac < minMacCutoff ||
+                                                  gs.missingRate > missingCutoff ||
+                                                  (hweCutoff > 0 && gs.log10pHwe > hweLog10Cutoff));
+
+                                if (wmQC[bi].pass) {
+                                    passAltFreqs.push_back(gs.altFreq);
+                                    passUnionCols.push_back(static_cast<uint32_t>(bi));
+                                    passMacs.push_back(gs.mac);
+                                    passGSums.push_back(gSum);
+                                    passGSumSqs.push_back(gs.sumSq);
+                                    passChunkIdxs.push_back(static_cast<int>(wstart + bi));
+                                    ++passCount;
+                                }
+                            }
+
+                            // ── Per member: compact scores, run SPA, format output ──
+                            for (size_t fi : group.fiIndices) {
+                                const auto &fp = fusedPhenos[fi];
+                                const size_t p = fp.taskIdx;
+
+                                if (passCount > 0) {
+                                    // Compact pass-QC score columns into pre-allocated buffer.
+                                    int pi = 0;
+                                    for (size_t bi = 0; bi < wlen; ++bi) {
+                                        if (wmQC[bi].pass) {
+                                            passScoresBuf.col(pi).head(fp.nCols) =
+                                                allScoresAndSums.block(
+                                                    fp.colOffset, static_cast<Eigen::Index>(bi),
+                                                    fp.nCols, 1);
+                                            ++pi;
+                                        }
+                                    }
+
+                                    MethodBase::UnionGenotypes geno;
+                                    geno.data = GBatch_union.data();
+                                    geno.rows = GBatch_union.rows();
+                                    geno.colStride = GBatch_union.outerStride();
+                                    geno.cols = passUnionCols.data();
+                                    geno.macs = passMacs.data();
+                                    geno.nCols = static_cast<uint32_t>(passUnionCols.size());
+
+                                    methods[p]->processScoreBatch(
+                                        passScoresBuf.topLeftCorner(fp.nCols, passCount),
+                                        passGSums.data(), passGSumSqs.data(), fp.nUsed,
+                                        passAltFreqs, passChunkIdxs, geno, fusedResultsBuf);
+                                }
+
+                                // Format output lines.
+                                int ri = 0;
+                                for (size_t bi = 0; bi < wlen; ++bi) {
+                                    const auto &wm = winMarkers[bi];
+                                    if (wmQC[bi].pass) {
+                                        formatLine(layouts[p], phenoOut[p], fmtBuf, wm.chr, wm.pos,
+                                                   wm.marker, wm.ref, wm.alt,
+                                                   wmQC[bi].missingRate,
+                                                   wmQC[bi].altFreq,
+                                                   wmQC[bi].mac,
+                                                   wmQC[bi].log10pHwe,
+                                                   fusedResultsBuf[ri++]);
+                                    } else {
+                                        formatLineNA(phenoOut[p], fmtBuf, wm.chr, wm.pos,
+                                                     wm.marker, wm.ref, wm.alt,
+                                                     wmQC[bi].missingRate,
+                                                     wmQC[bi].altFreq,
+                                                     wmQC[bi].mac,
+                                                     wmQC[bi].log10pHwe,
+                                                     layouts[p].naSuffix);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Phase 4: Non-fuseable phenotypes — MissBatch extraction path.
+                    if (!nonFusedPhenos.empty()) {
+                        for (size_t mb = 0; mb < nMissBatches; ++mb) {
+                            const auto &batch = missBatches[mb];
+                            // Find the non-fused index for the representative.
+                            size_t repNfIdx = 0;
+                            for (size_t ni = 0; ni < nonFusedPhenos.size(); ++ni)
+                                if (nonFusedPhenos[ni] == batch.rep) { repNfIdx = ni; break; }
+
+                            const uint32_t nP = nfNPhenoArr[repNfIdx];
+                            const bool ident = batch.identity;
+                            const uint32_t *pidx = ident ? nullptr : batch.presentIndices.data();
+                            const uint64_t *pmask = ident ? nullptr : batch.presentMask.data();
+
+                            nfPassAltFreqs.clear();
+                            nfPassChunkIdxs.clear();
+                            int passCount = 0;
+
+                            for (size_t bi = 0; bi < wlen; ++bi) {
+                                const double *unionCol = GBatch_union.col(
+                                    static_cast<Eigen::Index>(bi)).data();
+                                double *phenoG = nfPhenoGPtrs[repNfIdx];
+
+                                extractPhenoFast(unionCol, nUnion, nP, ident,
+                                                 pidx, pmask, phenoG);
+
+                                nfBatchMissings[repNfIdx].clear();
+                                PhenoGenoStats gs = statsFromGVec(phenoG, nP,
+                                                                  genoData.hardCallThreshold,
+                                                                  nfBatchMissings[repNfIdx]);
+                                nfWinStats[bi] = gs;
+
+                                double pMaf = std::min(gs.altFreq, 1.0 - gs.altFreq);
+                                const bool pass = !(gs.missingRate > missingCutoff ||
+                                                    pMaf < minMafCutoff ||
+                                                    gs.mac < minMacCutoff ||
+                                                    (hweCutoff > 0 && gs.log10pHwe > hweLog10Cutoff));
+                                nfWinPassQC[bi] = pass ? 1 : 0;
+
+                                if (pass) {
+                                    imputeMissingAt(phenoG, nfBatchMissings[repNfIdx],
+                                                    2.0 * gs.altFreq);
+                                    GBatch_pheno_nf.col(passCount).head(nP) =
+                                        Eigen::Map<const Eigen::VectorXd>(phenoG, nP);
+                                    nfPassAltFreqs.push_back(gs.altFreq);
+                                    nfPassChunkIdxs.push_back(static_cast<int>(wstart + bi));
+                                    ++passCount;
+                                }
+                            }
+
+                            for (size_t mi = 0; mi < batch.members.size(); ++mi) {
+                                const size_t p = batch.members[mi];
+
+                                if (passCount > 0)
+                                    methods[p]->getResultBatch(
+                                        GBatch_pheno_nf.topLeftCorner(nP, passCount),
+                                        nfPassAltFreqs, nfPassChunkIdxs,
+                                        nfBatchResultsBuf);
+
+                                int ri = 0;
+                                for (size_t bi = 0; bi < wlen; ++bi) {
+                                    const auto &wm = winMarkers[bi];
+                                    if (nfWinPassQC[bi]) {
+                                        formatLine(layouts[p], phenoOut[p], fmtBuf, wm.chr, wm.pos,
+                                                   wm.marker, wm.ref, wm.alt,
+                                                   nfWinStats[bi].missingRate,
+                                                   nfWinStats[bi].altFreq,
+                                                   nfWinStats[bi].mac,
+                                                   nfWinStats[bi].log10pHwe,
+                                                   nfBatchResultsBuf[ri++]);
+                                    } else {
+                                        formatLineNA(phenoOut[p], fmtBuf, wm.chr, wm.pos,
+                                                     wm.marker, wm.ref, wm.alt,
+                                                     nfWinStats[bi].missingRate,
+                                                     nfWinStats[bi].altFreq,
+                                                     nfWinStats[bi].mac,
+                                                     nfWinStats[bi].log10pHwe,
+                                                     layouts[p].naSuffix);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                {
+                    std::lock_guard<std::mutex> lk(writeMutex);
+                    for (size_t p = 0; p < K; ++p)
+                        chunkOutput[localIdx][p] = std::move(phenoOut[p]);
+                    chunkReady[localIdx].ready = 1;
+                }
+                infoMsg("Calculation finished: chunk %zu/%zu", localIdx + 1, nChunks);
+                writeCv.notify_all();
+            }
+        } catch (...) {
+            {
+                std::lock_guard<std::mutex> lk(errorMutex);
+                if (!workerError) workerError = std::current_exception();
+            }
+            {
+                std::lock_guard<std::mutex> lk(writeMutex);
+                stopFlag = true;
+            }
+            writeCv.notify_all();
+        }
+    };
+
+    // ── Launch ─────────────────────────────────────────────────────────
+    if (effective_nthreads <= 1) {
+        workerFn();
+    } else {
+        std::vector<std::thread> workers;
+        workers.reserve(effective_nthreads);
+        for (int t = 0; t < effective_nthreads; ++t)
+            workers.emplace_back(workerFn);
+        for (auto &th : workers)
+            th.join();
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(writeMutex);
+        stopFlag = true;
+    }
+    writeCv.notify_all();
+    writerThread.join();
+
+    if (workerError) std::rethrow_exception(workerError);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// multiPhenoEngine — per-phenotype independent GWAS
+// ══════════════════════════════════════════════════════════════════════
+
+void multiPhenoEngine(
+    const OutputOptions &outputOptions,
+    const GenoMeta &genoData,
+    std::vector<PhenoTask> &tasks,
+    const std::string &outPrefix,
+    const std::string &methodName,
+    const std::string &compression,
+    int compressionLevel,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+) {
+    const size_t K = tasks.size();
+    const size_t nTotalChunks = genoData.chunkIndices().size();
+
+    infoMsg("Number of subjects in the input file: %u", genoData.nSubjInFile());
+    infoMsg("Number of subjects in union mask: %u", genoData.nSubjUsed());
+    for (size_t p = 0; p < K; ++p)
+        infoMsg("  Phenotype '%s': %u subjects", tasks[p].phenoName.c_str(), tasks[p].nUsed);
+    infoMsg("Number of markers in the input file: %u", genoData.nMarkers());
+    infoMsg("Number of markers to test: %zu", genoData.markerInfo().size());
+    infoMsg("Number of chunks for all markers: %zu", nTotalChunks);
+    infoMsg("Start chunk-level parallel processing with %d worker threads, %zu phenotypes.",
+            std::min(nthreads, static_cast<int>(nTotalChunks)), K);
+
+    // Select the same columns for headers, values, and failed-QC rows.
+    std::vector<OutputLayout> layouts;
+    layouts.reserve(K);
+    for (size_t p = 0; p < K; ++p)
+        layouts.push_back(makeOutputLayout(*tasks[p].method, outputOptions));
+
+    // Build output file paths and open writers.
+    auto writerMode = TextWriter::modeFromString(compression);
+    std::vector<std::string> outPaths(K);
+    std::vector<TextWriter> writers;
+    writers.reserve(K);
+    for (size_t p = 0; p < K; ++p) {
+        outPaths[p] = TextWriter::buildOutputPath(outPrefix, tasks[p].phenoName, methodName, compression);
+        writers.emplace_back(outPaths[p], writerMode, compressionLevel);
+        std::string header = buildHeader(layouts[p]) + "\n";
+        writers[p].write(header);
+    }
+
+    // Delegate to the range engine.
+    multiPhenoEngineRange(genoData, tasks, layouts, 0, nTotalChunks, writers,
+                          nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
+
+    for (auto &w : writers)
+        w.close();
+
+    for (size_t p = 0; p < K; ++p)
+        infoMsg("Output written to: %s", outPaths[p].c_str());
+}

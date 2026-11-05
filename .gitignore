@@ -1,0 +1,9 @@
+.*
+!.gitignore
+!.github/
+
+build/
+dist/
+
+examples_output/
+tests_output/

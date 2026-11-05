@@ -1,0 +1,271 @@
+// parse.cpp — Command-line argument parsing
+
+#include "cli/cli.hpp"
+
+#include <cctype>
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <unordered_set>
+
+namespace cli {
+
+// Safe numeric parsers — print a clear error and exit instead of throwing.
+static double parseDouble(
+    const std::string &val,
+    const std::string &flag
+) {
+    try {
+        size_t pos = 0;
+        double v = std::stod(val, &pos);
+        if (pos != val.size()) {
+            std::cerr << "Error: " << flag << " requires a numeric value, got '" << val << "'\n";
+            std::exit(1);
+        }
+        return v;
+    } catch (const std::invalid_argument &) {
+        std::cerr << "Error: " << flag << " requires a numeric value, got '" << val << "'\n";
+        std::exit(1);
+    } catch (const std::out_of_range &) {
+        std::cerr << "Error: " << flag << " value out of range: '" << val << "'\n";
+        std::exit(1);
+    }
+}
+
+static int parseInt(
+    const std::string &val,
+    const std::string &flag
+) {
+    try {
+        size_t pos = 0;
+        int v = std::stoi(val, &pos);
+        if (pos != val.size()) {
+            std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+            std::exit(1);
+        }
+        return v;
+    } catch (const std::invalid_argument &) {
+        std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+        std::exit(1);
+    } catch (const std::out_of_range &) {
+        std::cerr << "Error: " << flag << " value out of range: '" << val << "'\n";
+        std::exit(1);
+    }
+}
+
+static unsigned long long parseULL(
+    const std::string &val,
+    const std::string &flag
+) {
+    try {
+        size_t pos = 0;
+        unsigned long long v = std::stoull(val, &pos);
+        if (pos != val.size()) {
+            std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+            std::exit(1);
+        }
+        return v;
+    } catch (const std::invalid_argument &) {
+        std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+        std::exit(1);
+    } catch (const std::out_of_range &) {
+        std::cerr << "Error: " << flag << " value out of range: '" << val << "'\n";
+        std::exit(1);
+    }
+}
+
+Args parseArgs(
+    int argc,
+    char *argv[]
+) {
+    Args a;
+    std::unordered_set<std::string> seenFlags;
+
+    // Reject any flag that appears more than once.  Every scalar field in
+    // Args (string / double / bool) is overwritten by a later occurrence,
+    // so a duplicate flag silently shadows the earlier one.  We refuse to
+    // guess intent and require the user to fix the command line.
+    auto markSeen = [&seenFlags](const std::string &flag) {
+        if (!seenFlags.insert(flag).second) {
+            std::cerr << "Error: " << flag << " specified more than once.\n";
+            std::exit(1);
+        }
+    };
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        // --help [topic]
+        if (arg == "--help" || arg == "-h") {
+            if (i + 1 < argc && argv[i + 1][0] != '-')a.helpTopic = argv[++i];
+            else a.helpTopic = "__short__";
+            return a; // skip further parsing
+        }
+
+        // --version / -V: short-circuit; the dispatcher will emit the
+        // version string and exit without parsing the remaining flags.
+        if (arg == "--version" || arg == "-V") {
+            a.showVersion = true;
+            return a;
+        }
+
+        auto next = [&]() -> std::string {
+            markSeen(arg);
+            if (i + 1 >= argc) {
+                std::cerr << "Error: missing value for " << arg << "\n";
+                std::exit(1);
+            }
+            return argv[++i];
+        };
+
+        if (arg == "--method")a.method = next();
+        else if (arg == "--pheno")a.phenoFile = next();
+        else if (arg == "--covar")a.covarFile = next();
+        else if (arg == "--covar-name")a.covarName = next();
+        else if (arg == "--pheno-name")a.phenoName = next();
+        else if (arg == "--resid-name")a.residName = next();
+        else if (arg == "--regression-model")a.regressionModel = next();
+        else if (arg == "--save-resid") { markSeen(arg); a.saveResid = true; }
+        else if (arg == "--output-spa-status") { markSeen(arg); a.outputOptions.spaStatus = true; }
+        else if (arg == "--output-z") { markSeen(arg); a.outputOptions.z = true; }
+        else if (arg == "--longitudinal") { markSeen(arg); a.longitudinal = true; }
+        else if (arg == "--pc-cols")a.pcCols = next();
+        else if (arg == "--spasqr-taus")a.spasqrTaus = next();
+        else if (arg == "--sageld-method")a.sageldMethod = next();
+        else if (arg == "--envir-name")a.envName = next();
+        else if (arg == "--spagxe-marginal-cutoff")a.spagxeMarginalCutoff = parseDouble(next(), arg);
+        else if (arg == "--spasqr-tol")a.spasqrTol = parseDouble(next(), arg);
+        else if (arg == "--spasqr-h")a.spasqrH = parseDouble(next(), arg);
+        else if (arg == "--spasqr-h-scale")a.spasqrHScale = parseDouble(next(), arg);
+        else if (arg == "--bfile")a.bfilePrefix = next();
+        else if (arg == "--pfile")a.pfilePrefix = next();
+        else if (arg == "--vcf")a.vcfFile = next();
+        else if (arg == "--bcf")a.bcfFile = next();
+        else if (arg == "--bgen") {
+            // plink2-compatible syntax: --bgen <filename> <REF/ALT mode>.
+            // BGEN itself does not encode REF/ALT; the user must declare the
+            // convention explicitly.  Error wording mirrors plink2 --bgen.
+            a.bgenFile = next();
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --bgen requires a REF/ALT mode ('ref-first',"
+                             " 'ref-last', or 'ref-unknown').  As of this writing,"
+                             " raw UK Biobank files are ref-first, while older and"
+                             " PLINK-exported BGEN files are more likely to be"
+                             " ref-last.\n";
+                std::exit(1);
+            }
+            std::string mode = argv[i + 1];
+            if (mode != "ref-first" && mode != "ref-last" && mode != "ref-unknown") {
+                std::cerr << "Error: Invalid --bgen argument '" << mode << "'.\n";
+                std::exit(1);
+            }
+            ++i;
+            a.bgenRefMode = mode;
+        }
+        else if (arg == "--ref-af")a.refAfFile = next();
+        else if (arg == "--sp-grm-grab")a.spGrmGrabFile = next();
+        else if (arg == "--sp-grm-plink2")a.spGrmPlink2File = next();
+        else if (arg == "--ind-af-coef")a.indAfFile = next();
+        else if (arg == "--pairwise-ibd")a.pairwiseIBDFile = next();
+        else if (arg == "--out")a.outPrefix = next();
+        else if (arg == "--prevalence")a.refPrevalence = parseDouble(next(), arg);
+        else if (arg == "--batch-effect-p-threshold")a.cutoff = parseDouble(next(), arg);
+        else if (arg == "--spa-z-threshold") {
+            // The saddlepoint branch is entered only for |Z| above this value,
+            // and that gate is load-bearing, not merely a cost control.  Every
+            // absolute-error argument in the shared tier rests on it: K reaches
+            // the p-value through w = sgn(zeta)*sqrt(2*(zeta*s - K)), so an
+            // absolute error dK moves w by dK/w and r* = w + log(v/w)/w by about
+            // dK/w^3.  With |w| ~ |Z| near the gate, a threshold of 2 leaves
+            // |w| >= 1.78 (measured) and both quantities at rounding level; a
+            // threshold near zero puts the solver in the region where the
+            // terminal K's absolute error of ~1e-13 is amplified without bound,
+            // and at |Z| ~ 1e-7 it is enough to drive zeta*s - K negative and
+            // turn every marker into GUARD_TEMP.  See the terminal-K section of
+            // src/util/spa_cgf.hpp and `spa::kWSingularity` in src/util/spa.hpp.
+            //
+            // 0.01 is where dK/w^3 is still below 1e-6 for dK ~ 1e-12; below it
+            // the reported p-value stops being a function of the data alone.
+            a.spaCutoff = parseDouble(next(), arg);
+            if (!(a.spaCutoff >= 0.01) || !std::isfinite(a.spaCutoff)) {
+                std::cerr << "Error: --spa-z-threshold must be a finite value "
+                             "of at least 0.01, got '"
+                          << a.spaCutoff << "'\n";
+                std::exit(1);
+            }
+        }
+        else if (arg == "--covar-p-threshold")a.pvalCovAdjCut = parseDouble(next(), arg);
+        else if (arg == "--geno")a.missingCutoff = parseDouble(next(), arg);
+        else if (arg == "--maf")a.minMafCutoff = parseDouble(next(), arg);
+        else if (arg == "--mac")a.minMacCutoff = parseDouble(next(), arg);
+        else if (arg == "--hwe")a.hweCutoff = parseDouble(next(), arg);
+        else if (arg == "--hard-call-threshold") {
+            a.hardCallThreshold = parseDouble(next(), arg);
+            if (!(a.hardCallThreshold >= 0.0 && a.hardCallThreshold < 0.5)) {
+                std::cerr << "Error: --hard-call-threshold must be in [0, 0.5), got '"
+                          << a.hardCallThreshold << "'\n";
+                std::exit(1);
+            }
+        }
+        else if (arg == "--outlier-iqr-multiplier")a.outlierRatio = parseDouble(next(), arg);
+        else if (arg == "--spasqr-outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
+        else if (arg == "--spagrm-control-outlier") { markSeen(arg); a.spagrmControlOutlier = true; }
+        else if (arg == "--spasqr-write-omega") { markSeen(arg); a.spasqrWriteOmega = true; }
+        else if (arg == "--threads")a.nthread = parseInt(next(), arg);
+        else if (arg == "--chunk-ksnp") {
+            // Chunk size in units of 1024 SNPs (1 ksnp = 1024 SNPs).  Accepted
+            // values are positive multiples of 0.5, so nSnpPerChunk is a
+            // positive multiple of 512 — the .lanc zstd frame length — and
+            // every work-stealing chunk starts on a frame boundary.  The
+            // minimum is 0.5 ksnp = 512 SNPs (one frame); the default is
+            // 8 ksnp = 8192 SNPs.
+            const std::string raw = next();
+            const double ksnp = parseDouble(raw, arg);
+            const double halves = ksnp * 2.0; // count of 512-SNP frames
+            const long long k = std::llround(halves);
+            if (k < 1 || std::fabs(halves - static_cast<double>(k)) > 1e-9) {
+                std::cerr << "Error: --chunk-ksnp must be a positive multiple of 0.5"
+                             " (0.5 ksnp = 512 SNPs, the .lanc frame length), got '"
+                          << raw << "'\n";
+                std::exit(1);
+            }
+            a.nSnpPerChunk = static_cast<int>(k * 512);
+        }
+        else if (arg == "--leaf-nclusters")a.nClusters = parseInt(next(), arg);
+        else if (arg == "--leaf-cluster-file")a.leafClusterFile = next();
+        else if (arg == "--leaf-kmeans-nstart")a.leafKmeansNstart = parseInt(next(), arg);
+        else if (arg == "--seed")a.seed = parseULL(next(), arg);
+        else if (arg == "--extract")a.extractFile = next();
+        else if (arg == "--exclude")a.excludeFile = next();
+        else if (arg == "--chr")a.chrSpec = next();
+        else if (arg == "--keep")a.keepFile = next();
+        else if (arg == "--remove")a.removeFile = next();
+        else if (arg == "--pred-list")a.predListFile = next();
+        else if (arg == "--pheno-transform")a.phenoTransform = next();
+        else if (arg == "--spasqr-mode")a.spasqrMode = next();
+        else if (arg == "--admix-phi")a.admixPhiFile = next();
+        else if (arg == "--rfmix-msp")a.mspFile = next();
+        else if (arg == "--lanc")a.lancPrefix = next();
+        else if (arg == "--compression")a.compression = next();
+        else if (arg == "--compression-level") {
+            a.compressionLevel = parseInt(next(), arg);
+            a.compressionLevelExplicit = true;
+        }
+        // --phi-maf-cutoff removed: hardcoded to 0.01 inside estimatePhiOneAncestry
+        else if (arg == "--cal-af-coef")        { markSeen(arg); a.calAfCoef = true; }
+        else if (arg == "--cal-pairwise-ibd")   { markSeen(arg); a.calPairwiseIBD = true; }
+        else if (arg == "--cal-phi")            { markSeen(arg); a.calPhi = true; }
+        else if (arg == "--make-lanc")          { markSeen(arg); a.makeLanc = true; }
+        else if (arg == "--int-pheno")          { markSeen(arg); a.intPheno = true; }
+        else if (arg == "--min-maf-ibd")a.minMafIBD = parseDouble(next(), arg);
+        else {
+            std::cerr << "Error: unknown option: " << arg << "  (run 'grab2 --help' for usage)\n";
+            std::exit(1);
+        }
+    }
+    return a;
+}
+
+} // namespace cli

@@ -1,0 +1,1872 @@
+// log10p_test.cpp — The log-domain distribution tier of the log10p_unify
+// project.
+//
+// ══════════════════════════════════════════════════════════════════════
+// What this suite is for
+// ══════════════════════════════════════════════════════════════════════
+//
+// dev-notes/methods/log10p_unify/ makes L = -log10(P) the sole p-value
+// representation.  Stage 1 adds the five functions that make that possible to
+// src/util/math_helper.{hpp,cpp} without changing a single call site, so the
+// binary's output is byte-identical and the ONLY evidence that the new code is
+// right is this file.  Every assertion below is therefore a cross-check
+// against something that is not the code under test: the linear spelling it
+// will replace (wherever that spelling still works), a long-double evaluation,
+// an analytic special case, or the measured table in 01_numerics.md.
+//
+// Sections, in the order the functions appear in math_helper.hpp:
+//
+//   § 0  the -log10 convention itself
+//   § 1  zFromNegLog10P
+//   § 2  chisq1FromNegLog10P
+//   § 3  cauchyCombineLog10
+//   § 3b the Stage 5 call sites   (Stage 5)
+//   § 4  ptLog
+//   § 5  pmvnorm2dHalfRectLog
+//   § 7  metaPvalueScorePool     (Stage 4)
+//   § 8  logAddExp / logSubExp   (Stage 6)
+//   § 9  the shared Wald tier    (Stage 7)
+//
+// Stage 9 appends its HweLnP cross-check as a new section immediately before
+// TINYTEST_MAIN at the end of the file; nothing here has to move for it.
+//
+// Build:  make test   (or: make build/tests/log10p_test && ./build/tests/log10p_test)
+
+#include "tinytest.hpp"
+#include "linear_p.hpp"
+
+#include "util/math_helper.hpp"
+#include "util/spa.hpp"
+#include "util/wald.hpp"
+
+#include <Eigen/Dense>
+
+#include <boost/math/special_functions/beta.hpp>
+
+#include <cmath>
+#include <limits>
+#include <vector>
+
+namespace {
+
+constexpr double kLn10 = 2.30258509299404568402;
+constexpr double kLn2  = 0.69314718055994530942;
+
+const double kInf = std::numeric_limits<double>::infinity();
+const double kNaN = std::numeric_limits<double>::quiet_NaN();
+
+// ── long-double references ─────────────────────────────────────────────
+//
+// long double on x86-64 carries a 64-bit significand and an exponent range to
+// 1e4932, so a probability that is subnormal or zero in double is an ordinary
+// number here.  That is what makes these usable as references in exactly the
+// regime the functions under test exist for.
+
+long double lnPhiL(long double x) {
+    if (x > -40.0L) return std::log(0.5L * std::erfc(-x / std::sqrt(2.0L)));
+    const long double y = 1.0L / (x * x);
+    const long double s =
+        y * (-1.0L + y * (3.0L + y * (-15.0L + y * (105.0L + y * (-945.0L + y * 10395.0L)))));
+    return -0.5L * x * x - std::log(-x)
+           - 0.918938533204672741780329736405617639L + std::log1p(s);
+}
+
+// -log10 of the standard Cauchy upper tail at T, evaluated in long double.
+long double cauchyUpperNegLog10L(long double T) {
+    const long double pi = 3.14159265358979323846264338327950288L;
+    const long double tail = (T > 0.0L) ? std::atan(1.0L / T) / pi
+                                        : 0.5L - std::atan(T) / pi;
+    return -std::log10(tail);
+}
+
+// `math::cauchyCombine` as Stage 5 deleted it, transcribed verbatim.  It stays
+// here and not in src/ because the tests below are the only remaining consumer:
+// their subject is the difference between it and the log-domain routine, and
+// the measurements they pin (exactly 0 at p = 1e-320, 2e-4 relative loss at
+// L_max = 13.8) are only reproducible against the actual predecessor.
+double cauchyCombineLinearDeleted(const double *pvals, int n) {
+    const double pi = 3.14159265358979323846;
+    if (n <= 0) return std::numeric_limits<double>::quiet_NaN();
+
+    int nValid = 0;
+    bool hasZero = false;
+    double tStat = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double p = pvals[i];
+        if (std::isnan(p)) continue;
+        ++nValid;
+        if (p <= 0.0) { hasZero = true; break; }
+        const double pc = (p >= 1.0) ? 0.999 : p;
+        tStat += (pc < 1e-15) ? (1.0 / (pc * pi)) : std::tan((0.5 - pc) * pi);
+    }
+
+    if (nValid == 0) return std::numeric_limits<double>::quiet_NaN();
+    if (hasZero) return 0.0;
+
+    tStat /= static_cast<double>(nValid);
+    return (tStat > 1e15) ? (1.0 / tStat) / pi : 0.5 - std::atan(tStat) / pi;
+}
+
+// The whole Cauchy combination in long double, formed the direct way: the
+// statistic T = (1/n)·Σ cot(π pᵢ) is built explicitly, which double cannot do
+// past pᵢ ≈ 1e-308 but long double can carry to pᵢ ≈ 1e-4900.
+long double cauchyCombineNegLog10RefL(const double *L, int n) {
+    const long double pi = 3.14159265358979323846264338327950288L;
+    const long double clampL = -std::log10(0.999L);
+    long double T = 0.0L;
+    int nValid = 0;
+    for (int i = 0; i < n; ++i) {
+        if (std::isnan(L[i])) continue;
+        ++nValid;
+        const long double Li = std::fmax(static_cast<long double>(L[i]), clampL);
+        const long double p  = std::pow(10.0L, -Li);
+        T += std::cos(pi * p) / std::sin(pi * p);
+    }
+    if (nValid == 0) return std::numeric_limits<long double>::quiet_NaN();
+    return cauchyUpperNegLog10L(T / static_cast<long double>(nValid));
+}
+
+// ln of the conditional tail integral that pmvnorm2dHalfRectLog evaluates,
+// by composite Simpson in long double on a window located by scanning.  A
+// different rule, a different precision and a different way of finding the
+// peak than the routine under test uses.
+long double lnCondTailRefL(long double h, long double rho, long double lo, long double hi) {
+    const long double c = 1.0L / std::sqrt((1.0L - rho) * (1.0L + rho));
+    const auto M = [&](long double u) {
+        return -0.5L * u * u - 0.918938533204672741780329736405617639L
+               + lnPhiL(c * (h - rho * u));
+    };
+    // Peak by golden section over an expanding bracket.
+    long double a = -1.0L, b = 1.0L;
+    for (int i = 0; i < 300; ++i) {
+        if (M(a) < M(0.5L * a) && M(b) < M(0.5L * b)) break;
+        a *= 2.0L; b *= 2.0L;
+    }
+    const long double gr = 0.6180339887498948482045868343656381L;
+    long double x1 = b - gr * (b - a), x2 = a + gr * (b - a);
+    long double f1 = M(x1), f2 = M(x2);
+    for (int i = 0; i < 400; ++i) {
+        if (f1 < f2) { a = x1; x1 = x2; f1 = f2; x2 = a + gr * (b - a); f2 = M(x2); }
+        else         { b = x2; x2 = x1; f2 = f1; x1 = b - gr * (b - a); f1 = M(x1); }
+        if (b - a < 1e-19L * (std::fabs(a) + std::fabs(b) + 1e-30L)) break;
+    }
+    const long double uPeak = std::fmin(std::fmax(0.5L * (a + b), lo), hi);
+    const long double mPeak = M(uPeak);
+    const auto drop = [&](int dir) {
+        long double s0 = 0.0L, s1 = 1e-14L;
+        for (int i = 0; i < 400 && s1 < 1e6L; ++i) {
+            if (M(uPeak + dir * s1) < mPeak - 200.0L) break;
+            s0 = s1; s1 *= 2.0L;
+        }
+        for (int i = 0; i < 400; ++i) {
+            const long double mid = 0.5L * (s0 + s1);
+            if (mid == s0 || mid == s1) break;
+            if (M(uPeak + dir * mid) < mPeak - 200.0L) s1 = mid; else s0 = mid;
+        }
+        return s1;
+    };
+    const long double A = std::fmax(lo, uPeak - drop(-1));
+    const long double B = std::fmin(hi, uPeak + drop(+1));
+    if (!(B > A)) return -std::numeric_limits<long double>::infinity();
+
+    const int N = 100000;                    // even, so Simpson is well posed
+    const long double step = (B - A) / static_cast<long double>(N);
+    long double sum = 0.0L;
+    for (int i = 0; i <= N; ++i) {
+        const long double u = A + step * static_cast<long double>(i);
+        const long double w = (i == 0 || i == N) ? 1.0L : ((i % 2) ? 4.0L : 2.0L);
+        sum += w * std::exp(M(u) - mPeak);
+    }
+    return mPeak + std::log(sum * step / 3.0L);
+}
+
+} // namespace
+
+// ══════════════════════════════════════════════════════════════════════
+// § 0  The convention
+// ══════════════════════════════════════════════════════════════════════
+
+// The convention decision D2 fixes for every p-value column this project
+// produces: LOG10P is -log10(P), not log10(P) and not ln(P).
+TEST(log10p_is_minus_log10_of_p) {
+    CHECK_NEAR(-std::log10(1e-8), 8.0, 1e-15);
+    CHECK_NEAR(-std::log10(1.0), 0.0, 0.0);
+    // A p-value of 1 is LOG10P = 0, and no valid p-value yields a negative
+    // LOG10P.  This is invariant C2 of 04_validation.md §2, checked here on the
+    // convention and by tests/regress.py on every emitted column.
+    CHECK(-std::log10(1.0) >= 0.0);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 1  zFromNegLog10P
+// ══════════════════════════════════════════════════════════════════════
+
+// The linear inversion `math::zFromPval` that Stage 4 deleted, kept here as
+// the reference the replacement is measured against.  It was
+// `sign * qnorm(0.5*p, upper)` verbatim, and `math::qnorm` — which survives,
+// serving input-side thresholds only — still carries the 1e-300 argument clamp
+// that made it saturate.
+double zFromPvalDeleted(double p, double zNormForSign) {
+    if (std::isnan(p) || std::isnan(zNormForSign))
+        return std::numeric_limits<double>::quiet_NaN();
+    const double sign = (zNormForSign >= 0.0) ? 1.0 : -1.0;
+    return sign * math::qnorm(0.5 * p, 0.0, 1.0, /*lower_tail=*/false);
+}
+
+// The acceptance point of the whole project on the Z column.  01_numerics §3.1
+// tabulates the correct z against what the deleted linear route returned: the
+// two agree up to L = 299.698970 = -log10(2e-300), which is where qnorm's
+// argument clamp engages, and from there on the linear route is frozen at
+// 37.0470962993612 while the true z keeps rising.  L = 300 is already past the
+// clamp, so this is not an exotic corner: any marker a GWAS would call the top
+// hit is in it.
+TEST(zFromNegLog10P_absolute_pins) {
+    CHECK_REL(math::zFromNegLog10P(299.69897, 1.0), 37.0470962990919, 1e-14);
+    CHECK_REL(math::zFromNegLog10P(300.0,     1.0), 37.0657878807721, 1e-14);
+    CHECK_REL(math::zFromNegLog10P(400.0,     1.0), 42.8264064911712, 1e-14);
+
+    // ... and the same three, showing that the linear route was stuck.
+    CHECK_REL(zFromPvalDeleted(std::pow(10.0, -299.69897), 1.0), 37.0470962990919, 1e-14);
+    CHECK_REL(zFromPvalDeleted(std::pow(10.0, -300.0),     1.0), 37.0470962993612, 1e-14);
+    CHECK_REL(zFromPvalDeleted(std::pow(10.0, -400.0),     1.0), 37.0470962993612, 1e-14);
+    // The clamp is a plateau, not a rounding: the two saturated values above
+    // are bit-identical to each other although the p-values differ by 100
+    // orders of magnitude.
+    CHECK(zFromPvalDeleted(std::pow(10.0, -300.0), 1.0) ==
+          zFromPvalDeleted(std::pow(10.0, -400.0), 1.0));
+    // The replacement is strictly increasing across the same span.
+    CHECK(math::zFromNegLog10P(300.0, 1.0) < math::zFromNegLog10P(301.0, 1.0));
+    CHECK(math::zFromNegLog10P(301.0, 1.0) < math::zFromNegLog10P(400.0, 1.0));
+}
+
+// Round trip against the tail it inverts.  spa::normalTwoSidedLog(z) is
+// ln(2*Phi(-|z|)) as the saddlepoint tier's normal branch reports it, so this
+// closes the loop the Z column will actually travel: LOG10P is produced from a
+// z, and Stage 4 will produce a z back from that LOG10P.
+TEST(zFromNegLog10P_round_trip_against_normalTwoSidedLog) {
+    for (double lz = -1.0; lz <= 6.0001; lz += 0.05) {
+        const double z = std::pow(10.0, lz);
+        const double L = -spa::normalTwoSidedLog(z) / kLn10;
+        CHECK_REL(math::zFromNegLog10P(L, 1.0), z, 1e-14);
+        CHECK_REL(math::zFromNegLog10P(L, -1.0), -z, 1e-14);
+    }
+    // And far past anything a finite sample can mean, where the point is only
+    // that nothing saturates or overflows: 01_numerics §1.4 puts the
+    // representational ceiling at L ~ 3.9e307.
+    for (double L : {1e3, 1e5, 1e7, 1e100, 3.8e307}) {
+        const double z = math::zFromNegLog10P(L, 1.0);
+        CHECK(std::isfinite(z));
+        CHECK_REL(-spa::normalTwoSidedLog(z) / kLn10, L, 1e-14);
+    }
+}
+
+// Where the linear route is valid the two must agree; the sweep runs up to
+// L = 299.6, the last L at which 0.5*P is still above qnorm's 1e-300 clamp.
+TEST(zFromNegLog10P_matches_zFromPval_below_the_clamp) {
+    for (double L = 0.005; L < 299.6; L *= 1.03) {
+        const double p = std::pow(10.0, -L);
+        CHECK_REL(math::zFromNegLog10P(L, 1.0), zFromPvalDeleted(p, 1.0), 1e-13);
+    }
+    // The Boost-quantile / Newton seam at L = 1 is continuous: both sides are
+    // accurate there, which is the same overlap argument that fixes pnormLog's
+    // own branch at |t| = 37.
+    for (double L = 0.90; L <= 1.1001; L += 0.005) {
+        const double p = std::pow(10.0, -L);
+        CHECK_REL(math::zFromNegLog10P(L, 1.0), zFromPvalDeleted(p, 1.0), 1e-14);
+    }
+    // Below the seam the replacement IS the deleted route, evaluated on
+    // P = 10^(-L) = tref::pFromNegLog10P(L): same Boost quantile, same argument.
+    // The Z column is therefore bit-identical wherever P > 0.1, which is where
+    // the overwhelming majority of markers sit and why Stage 4 moves so little
+    // of it.
+    for (double L = 0.005; L < 0.999; L *= 1.07)
+        CHECK(math::zFromNegLog10P(L, 1.0) == zFromPvalDeleted(tref::pFromNegLog10P(L), 1.0));
+}
+
+TEST(zFromNegLog10P_edge_cases) {
+    CHECK(std::isnan(math::zFromNegLog10P(kNaN, 1.0)));
+    CHECK(std::isnan(math::zFromNegLog10P(5.0, kNaN)));
+    // P >= 1 is z = 0, with the sign carried through as the deleted route did.
+    CHECK(math::zFromNegLog10P(0.0, 1.0) == 0.0);
+    CHECK(math::zFromNegLog10P(-1.0, 1.0) == 0.0);
+    CHECK(math::zFromNegLog10P(0.0, -1.0) == 0.0);
+    // P = 0 is the only input for which an infinite z is the right answer.
+    CHECK(math::zFromNegLog10P(kInf, 1.0) == kInf);
+    CHECK(math::zFromNegLog10P(kInf, -1.0) == -kInf);
+    // Sign comes from the score, magnitude from the p-value.
+    CHECK(math::zFromNegLog10P(8.0, -0.001) < 0.0);
+    CHECK(math::zFromNegLog10P(8.0, 0.0) > 0.0);
+    CHECK_REL(math::zFromNegLog10P(8.0, -3.0), -math::zFromNegLog10P(8.0, 3.0), 0.0);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 2  chisq1FromNegLog10P
+// ══════════════════════════════════════════════════════════════════════
+
+// P(chisq_1 > q) = 2*Phi(-sqrt(q)) is an identity, not an approximation, so
+// the df = 1 quantile is exactly the square of the two-sided normal quantile
+// and needs no numerical inversion of its own.
+TEST(chisq1FromNegLog10P_is_the_square_of_the_normal_quantile) {
+    for (double L = 0.01; L < 1e6; L *= 1.7) {
+        const double z = math::zFromNegLog10P(L, 1.0);
+        CHECK_REL(math::chisq1FromNegLog10P(L), z * z, 0.0);
+    }
+}
+
+// Against the Boost quantile it replaces, over the range where that one is
+// not clamped.
+TEST(chisq1FromNegLog10P_matches_qchisq_below_the_clamp) {
+    for (double L = 0.01; L < 299.0; L *= 1.05) {
+        const double p = std::pow(10.0, -L);
+        CHECK_REL(math::chisq1FromNegLog10P(L), math::qchisq(p, 1.0, false, false), 1e-12);
+    }
+}
+
+// The saturation this removes: qchisq clamps its argument at 1e-300 and so
+// tops out at 1373.87, which is the ceiling CLAUDE.md records on the
+// per-cluster weight in metaPvalueScorePool and on the variance WtCoxG
+// recovers by inverting a saddlepoint p-value.
+TEST(chisq1FromNegLog10P_removes_the_1373_ceiling) {
+    CHECK_REL(math::qchisq(std::pow(10.0, -300.0), 1.0, false, false), 1373.87, 1e-4);
+    CHECK(math::qchisq(std::pow(10.0, -300.0), 1.0, false, false) ==
+          math::qchisq(std::pow(10.0, -900.0), 1.0, false, false));
+    CHECK(math::chisq1FromNegLog10P(300.0) > 1373.87);
+    CHECK(math::chisq1FromNegLog10P(900.0) > 3.0 * math::chisq1FromNegLog10P(300.0));
+    // 2*Phi(-sqrt(q)) = 10^(-L) read back, in the log domain.
+    for (double L : {300.0, 900.0, 5000.0}) {
+        const double q = math::chisq1FromNegLog10P(L);
+        CHECK_REL(-spa::normalTwoSidedLog(std::sqrt(q)) / kLn10, L, 1e-14);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 3  cauchyCombineLog10
+// ══════════════════════════════════════════════════════════════════════
+
+// The eight cases measured in 01_numerics §2.3.  Cases 4-6 are the point of
+// the exercise: the deleted linear routine returns exactly 0 there, so its
+// -log10 is +Inf, which is invariant C1's forbidden value.
+TEST(cauchyCombineLog10_the_eight_reference_cases) {
+    const double c1[] = {0.3, 1.0, 2.0};
+    const double c2[] = {8.0, 1.0, 0.5};
+    const double c3[] = {300.0, 1.0, 0.5};
+    const double c4[] = {320.0, 1.0, 0.5};
+    const double c5[] = {400.0, 1.0, 0.5};
+    const double c6[] = {400.0, 400.0};
+    const double c7[] = {0.1, 0.05, 0.2};
+    const double c8[] = {8.0, kNaN};
+
+    CHECK_REL(math::cauchyCombineLog10(c1, 3), 1.56385183,     1e-8);
+    CHECK_REL(math::cauchyCombineLog10(c2, 3), 7.5228788,      1e-7);
+    CHECK_REL(math::cauchyCombineLog10(c3, 3), 299.522879,     1e-8);
+    CHECK_REL(math::cauchyCombineLog10(c4, 3), 319.522879,     1e-8);
+    CHECK_REL(math::cauchyCombineLog10(c5, 3), 399.522879,     1e-8);
+    CHECK_REL(math::cauchyCombineLog10(c6, 2), 400.0,          1e-14);
+    CHECK_REL(math::cauchyCombineLog10(c7, 3), 0.0887143509,   1e-9);
+    CHECK_REL(math::cauchyCombineLog10(c8, 2), 8.0,            1e-14);
+
+    // What the linear form does with the same inputs.
+    const double p3[] = {1e-300, 0.1, std::pow(10.0, -0.5)};
+    const double p4[] = {1e-320, 0.1, std::pow(10.0, -0.5)};
+    CHECK_REL(-std::log10(cauchyCombineLinearDeleted(p3, 3)), 299.522879, 1e-6);
+    CHECK(cauchyCombineLinearDeleted(p4, 3) == 0.0);       // and -log10 is +Inf
+    CHECK(std::isfinite(math::cauchyCombineLog10(c4, 3))); // whereas this is not
+}
+
+// A single p-value combined with itself alone is that p-value: the Cauchy
+// upper tail at cot(pi*p) is p exactly, because atan(cot(x)) = pi/2 - x on
+// (0, pi).  That makes the whole tail-inversion path testable against an
+// identity rather than against a table, and it sweeps lnT continuously.
+TEST(cauchyCombineLog10_single_input_is_the_identity) {
+    const double clampL = -std::log10(0.999);
+    for (double L = clampL; L < 1e4; L *= 1.01) {
+        const double got = math::cauchyCombineLog10(&L, 1);
+        // Absolute floor because L -> 0 means p -> 1, where -log10(p) has
+        // absolute and not relative accuracy; the floor is one ulp of ln(1).
+        CHECK_CLOSE(got, L, 1e-14, 2e-16);
+    }
+    // Below the clamp everything collapses onto -log10(0.999), which is the
+    // L-scale spelling of the deleted routine's own p >= 1 -> 0.999 rule.
+    const double tiny = 1e-9;
+    CHECK_REL(math::cauchyCombineLog10(&tiny, 1), clampL, 1e-13);
+    double zero = 0.0;
+    CHECK_REL(math::cauchyCombineLog10(&zero, 1), clampL, 1e-13);
+}
+
+// The atan inversion, swept over the lnT values 01_numerics §2.2 calls out,
+// including both sides of the lnT = 350 asymptotic switch and the region just
+// above lnT = 1 where the truncated log(atan u)/u series an earlier draft
+// proposed is wrong by 3.5e-5 -- seven orders of magnitude outside this
+// tolerance.
+TEST(cauchyCombineLog10_atan_inversion_against_long_double) {
+    const long double lnPi = 1.144729885849400174143427351353058712L;
+    for (double lnT : {1.0, 1.5, 2.0, 5.0, 20.0, 100.0, 349.0, 351.0, 700.0}) {
+        // Choose the single input whose statistic is (very nearly) exp(lnT).
+        const double L = (lnT + static_cast<double>(lnPi)) / kLn10;
+        const long double p = std::pow(10.0L, -static_cast<long double>(L));
+        const long double pi = 3.14159265358979323846264338327950288L;
+        const long double T = std::cos(pi * p) / std::sin(pi * p);
+        const long double ref = cauchyUpperNegLog10L(T);
+        CHECK_REL(math::cauchyCombineLog10(&L, 1), static_cast<double>(ref), 1e-14);
+    }
+}
+
+// Against a long-double evaluation of the same statistic over the whole
+// three-term family, and against the linear implementation over the narrow
+// range where the linear implementation is itself accurate.
+//
+// The linear form's accuracy is the point worth recording.  It finished with
+// `0.5 - atan(T)/pi`, and for small p the statistic T grows like
+// 10^L, so that subtraction cancels: at L_max = 6.6 it has already lost
+// relative accuracy to 2e-11, at 13.8 to 2e-4, and by 1e15 it is replaced by a
+// reciprocal asymptote.  The log-domain form inverts atan(1/T) instead and
+// never forms the difference, so the two disagree by exactly the cancellation
+// -- with the long-double reference siding with the log-domain form.
+TEST(cauchyCombineLog10_matches_long_double_and_uncancelled_linear) {
+    for (double Lmax = 0.5; Lmax < 290.0; Lmax *= 1.15) {
+        const double Ls[] = {Lmax, 1.0, 0.5};
+        CHECK_REL(math::cauchyCombineLog10(Ls, 3),
+                  static_cast<double>(cauchyCombineNegLog10RefL(Ls, 3)), 1e-13);
+        if (Lmax < 3.0) {
+            const double ps[] = {std::pow(10.0, -Lmax), 0.1, std::pow(10.0, -0.5)};
+            CHECK_REL(math::cauchyCombineLog10(Ls, 3),
+                      -std::log10(cauchyCombineLinearDeleted(ps, 3)), 1e-11);
+        }
+    }
+    {
+        // The cancellation, measured.  Both are computing the same quantity.
+        const double Ls[] = {13.8354668408, 1.0, 0.5};
+        const double ps[] = {std::pow(10.0, -13.8354668408), 0.1, std::pow(10.0, -0.5)};
+        const double ref = static_cast<double>(cauchyCombineNegLog10RefL(Ls, 3));
+        CHECK_REL(math::cauchyCombineLog10(Ls, 3), ref, 1e-13);
+        CHECK(std::fabs(-std::log10(cauchyCombineLinearDeleted(ps, 3)) - ref) / ref > 1e-5);
+    }
+    // 01_numerics §2.4: with equal weights the tail is L_max - log10(n), and
+    // it is dominated by the LARGEST L (smallest p).  The opposite spelling,
+    // -log10(sum w_i 10^(-L_i)), would give 0.858 for the first row below.
+    for (double Lmax : {20.0, 50.0, 100.0, 300.0, 1000.0, 100000.0}) {
+        const double Ls[] = {Lmax, 1.0, 0.5};
+        CHECK_NEAR(math::cauchyCombineLog10(Ls, 3), Lmax - std::log10(3.0), 5e-7);
+    }
+    const double two[] = {400.0, 400.0};
+    CHECK_REL(math::cauchyCombineLog10(two, 2), 400.0, 1e-14);
+}
+
+TEST(cauchyCombineLog10_edge_cases) {
+    const double allNaN[] = {kNaN, kNaN};
+    CHECK(std::isnan(math::cauchyCombineLog10(allNaN, 2)));
+    CHECK(std::isnan(math::cauchyCombineLog10(nullptr, 0)));
+    // L = +Inf is p = 0, which short-circuits the combination to p = 0 exactly
+    // as cauchyCombine's own `hasZero` branch does.
+    const double withInf[] = {kInf, 1.0};
+    CHECK(math::cauchyCombineLog10(withInf, 2) == kInf);
+    // NaN entries are skipped and n is the count of the survivors, so the
+    // padding does not dilute the result.
+    const double padded[] = {8.0, kNaN, kNaN};
+    CHECK_REL(math::cauchyCombineLog10(padded, 3), 8.0, 1e-14);
+    // Never negative (invariant C2) and never -Inf, whatever the mixture.
+    const double mixed[] = {0.0, 0.0, 0.0, 700.0};
+    CHECK(math::cauchyCombineLog10(mixed, 4) >= 0.0);
+    CHECK(std::isfinite(math::cauchyCombineLog10(mixed, 4)));
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 3b  The Stage 5 call sites
+// ══════════════════════════════════════════════════════════════════════
+//
+// Three sites switched to cauchyCombineLog10: SPAsqr score (over the LOG10P
+// group), SPAsqr wald (over the per-tau normal tails) and SPAGxE Branch B
+// (over the saddlepoint and Wald legs).  What follows exercises each site's
+// input pattern rather than the function in isolation, because the failure the
+// stage exists to remove is a property of the pattern: the linear routine's
+// statistic overflows at the FIRST leg below 1e-308, so a single extreme tau
+// destroyed the whole combination.
+
+// SPAsqr score mode.  The combination is taken over the LOG10P group, in which
+// a tau whose saddlepoint produced no answer is NaN and drops out.
+TEST(stage5_spasqr_score_combination_over_magnitudes) {
+    // One tau at L = 350, past the linear representation; one ordinary; one
+    // with no answer at all.
+    const double Ls[] = {350.0, 4.2, kNaN, 0.8};
+    const double got = math::cauchyCombineLog10(Ls, 4);
+    CHECK(std::isfinite(got));            // the column's reason for existing
+    CHECK(got > 0.0);
+    // Three survivors, so the Bonferroni form is L_max - log10(3).
+    CHECK_NEAR(got, 350.0 - std::log10(3.0), 5e-7);
+
+    // The same four taus as the predecessor saw them.  10^-350 is exactly zero
+    // in double, so the linear routine took its `hasZero` branch and returned
+    // P_CCT = 0 -- a marker with the strongest evidence in the file reported as
+    // the one value -log10 cannot represent.
+    const double ps[] = {std::pow(10.0, -350.0), std::pow(10.0, -4.2), kNaN,
+                         std::pow(10.0, -0.8)};
+    CHECK(ps[0] == 0.0);
+    CHECK(cauchyCombineLinearDeleted(ps, 4) == 0.0);
+
+    // And at L = 320, where 10^-320 is subnormal rather than zero, the linear
+    // routine survived the input and lost it at the statistic instead:
+    // 1/(pi*p) overflows, tStat = +Inf, and the tail 1/tStat/pi is again 0.
+    const double Ls320[] = {320.0, 1.0, 0.5};
+    const double ps320[] = {std::pow(10.0, -320.0), 0.1, std::pow(10.0, -0.5)};
+    CHECK(ps320[0] > 0.0);
+    CHECK(cauchyCombineLinearDeleted(ps320, 3) == 0.0);
+    CHECK_REL(math::cauchyCombineLog10(Ls320, 3), 319.522879, 1e-8);
+}
+
+// SPAsqr wald mode.  Each tau's leg is a plain two-sided normal tail, and
+// Stage 5 forms it as a magnitude (spa::normalTwoSidedLog) with the linear
+// P_tau derived from that, rather than the other way round.
+TEST(stage5_spasqr_wald_leg_is_a_magnitude) {
+    // Where the linear tail is representable the two spellings agree to the
+    // round-trip of exp(log(.)), which is what P_tau moves by in this stage.
+    for (double z : {0.5, 1.0, 2.5, 6.0, 15.0, 30.0, 37.0}) {
+        const double L = -spa::normalTwoSidedLog(z) / kLn10;
+        const double pLin = 2.0 * math::pnorm(std::fabs(z), 0.0, 1.0, false);
+        CHECK_REL(tref::pFromNegLog10P(L), pLin, 1e-13);
+    }
+    // Past |z| = 38.6 the linear tail is exactly zero and the magnitude is not.
+    const double zBig = 60.0;
+    CHECK(2.0 * math::pnorm(zBig, 0.0, 1.0, false) == 0.0);
+    const double Lbig = -spa::normalTwoSidedLog(zBig) / kLn10;
+    // -log10(2*Phi(-60)), from the Mills expansion carried in 60-digit decimal
+    // (the 6-term truncation error at z = 60 is O(z^-14), far below the last
+    // bit): 783.606399168446728712234...
+    CHECK_REL(Lbig, 783.60639916844673, 1e-15);
+
+    // A four-tau row in which two taus are past the linear tail.  The
+    // combination is finite and Bonferroni-like; the predecessor returned 0.
+    const double zs[] = {60.0, 45.0, 3.0, 1.2};
+    double Ls[4], ps[4];
+    for (int i = 0; i < 4; ++i) {
+        Ls[i] = -spa::normalTwoSidedLog(zs[i]) / kLn10;
+        ps[i] = 2.0 * math::pnorm(zs[i], 0.0, 1.0, false);
+    }
+    const double got = math::cauchyCombineLog10(Ls, 4);
+    CHECK(std::isfinite(got));
+    CHECK_NEAR(got, Ls[0] - std::log10(4.0), 5e-7);
+    CHECK(cauchyCombineLinearDeleted(ps, 4) == 0.0);
+}
+
+// SPAGxE Branch B.  Two legs, the saddlepoint one already a magnitude, the
+// Wald one still recovered as -log10 of a linear p (Stage 7 closes that).
+TEST(stage5_spagxe_branch_b_two_legs) {
+    // Both legs present, the saddlepoint one past the linear representation.
+    const double both[] = {412.5, -std::log10(3e-4)};
+    const double gotBoth = math::cauchyCombineLog10(both, 2);
+    CHECK(std::isfinite(gotBoth));
+    CHECK_NEAR(gotBoth, 412.5 - std::log10(2.0), 5e-7);
+
+    // A failed saddlepoint leaves the Wald leg alone, and n is 1, so the
+    // combination is the identity -- the status column, not this one, is what
+    // records that the SPA leg dropped out.
+    const double waldOnly[] = {kNaN, -std::log10(3e-4)};
+    CHECK_REL(math::cauchyCombineLog10(waldOnly, 2), -std::log10(3e-4), 1e-13);
+
+    // Stage 5 left one ceiling here: the Wald leg arrived as a linear p, so a
+    // Wald tail past 1e-308 entered the combination as -log10(0) = +Inf and
+    // carried that infinity into LOG10P_Gx.  Stage 7 removed the ceiling at
+    // the source -- wald::lastCoef*Log10P returns the magnitude -- so what has
+    // to hold now is the positive statement: a Wald leg BELOW the linear
+    // underflow combines to a finite magnitude, and it is the leg that
+    // dominates.  See § 9 for the fitters that produce that magnitude.
+    const double deepWald[] = {12.0, 415.0};
+    const double gotDeep = math::cauchyCombineLog10(deepWald, 2);
+    CHECK(std::isfinite(gotDeep));
+    CHECK_NEAR(gotDeep, 415.0 - std::log10(2.0), 5e-7);
+    // The combination is still not defensible against an actual infinity, and
+    // must not silently launder one: +Inf in, +Inf out, so a caller that ever
+    // manufactures one sees it in the column rather than a plausible number.
+    const double infLeg[] = {12.0, std::numeric_limits<double>::infinity()};
+    CHECK(std::isinf(math::cauchyCombineLog10(infLeg, 2)));
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 4  ptLog
+// ══════════════════════════════════════════════════════════════════════
+
+// The grid 01_numerics §3.3 specifies, against Boost's regularized incomplete
+// beta wherever that returns a normal double.  Two of the twelve cells --
+// df = 10000 with |t| = 50 and 200 -- are below Boost's underflow and are
+// checked against the analytic asymptote instead.
+TEST(ptLog_matches_boost_ibeta_on_the_reference_grid) {
+    for (double df : {5.0, 100.0, 10000.0}) {
+        for (double t : {2.0, 20.0, 50.0, 200.0}) {
+            const double a = 0.5 * df, b = 0.5, x = df / (df + t * t);
+            const double ib = boost::math::ibeta(a, b, x);
+            const double got = math::ptLog(t, df);
+            if (ib > 1e-300) {
+                CHECK_REL(got, std::log(ib), 1e-13);
+            } else {
+                CHECK(std::isfinite(got));
+                CHECK(got < -700.0);
+            }
+            CHECK_REL(math::ptLog(-t, df), got, 0.0);   // two-sided: even in t
+        }
+    }
+}
+
+// The seam between the Boost branch and the DLMF 8.17.7 series, scanned on
+// both sides at df = 10000 where it falls near |t| = 38.4.  This is the test
+// that separates the two 2F1 forms: mixing the Euler numerator with the
+// (1-x)^b prefactor of 8.17.7 is wrong by exactly (1-x)^(1/2), which here is
+// 0.36 -- a discrepancy of 1.0 in ln p, eleven orders outside the tolerance.
+// At small df the same defect is invisible, because x is then near 0.
+TEST(ptLog_seam_and_series_branch_agree_with_boost) {
+    bool sawBoostBranch = false, sawSeriesBranch = false;
+    for (double t = 30.0; t <= 38.9; t += 0.05) {
+        const double df = 10000.0;
+        const double a = 0.5 * df, b = 0.5, x = df / (df + t * t);
+        const double ib = boost::math::ibeta(a, b, x);
+        if (!(ib > 1e-305)) continue;
+        CHECK_REL(math::ptLog(t, df), std::log(ib), 1e-13);
+        // lnLead is the switch's discriminant; -690 is where math_helper puts
+        // the branch.  Both sides of it are covered by this scan.
+        const double lnLead = a * std::log(x) + b * std::log1p(-x)
+                              - std::log(a)
+                              - (std::lgamma(a) + std::lgamma(b) - std::lgamma(a + b));
+        if (lnLead >= -690.0) sawBoostBranch = true; else sawSeriesBranch = true;
+    }
+    CHECK(sawBoostBranch);
+    CHECK(sawSeriesBranch);
+}
+
+// Against the linear two-sided tail it replaces, wherever that one has not
+// underflowed.
+TEST(ptLog_matches_two_times_pt_where_linear_survives) {
+    for (double df : {1.0, 2.0, 5.0, 30.0, 100.0, 1000.0, 10000.0}) {
+        for (double t = 0.25; t < 40.0; t *= 1.35) {
+            const double lin = 2.0 * math::pt(-t, df, true);
+            if (!(lin > 1e-300)) continue;
+            CHECK_REL(math::ptLog(t, df), std::log(lin), 1e-11);
+        }
+    }
+}
+
+TEST(ptLog_deep_tail_and_edge_cases) {
+    // Monotone in |t| and finite far past where the linear tail is zero.
+    double prev = 1.0;
+    for (double t : {50.0, 100.0, 200.0, 1000.0, 10000.0}) {
+        const double v = math::ptLog(t, 10000.0);
+        CHECK(std::isfinite(v));
+        CHECK(v < prev);
+        prev = v;
+    }
+    // -log10 p, the column this feeds, stays an ordinary number.
+    CHECK_NEAR(-math::ptLog(50.0, 10000.0) / kLn10, 486.2988243, 1e-6);
+    CHECK_NEAR(-math::ptLog(200.0, 10000.0) / kLn10, 3496.899648, 1e-5);
+
+    CHECK(math::ptLog(0.0, 5.0) == 0.0);             // P(|T| > 0) = 1
+    CHECK(math::ptLog(kInf, 5.0) == -kInf);
+    CHECK(std::isnan(math::ptLog(kNaN, 5.0)));
+    CHECK(std::isnan(math::ptLog(2.0, kNaN)));
+    CHECK(std::isnan(math::ptLog(2.0, 0.0)));
+    CHECK(std::isnan(math::ptLog(2.0, -1.0)));
+    // Never positive: it is the logarithm of a probability.
+    for (double df : {1.0, 7.0, 500.0})
+        for (double t = 0.0; t < 5.0; t += 0.25)
+            CHECK(math::ptLog(t, df) <= 0.0);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 4b  ptLog outside the range double can form t² in  (post-audit repair)
+// ══════════════════════════════════════════════════════════════════════
+//
+// The manual review after Stage 10 found that ptLog formed `df + t*t`
+// directly.  For every FINITE |t| above sqrt(DBL_MAX) = 1.3407807929942596e154
+// that overflows: the denominator is +Inf, x is 0, both logarithms are -Inf and
+// the function returns -Inf, i.e. LOG10P = +Inf and a C1 violation, for
+// arguments whose answer is an ordinary double.  Two further defects of the
+// same family were found while repairing it, both at the other end of the
+// range: a SUBNORMAL x or y carries only the bits its exponent leaves it, and
+// at |t| below about 1e-300 the direct route evaluated a 2F1 series that
+// DIVERGES at x = 1 and returned the truncation of it -- reporting
+// ptLog(1e-300, 10) = -686.06, i.e. a genome-wide significant LOG10P = 297.95,
+// for a t statistic of zero.
+//
+// ── The references, and why they are independent ──────────────────────
+//
+// Boost's ibeta cannot be the reference here: it is the code under test's own
+// inner call, and in this regime it either underflows or is handed an argument
+// that has already lost its bits.  Three independent references are used.
+//
+// (a) The LARGE-|t| asymptote, derived from the DENSITY rather than from the
+//     incomplete beta.  With C = Gamma((v+1)/2) / (sqrt(v*pi)*Gamma(v/2)),
+//
+//         P(|T_v| > t) = 2 * Int_t^inf C * (1 + u^2/v)^(-(v+1)/2) du
+//                      ~ 2 * C * v^((v+1)/2) * t^(-v) / v,
+//
+//     hence
+//
+//         ln P = ln 2 + lgamma((v+1)/2) - lgamma(v/2) - ln(pi)/2
+//                + (v/2 - 1)*ln v - v*ln t.
+//
+//     The dropped correction is (1 + v/u^2)^(-(v+1)/2) inside the integral,
+//     hence about v*(v+1)/(2*t^2) RELATIVE in P and therefore
+//     v*(v+1)/(2*t^2) ABSOLUTE in ln P.  At |t| = 1e155 that is 1e-310 -- far
+//     below the last bit of a double -- while at |t| = 1e4, v = 30 it is
+//     4.6e-6, which is why the validation below is stated as that bound and
+//     not as a fixed tolerance.  Evaluated in long double so that v*ln t keeps
+//     its digits.  `ptLog_asymptote_is_a_reference` validates it against Boost
+//     where both are valid, so it is a checked reference, not an asserted one.
+//
+// (b) The SMALL-|t| expansion, also from the density: the excluded mass is
+//     2*t*f(0) + O(t^3) with f(0) = C, so ln P = log1p(-2*t*C) to relative
+//     order t^2.  The log1p is not cosmetic: -2*t*C alone drops the -I^2/2
+//     term, which at |t| = 1e-8 is 3e-9 of the answer.
+//
+// (c) Three PINNED constants computed at 50 significant digits by mpmath
+//     (mpmath.betainc(df/2, 1/2, 0, df/(df+t^2), regularized=True)), quoted here
+//     to the digits a double can hold:
+//
+//         -log10 P(|T_10|  > 1e155) = 1545.60889941585826785640763909269
+//         -log10 P(|T_10|  > 1e300) = 2995.60889941585826785640763909269
+//         -log10 P(|T_4|   > 1e155) =  619.22184874961635637995762423833
+//
+//     The third is the value the Wald counterexample below must produce.
+
+namespace {
+
+// Reference (a).  ln P(|T_df| > |t|) for |t| >> sqrt(df), in long double.
+long double ptLogLargeTRefL(long double t, long double df) {
+    const long double lnPi = 1.14472988584940017414342735135305871L;
+    return 0.69314718055994530941723212145817657L
+           + std::lgamma((df + 1.0L) / 2.0L) - std::lgamma(df / 2.0L)
+           - 0.5L * lnPi + (df / 2.0L - 1.0L) * std::log(df)
+           - df * std::log(t);
+}
+
+// Reference (b).  ln P(|T_df| > |t|) for |t| << 1, in long double.
+long double ptLogSmallTRefL(long double t, long double df) {
+    const long double lnPi = 1.14472988584940017414342735135305871L;
+    const long double lnC  = std::lgamma((df + 1.0L) / 2.0L)
+                             - std::lgamma(df / 2.0L)
+                             - 0.5L * (std::log(df) + lnPi);
+    return std::log1p(-2.0L * t * std::exp(lnC));
+}
+
+}  // namespace
+
+// Reference (a) is validated where Boost's ibeta is still an ordinary double,
+// so the assertions that use it past that point rest on a measured agreement
+// rather than on the derivation alone.
+TEST(ptLog_asymptote_is_a_reference) {
+    for (double df : {1.0, 4.0, 10.0, 30.0}) {
+        for (double t : {1e4, 1e5, 1e6, 1e7}) {
+            const double a = 0.5 * df, b = 0.5, x = df / (df + t * t);
+            const double ib = boost::math::ibeta(a, b, x);
+            CHECK(ib > 1e-300);
+            const double ref = static_cast<double>(
+                ptLogLargeTRefL(static_cast<long double>(t),
+                                static_cast<long double>(df)));
+            // Graded against the reference's OWN derived truncation bound,
+            // v(v+1)/(2t^2) absolute in ln P, with a factor of three of margin.
+            // Measured worst case over this grid: 4.4e-6 at (v, t) = (30, 1e4)
+            // against a bound of 1.4e-5, and 3.3e-11 at (1, 1e5) against 3e-10.
+            const double bound = 3.0 * df * (df + 1.0) / (2.0 * t * t);
+            CHECK(std::fabs(ref - std::log(ib)) <= bound);
+        }
+    }
+}
+
+// The audit's counterexamples: finite |t| past sqrt(DBL_MAX).
+TEST(ptLog_finite_extreme_t_is_finite_and_correct) {
+    // Pinned mpmath constants (c).  A double holds 17 significant digits and
+    // these have four, so the tolerance is set by the last bit of the result,
+    // not by the reference.
+    CHECK_NEAR(-math::ptLog(1e155, 10.0) / kLn10, 1545.6088994158582679, 1e-12);
+    CHECK_NEAR(-math::ptLog(1e300, 10.0) / kLn10, 2995.6088994158582679, 1e-11);
+    CHECK_NEAR(-math::ptLog(1e155,  4.0) / kLn10,  619.2218487496163564, 1e-12);
+    // Sign is irrelevant: the tail is two-sided.
+    CHECK(math::ptLog(-1e155, 10.0) == math::ptLog(1e155, 10.0));
+
+    // And against reference (a) over the whole range the predecessor lost,
+    // from just above sqrt(DBL_MAX) to just below DBL_MAX.
+    for (double df : {1.0, 2.0, 4.0, 10.0, 100.0}) {
+        for (int e = 155; e <= 308; e += 11) {
+            const double t   = std::pow(10.0, static_cast<double>(e));
+            const double got = math::ptLog(t, df);
+            CHECK(std::isfinite(got));            // C1: never -Inf here
+            CHECK(got < 0.0);
+            const double ref = static_cast<double>(
+                ptLogLargeTRefL(static_cast<long double>(t),
+                                static_cast<long double>(df)));
+            CHECK_REL(got, ref, 1e-13);
+        }
+    }
+    // The seam at sqrt(DBL_MAX) itself: nothing discontinuous crosses it.
+    const double kSqrtMax = 1.3407807929942596e154;
+    for (double m : {0.5, 0.9, 0.999, 1.0, 1.001, 1.1, 2.0}) {
+        const double got = math::ptLog(m * kSqrtMax, 10.0);
+        CHECK(std::isfinite(got));
+        CHECK_REL(got, static_cast<double>(
+                           ptLogLargeTRefL(static_cast<long double>(m * kSqrtMax),
+                                           10.0L)), 1e-13);
+    }
+}
+
+// The other end: |t| so small that the answer is a p-value of one.  The
+// predecessor turned that into a genome-wide hit.
+TEST(ptLog_near_unit_probability_is_not_fabricated) {
+    // The specific fabrication the audit repair removed.
+    const double got = math::ptLog(1e-300, 10.0);
+    CHECK(got > -1e-299 && got <= 0.0);           // NOT -686.06
+    CHECK(-got / kLn10 < 1e-299);                 // LOG10P is zero, not 297.95
+    // Reference (b) is good to relative order t^2, so it is used below 1e-7
+    // where that is 1e-14 -- at the last bit of the answer rather than above it.
+    for (double df : {1.0, 2.0, 4.0, 10.0, 1000.0}) {
+        for (int e = -7; e >= -320; e -= 7) {
+            const double t = std::pow(10.0, static_cast<double>(e));
+            const double v = math::ptLog(t, df);
+            CHECK(v <= 0.0);
+            const double ref = static_cast<double>(
+                ptLogSmallTRefL(static_cast<long double>(t),
+                                static_cast<long double>(df)));
+            if (std::fabs(ref) < 1e-306) continue;   // subnormal: representation
+            // The attainable accuracy is set by the CONDITIONING, not by the
+            // algorithm: the answer is proportional to exp(ln(t^2/df)/2), and a
+            // double holds ln(t^2/df) to eps*|ln(t^2/df)| absolute, so no
+            // implementation can do better than half that, relatively.  At
+            // t = 1e-295 the bound is 6e-13 and the measured error is 1.3e-13.
+            const double lnRatio = 2.0 * std::log(t) - std::log(df);
+            const double tol = 8.0 * std::numeric_limits<double>::epsilon()
+                               * (1.0 + 0.5 * std::fabs(lnRatio));
+            CHECK_REL(v, ref, tol);
+        }
+    }
+    // Between 1e-6 and 1 the reference is the LINEAR two-sided tail, on an
+    // ABSOLUTE criterion: 2*pt(-t,df) is close to 1 there, so its logarithm
+    // carries an absolute error of a few eps and a relative comparison would
+    // measure that rather than ptLog.  The largest residual over this grid is
+    // 1.3e-15 at df = 1, |t| <= 1e-5, and it belongs to the REFERENCE -- the
+    // exact Cauchy closed form below puts ptLog within 1e-16 of the truth at
+    // exactly those cells.
+    for (double df : {1.0, 4.0, 10.0, 1000.0}) {
+        for (double t = 1e-6; t < 1.0; t *= 10.0) {
+            const double lin = 2.0 * math::pt(-t, df, true);
+            CHECK(std::fabs(math::ptLog(t, df) - std::log(lin)) <= 4e-15);
+        }
+    }
+    // df = 1 has an exact closed form with no truncation at any |t|:
+    // P(|T_1| > t) = 1 - (2/pi)*arctan(t) = (2/pi)*arctan(1/t) for t > 0.
+    // Written in whichever of the two spellings has no cancellation and
+    // evaluated in long double, it is a reference over the WHOLE range rather
+    // than an asymptotic one, and it covers both of ptLog's branches.
+    for (int e = -300; e <= 300; e += 13) {
+        const double t = std::pow(10.0, static_cast<double>(e));
+        const long double pi = 3.14159265358979323846264338327950288L;
+        const long double tl = static_cast<long double>(t);
+        const long double ref =
+            (t >= 1.0) ? std::log((2.0L / pi) * std::atan(1.0L / tl))
+                       : std::log1p(-(2.0L / pi) * std::atan(tl));
+        if (!(std::fabs(static_cast<double>(ref)) > 1e-306)) continue;
+        CHECK_REL(math::ptLog(t, 1.0), static_cast<double>(ref), 1e-13);
+    }
+}
+
+// The Wald leg the repair was found through.  This design is contrived, but
+// every step of it is an ordinary double: beta = 1e154, se = 0.1, t = 1e155,
+// df = 4.  `wald::lastCoefLinearLog10P` returned +Inf for it.
+TEST(waldLinear_extreme_t_returns_a_finite_magnitude) {
+    Eigen::MatrixXd Z(6, 2);
+    Z << 1,  1,
+         1, -1,
+         1,  1,
+         1, -1,
+         1,  0,
+         1,  0;
+    Eigen::VectorXd y(6);
+    y << 1e154, -1e154, 1e154, -1e154,
+         0.282842712474619, -0.282842712474619;
+
+    const double got = wald::lastCoefLinearLog10P(Z, y);
+    CHECK(std::isfinite(got));                    // C1 on the Wald leg
+    CHECK(got > 0.0);
+    CHECK_NEAR(got, 619.2218487496163564, 1e-12); // pinned constant (c)
+}
+
+// The two other log-domain routines the audit re-examined for the same
+// "form the square, then overflow" pattern.  One had it; one had the
+// exponential twin of it.
+TEST(zFromNegLog10P_extreme_finite_L_does_not_fabricate) {
+    // A = 2*L*ln10 overflows past L = 3.9e307.  The predecessor then evaluated
+    // fmax(inf - log(inf) + c, 1) = fmax(NaN, 1) = 1 -- std::fmax returns the
+    // non-NaN operand by definition -- and reported |Z| = 1 for L = 1e308.
+    for (double L : {4.0e307, 1.0e308, 1.7e308}) {
+        const double z = math::zFromNegLog10P(L, 1.0);
+        CHECK(std::isfinite(z));
+        CHECK(z > 1e150);                                     // NOT 1
+        // Reference: the Mills asymptote in long double, whose correction
+        // -ln A + ln(2/pi) is 1e-306 of A here and cannot move a double.
+        const long double A = 2.0L * static_cast<long double>(L)
+                              * 2.30258509299404568402L;
+        CHECK_REL(z, static_cast<double>(std::sqrt(A)), 1e-15);
+        CHECK_REL(math::zFromNegLog10P(L, -1.0), -z, 0.0);
+    }
+    // chisq1 is z^2, so at these L it overflows for real: 4.6e308 is not a
+    // double.  +Inf is then the correctly rounded answer and not a fabrication;
+    // what matters is that it is reached from the true root and not from 1.
+    CHECK(math::chisq1FromNegLog10P(1.0e308) == kInf);
+    CHECK(std::isfinite(math::chisq1FromNegLog10P(3.0e307)));
+}
+
+TEST(cauchyCombineLog10_extreme_finite_L_stays_finite) {
+    // ln T = maxL*ln10 overflows past maxL = 7.8e307; the predecessor returned
+    // +Inf, a C1 violation, for a combination whose value is an ordinary
+    // double.  With one leg at L_max and the others immaterial the Cauchy
+    // combination is L_max - log10(n) exactly; here n = 2.
+    for (double Lmax : {1.0e300, 1.0e308, 1.7e308}) {
+        const double legs[2] = {Lmax, 5.0};
+        const double got = math::cauchyCombineLog10(legs, 2);
+        CHECK(std::isfinite(got));
+        const double ref = Lmax - std::log10(2.0);
+        CHECK_REL(got, ref, 1e-15);
+    }
+    // Same identity where it is checkable digit by digit against the long
+    // double reference, which forms T explicitly.
+    for (double Lmax : {40.0, 200.0, 320.0}) {
+        const double legs[2] = {Lmax, 5.0};
+        CHECK_REL(math::cauchyCombineLog10(legs, 2),
+                  static_cast<double>(cauchyCombineNegLog10RefL(legs, 2)), 1e-13);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 5  pmvnorm2dHalfRectLog
+// ══════════════════════════════════════════════════════════════════════
+
+// Both Y bounds infinite reduces to the marginal, exactly as the linear
+// routine does.
+TEST(pmvnorm2dHalfRectLog_marginal_case) {
+    for (double s : {2.0, 0.0, -1.5, -10.0, -50.0}) {
+        for (double rho : {-0.7, 0.0, 0.4}) {
+            const double var1 = 2.0, var2 = 3.0;
+            const double cov = rho * std::sqrt(var1 * var2);
+            CHECK_REL(math::pmvnorm2dHalfRectLog(s, -kInf, kInf, var1, cov, var2),
+                      math::pnormLog(s / std::sqrt(var1)), 0.0);
+        }
+    }
+}
+
+// Finite rectangle, moderate |rho|, probability well above underflow: here the
+// linear routine performs the very same quadrature on the linear scale, and
+// the two must agree to round-off.
+TEST(pmvnorm2dHalfRectLog_matches_the_linear_routine_on_finite_rectangles) {
+    const double var1 = 1.7, var2 = 0.8;
+    for (double rho : {-0.9, -0.5, -0.2, 0.0, 0.3, 0.6, 0.9}) {
+        const double cov = rho * std::sqrt(var1 * var2);
+        for (double s : {1.0, 0.0, -1.0, -3.0, -6.0}) {
+            for (double lo : {-2.0, -0.5, 0.5}) {
+                const double hi = lo + 1.0;
+                const double lin = math::pmvnorm2dHalfRect(s, lo, hi, var1, cov, var2);
+                if (!(lin > 1e-280)) continue;
+                CHECK_REL(std::exp(math::pmvnorm2dHalfRectLog(s, lo, hi, var1, cov, var2)),
+                          lin, 1e-11);
+            }
+        }
+    }
+}
+
+// The half-infinite case is a different story and the difference is a finding,
+// not a tolerance to be widened.  The linear routine answers it through
+// `bvnCdf`, whose |r| < 0.925 arm is Plackett's identity under the SIX-point
+// rule Genz specifies for |r| < 0.3; math_helper.cpp's own comment records
+// that it agrees with an independent Simpson reduction "to ~1e-7", and that is
+// an ABSOLUTE accuracy, so it says nothing at all about a probability below
+// 1e-7.  Measured on the grid below at (rho, s) = (-0.9, -6): the linear
+// routine returns 1.729e-10 where the true value is 5.215e-24.
+//
+// Three checks, in increasing strength:
+//   * against the linear routine, at the absolute accuracy the linear routine
+//     actually has;
+//   * against the complement identity P(Y <= k) + P(Y > k) = Phi(h), which
+//     needs no external reference and holds to 4e-15 here;
+//   * against the long-double Simpson reference, in the test below.
+TEST(pmvnorm2dHalfRectLog_half_infinite_is_the_accurate_one) {
+    const double var1 = 1.7, var2 = 0.8;
+    for (double rho : {-0.9, -0.5, -0.2, 0.0, 0.3, 0.6, 0.9}) {
+        const double cov = rho * std::sqrt(var1 * var2);
+        for (double s : {1.0, 0.0, -1.0, -3.0, -6.0}) {
+            const double lgLo = math::pmvnorm2dHalfRectLog(s, -kInf, 0.4, var1, cov, var2);
+            const double lgHi = math::pmvnorm2dHalfRectLog(s, 0.4, kInf, var1, cov, var2);
+
+            // Absolute agreement with bvnCdf, which is all bvnCdf offers.
+            CHECK_NEAR(std::exp(lgLo),
+                       math::pmvnorm2dHalfRect(s, -kInf, 0.4, var1, cov, var2), 1e-6);
+            CHECK_NEAR(std::exp(lgHi),
+                       math::pmvnorm2dHalfRect(s, 0.4, kInf, var1, cov, var2), 1e-6);
+
+            // The two half-infinite pieces partition the marginal exactly.
+            const double marginal = std::exp(math::pnormLog(s / std::sqrt(var1)));
+            CHECK_REL(std::exp(lgLo) + std::exp(lgHi), marginal, 1e-13);
+
+            // Against the long-double reference, relatively, everywhere.
+            const long double ref =
+                lnCondTailRefL(s / std::sqrt(var1), rho,
+                               -std::numeric_limits<long double>::infinity(),
+                               0.4 / std::sqrt(var2));
+            CHECK_REL(lgLo, static_cast<double>(ref), 1e-12);
+        }
+    }
+    // The specific cell in which the linear route is wrong by fourteen orders
+    // of magnitude, pinned so that a later change to bvnCdf is noticed here.
+    {
+        const double cov = -0.9 * std::sqrt(1.7 * 0.8);
+        const double lg = math::pmvnorm2dHalfRectLog(-6.0, -kInf, 0.4, 1.7, cov, 0.8);
+        const long double ref =
+            lnCondTailRefL(-6.0 / std::sqrt(1.7), -0.9,
+                           -std::numeric_limits<long double>::infinity(),
+                           0.4 / std::sqrt(0.8));
+        CHECK_REL(lg, static_cast<double>(ref), 1e-12);
+        CHECK_REL(std::exp(lg), 5.2146929281199e-24, 1e-10);
+        CHECK(math::pmvnorm2dHalfRect(-6.0, -kInf, 0.4, 1.7, cov, 0.8) > 1e-11);
+    }
+}
+
+// Branch (a) against branch (b): a finite lower bound placed far enough below
+// the effective support must give the same answer as -inf.  In this
+// implementation the two are the SAME integral with the same truncation rule,
+// which is why they agree exactly rather than merely to 1e-12; the independent
+// evidence is the long-double Simpson check below, not this one.
+TEST(pmvnorm2dHalfRectLog_finite_and_infinite_lower_bound_agree) {
+    const double var1 = 1.0, var2 = 1.0;
+    for (double rho : {-0.95, -0.6, 0.0, 0.35, 0.85}) {
+        const double cov = rho;
+        for (double s : {2.0, -1.0, -8.0, -30.0, -70.0}) {
+            for (double hi : {1.0, -2.0, -25.0}) {
+                const double a = math::pmvnorm2dHalfRectLog(s, hi - 400.0, hi, var1, cov, var2);
+                const double b = math::pmvnorm2dHalfRectLog(s, -kInf, hi, var1, cov, var2);
+                CHECK_REL(a, b, 1e-12);
+            }
+        }
+    }
+}
+
+// The independent reference: composite Simpson in long double, on a window
+// located by golden section rather than by the routine's own bisection.  The
+// cases below straddle the linear routine's underflow, so the last of them
+// cannot be checked any other way.
+TEST(pmvnorm2dHalfRectLog_against_long_double_simpson) {
+    struct Case { double h, rho, k; };
+    const Case cases[] = {
+        {-1.0, 0.5, -1.0}, {-3.0, 0.3, -2.0}, {-8.0, -0.4, -6.0},
+        {2.0, 0.6, 1.0},   {-20.0, 0.7, -20.0}, {-40.0, 0.9, -35.0},
+        {-60.0, -0.8, -50.0}, {-100.0, 0.85, -90.0}, {-30.0, 0.0, -30.0},
+    };
+    for (const Case &c : cases) {
+        const double got = math::pmvnorm2dHalfRectLog(c.h, -kInf, c.k, 1.0, c.rho, 1.0);
+        const long double ref = lnCondTailRefL(c.h, c.rho,
+                                               -std::numeric_limits<long double>::infinity(),
+                                               c.k);
+        CHECK_REL(got, static_cast<double>(ref), 1e-12);
+    }
+    // The same, on a finite rectangle.
+    struct FCase { double h, rho, a, b; };
+    const FCase fcases[] = {
+        {-1.0, 0.5, -1.5, -0.5}, {-2.0, -0.3, 0.0, 1.0}, {1.0, 0.7, -0.4, 0.6},
+        {-5.0, 0.2, -2.0, -1.0}, {-1.0, 0.5, -4.0, 3.0}, {-10.0, 0.6, -12.0, -8.0},
+        {-40.0, -0.5, -30.0, -20.0},
+    };
+    for (const FCase &f : fcases) {
+        const double got = math::pmvnorm2dHalfRectLog(f.h, f.a, f.b, 1.0, f.rho, 1.0);
+        const long double ref = lnCondTailRefL(f.h, f.rho, f.a, f.b);
+        CHECK_REL(got, static_cast<double>(ref), 1e-12);
+    }
+}
+
+// Two analytic identities, chosen because they hold for EVERY rho and so walk
+// the routine into the degenerate regime without needing a reference that
+// itself degrades there.
+//
+//   * the orthant probability  P(X <= 0, Y <= 0) = 1/4 + asin(rho)/(2*pi);
+//   * rho = 0 factorizes,  P = Phi(h)*Phi(k).
+//
+// The orthant sweep is the test that the Phi-argument step cap earns: at
+// rho = 1 - 1e-9 the conditional CDF is a cliff of width 1/(c|rho|) = 4.5e-5
+// sitting exactly on the peak, and a panel chosen from the gradient and
+// curvature at its near edge alone steps straight over it.
+TEST(pmvnorm2dHalfRectLog_analytic_identities_including_degenerate_rho) {
+    const double pi = 3.14159265358979323846;
+    for (double rho : {-0.999999999, -0.999999, -0.99, -0.9, -0.5, 0.0,
+                       0.5, 0.9, 0.99, 0.999999, 0.999999999}) {
+        const double exact = 0.25 + std::asin(rho) / (2.0 * pi);
+        CHECK_REL(std::exp(math::pmvnorm2dHalfRectLog(0.0, -kInf, 0.0, 1.0, rho, 1.0)),
+                  exact, 1e-11);
+        // Both Y bounds finite, over a rectangle that is the same orthant
+        // minus a strip whose probability is known the same way.
+        const double lower = 0.25 + std::asin(rho) / (2.0 * pi);   // Y <= 0
+        const double both  = std::exp(math::pmvnorm2dHalfRectLog(0.0, -20.0, 0.0, 1.0, rho, 1.0));
+        CHECK_REL(both, lower, 1e-11);
+    }
+    // rho = 0 factorizes exactly, including where both factors have underflowed.
+    for (double h : {1.0, -2.0, -25.0, -60.0})
+        for (double k : {0.5, -3.0, -40.0})
+            CHECK_REL(math::pmvnorm2dHalfRectLog(h, -kInf, k, 1.0, 0.0, 1.0),
+                      math::pnormLog(h) + math::pnormLog(k), 1e-12);
+    // And the rho -> 1 limit itself, P -> Phi(min(h,k)).  The residual is the
+    // genuine O(sqrt(1-rho^2)) correction, not a quadrature error, so the
+    // tolerance is written in those terms rather than as a constant.
+    for (double h : {2.0, 0.0, -1.0, -3.0, -8.0, -20.0}) {
+        for (double k : {3.0, 0.0, -2.0}) {
+            for (double rho : {1.0 - 1e-6, 1.0 - 1e-9, 1.0 - 1e-13}) {
+                const double got = math::pmvnorm2dHalfRectLog(h, -kInf, k, 1.0, rho, 1.0);
+                const double slack = 1.0 * std::sqrt((1.0 - rho) * (1.0 + rho)) + 1e-9;
+                CHECK_NEAR(got, math::pnormLog(std::fmin(h, k)), slack);
+            }
+        }
+    }
+}
+
+// Invariant C1: this routine may return -Inf, never +Inf, and it reports an
+// indefinite covariance as NaN rather than clamping it into a different
+// problem -- the same contract the linear routine carries.
+TEST(pmvnorm2dHalfRectLog_failure_modes) {
+    CHECK(math::pmvnorm2dHalfRectLog(0.0, -1.0, 1.0, -1.0, 0.0, 1.0) == -kInf);
+    CHECK(math::pmvnorm2dHalfRectLog(0.0, -1.0, 1.0, 1.0, 0.0, 0.0) == -kInf);
+    CHECK(math::pmvnorm2dHalfRectLog(0.0, 1.0, -1.0, 1.0, 0.0, 1.0) == -kInf);  // empty
+    CHECK(std::isnan(math::pmvnorm2dHalfRectLog(0.0, -1.0, 1.0, 1.0, 1.5, 1.0)));
+    CHECK(std::isnan(math::pmvnorm2dHalfRect(0.0, -1.0, 1.0, 1.0, 1.5, 1.0)));
+
+    // Nothing anywhere in a broad sweep comes back +Inf or positive.
+    for (double h = -80.0; h <= 5.0; h += 2.5) {
+        for (double rho : {-0.999999, -0.9, -0.3, 0.0, 0.3, 0.9, 0.999999}) {
+            for (double k : {3.0, -1.0, -18.0, -60.0}) {
+                const double v = math::pmvnorm2dHalfRectLog(h, -kInf, k, 1.0, rho, 1.0);
+                CHECK(!(v > 0.0));
+                CHECK(v != kInf);
+                const double w = math::pmvnorm2dHalfRectLog(h, k - 3.0, k, 1.0, rho, 1.0);
+                CHECK(!(w > 0.0));
+                CHECK(w != kInf);
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Stage 9 — LOG10P_HWE (decision D7)
+// ══════════════════════════════════════════════════════════════════════
+//
+// This section is self-contained and appended after the Stage 1 material on
+// purpose: it shares no helper with the rest of the file and carries its own
+// includes, so that the two stages, written in parallel, merge mechanically.
+//
+// What is under test is geno_factory's hweNegLog10P, the single call into
+// plink2::HweLnP that replaces GRAB's own linear-domain exact HWE test.  Three
+// properties are pinned:
+//
+//   * the two implementations agree wherever the linear one is representable,
+//     to well within the six significant figures the column is printed with;
+//   * where the linear one underflows to exactly 0 — that is, wherever the
+//     column would have read "0" and a reader would have taken it for a
+//     measurement of perfect Hardy-Weinberg agreement, the exact opposite of
+//     the truth — the new one returns the correct magnitude, verified against
+//     an independent long-double enumeration;
+//   * the result is never negative and never a negative zero, which is
+//     invariant C2 of 04_validation.md §2 applied to a LOG10P-family column.
+
+#include "geno_factory/hwe.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <vector>
+
+namespace hwe_stage9 {
+
+// ── Reference 1: the linear-domain implementation deleted from
+// src/geno_factory/hwe.cpp by this stage (SNPHWE2, Wigginton et al. 2005),
+// transcribed verbatim.  It is the "before" side of the comparison, and it is
+// kept here rather than in the tree because nothing but this test needs it.
+inline double hweExactLinear(uint32_t obs_hets, uint32_t obs_hom1, uint32_t obs_hom2) {
+    const int64_t obs_homc = std::max(obs_hom1, obs_hom2);
+    const int64_t obs_homr = std::min(obs_hom1, obs_hom2);
+    const int64_t rare = 2 * obs_homr + static_cast<int64_t>(obs_hets);
+    const int64_t n = static_cast<int64_t>(obs_hets) + obs_homc + obs_homr;
+    const int64_t obs = static_cast<int64_t>(obs_hets);
+    if (n == 0) return 1.0;
+    int64_t mid = (rare * (2 * n - rare)) / (2 * n);
+    if ((rare & 1) ^ (mid & 1)) ++mid;
+    {
+        int64_t hr = (rare - mid) / 2;
+        int64_t hc = n - mid - hr;
+        if (mid + 2 <= rare && hr > 0 && 4.0 * hr * hc > (mid + 2.0) * (mid + 1.0)) {
+            mid += 2;
+        } else if (mid >= 2) {
+            if (static_cast<double>(mid) * (mid - 1) > 4.0 * (hr + 1.0) * (hc + 1.0)) mid -= 2;
+        }
+    }
+    const int64_t mid_homr = (rare - mid) / 2;
+    const int64_t mid_homc = n - mid - mid_homr;
+    double sum = 1.0, p = 0.0, thresh;
+    if (obs <= mid) {
+        {
+            double prob = 1.0;
+            int64_t cr = mid_homr, cc = mid_homc;
+            for (int64_t h = mid; h > obs; h -= 2) {
+                prob *= h * (h - 1.0) / (4.0 * (cr + 1.0) * (cc + 1.0));
+                sum += prob; ++cr; ++cc;
+            }
+            thresh = prob; p = thresh;
+            for (int64_t h = obs; h >= 2; h -= 2) {
+                prob *= h * (h - 1.0) / (4.0 * (cr + 1.0) * (cc + 1.0));
+                sum += prob; p += prob; ++cr; ++cc;
+            }
+        }
+        {
+            double prob = 1.0;
+            int64_t cr = mid_homr, cc = mid_homc;
+            for (int64_t h = mid; h <= rare - 2; h += 2) {
+                prob *= 4.0 * cr * cc / ((h + 2.0) * (h + 1.0));
+                sum += prob;
+                if (prob <= thresh) p += prob;
+                --cr; --cc;
+            }
+        }
+    } else {
+        {
+            double prob = 1.0;
+            int64_t cr = mid_homr, cc = mid_homc;
+            for (int64_t h = mid; h < obs; h += 2) {
+                prob *= 4.0 * cr * cc / ((h + 2.0) * (h + 1.0));
+                sum += prob; --cr; --cc;
+            }
+            thresh = prob; p = thresh;
+            for (int64_t h = obs; h <= rare - 2; h += 2) {
+                prob *= 4.0 * cr * cc / ((h + 2.0) * (h + 1.0));
+                sum += prob; p += prob; --cr; --cc;
+            }
+        }
+        {
+            double prob = 1.0;
+            int64_t cr = mid_homr, cc = mid_homc;
+            for (int64_t h = mid; h >= 2; h -= 2) {
+                prob *= h * (h - 1.0) / (4.0 * (cr + 1.0) * (cc + 1.0));
+                sum += prob;
+                if (prob <= thresh) p += prob;
+                ++cr; ++cc;
+            }
+        }
+    }
+    return std::min(p / sum, 1.0);
+}
+
+// ── Reference 2: an independent long-double enumeration, written for clarity
+// rather than speed.  Under H0 the conditional distribution of the
+// heterozygote count given N and the rare-allele count n_A is
+//
+//   ln P(N_AB = h) = h ln2 + ln N! + ln n_A! + ln n_B! - ln n_AA! - ln n_AB!
+//                    - ln n_BB! - ln (2N)!
+//
+// (Wigginton et al. 2005 eq. 2).  The exact-test p is the total probability of
+// the outcomes no more likely than the observed one, accumulated here by
+// logsumexp so that the reference itself never underflows.  It shares no code
+// path with either implementation under test.
+inline long double refLnProb(long double h, long double n, long double rare) {
+    const long double homr = (rare - h) / 2.0L;
+    const long double homc = n - h - homr;
+    return h * std::log(2.0L) + std::lgamma(n + 1) + std::lgamma(rare + 1) +
+           std::lgamma(2 * n - rare + 1) - std::lgamma(homr + 1) -
+           std::lgamma(h + 1) - std::lgamma(homc + 1) - std::lgamma(2 * n + 1);
+}
+
+inline long double refNegLog10P(uint32_t obs_hets, uint32_t obs_hom1, uint32_t obs_hom2) {
+    const long double homr = std::min(obs_hom1, obs_hom2);
+    const long double n = static_cast<long double>(obs_hets) + obs_hom1 + obs_hom2;
+    const long double rare = 2 * homr + obs_hets;
+    if (rare < 2) return 0.0L;                    // no test; p = 1
+    const long double lnObs = refLnProb(obs_hets, n, rare);
+    const long double hmax = std::min(rare, 2 * n - rare);
+    std::vector<long double> terms;
+    long double mx = -std::numeric_limits<long double>::infinity();
+    for (long double h = std::fmod(rare, 2.0L); h <= hmax; h += 2.0L) {
+        const long double lp = refLnProb(h, n, rare);
+        // Slack admits exact ties, which the exact test counts.
+        if (lp <= lnObs + 1e-14L * std::fabs(lnObs) + 1e-14L) {
+            terms.push_back(lp);
+            if (lp > mx) mx = lp;
+        }
+    }
+    if (terms.empty()) return 0.0L;
+    std::sort(terms.begin(), terms.end());        // summation order fixed
+    long double s = 0.0L;
+    for (long double lp : terms) s += std::exp(lp - mx);
+    const long double lnp = mx + std::log(s);
+    return (lnp >= 0.0L) ? 0.0L : -lnp / std::log(10.0L);
+}
+
+struct Counts { uint32_t het, homr, homc; };
+
+// A panel spanning the whole reported range: exact agreement, mild departure,
+// the moderate tail, and departures far past the point where a linear p
+// underflows.  n is kept at or below 100 000 so the long-double enumeration
+// stays cheap enough for `make test`.
+inline std::vector<Counts> panel() {
+    return {
+        // -log10 p at or near 0 (at or near exact HWE proportions)
+        {500, 250, 250}, {4000, 2000, 2000}, {180, 10, 810}, {2, 0, 998},
+        {1800, 100, 8100}, {18000, 1000, 81000},
+        // mild to moderate departure
+        {400, 0, 9600}, {18, 1, 9981}, {162, 19, 819}, {3136, 432, 6432},
+        {196, 2, 99802}, {600, 300, 9100}, {150, 5, 845},
+        // strong departure, still representable on the linear scale
+        {0, 10, 990}, {0, 50, 950}, {10, 100, 890}, {200, 400, 400},
+        {0, 100, 900}, {0, 250, 750}, {40, 300, 660},
+        // past the linear underflow boundary
+        {0, 500, 500}, {2, 499, 499}, {0, 800, 1200}, {0, 1500, 1500},
+        {0, 5000, 5000}, {100, 9950, 9950},
+    };
+}
+
+} // namespace hwe_stage9
+
+// hweNegLog10P agrees with the deleted linear implementation wherever the
+// latter is representable, to far inside the printed resolution of the column.
+//
+// The bound that matters is the relative one: LOG10P_HWE is printed with six
+// significant figures, so a relative discrepancy below 5e-7 cannot change a
+// printed digit.  The absolute bound is stated as well because it is what
+// 01_numerics §5.2 tabulates.
+TEST(hwe_log10p_agrees_with_deleted_linear_implementation) {
+    using namespace hwe_stage9;
+    double maxAbs = 0.0, maxRel = 0.0;
+    int nCompared = 0;
+    for (const Counts &c : panel()) {
+        const double pOld = hweExactLinear(c.het, c.homr, c.homc);
+        if (!(pOld > 1e-290)) continue;          // linear side underflowed
+        const double lNew = hweNegLog10P(c.het, c.homr, c.homc);
+        const double lOld = -std::log10(pOld);
+        const double d = std::fabs(lNew - lOld);
+        maxAbs = std::max(maxAbs, d);
+        if (lOld > 0.0) maxRel = std::max(maxRel, d / lOld);
+        ++nCompared;
+    }
+    CHECK(nCompared >= 15);
+    CHECK(maxAbs <= 1e-6);
+    CHECK(maxRel <= 5e-7);
+}
+
+// Both implementations are checked against the independent enumeration.  In
+// the region where the linear one is representable it is in fact the more
+// accurate of the two — plink2's complement branch, ln(1 - centre mass), costs
+// a few times 1e-10 absolute in ln p — but that is three orders of magnitude
+// below the printed resolution, and it is the price of a formulation that also
+// works where the linear one has no answer at all.
+// The criterion is mixed rather than purely relative because -log10 p is a
+// quantity whose zero is meaningful: at a marker in near-exact Hardy-Weinberg
+// proportions the reference is a few times 1e-15 and HweLnP takes its
+// documented p = 1 fast path and returns exactly 0.  A relative comparison
+// there measures nothing.  The absolute floor is set at 1e-12, two orders
+// above the largest such reference value in the panel.
+TEST(hwe_log10p_matches_long_double_enumeration) {
+    using namespace hwe_stage9;
+    for (const Counts &c : panel()) {
+        const long double ref = refNegLog10P(c.het, c.homr, c.homc);
+        const double lNew = hweNegLog10P(c.het, c.homr, c.homc);
+        const long double tol = std::max(1e-12L, 5e-7L * ref);
+        CHECK(std::fabs(ref - static_cast<long double>(lNew)) <= tol);
+    }
+}
+
+// The defect this stage removes.  Every one of these count triples has a
+// p-value below the smallest representable double, so the linear
+// implementation returned exactly 0 and the column read "0" — the spelling a
+// reader would take for perfect agreement with Hardy-Weinberg proportions,
+// when the marker is in fact as far from it as the panel contains.  The
+// log-domain evaluation returns the magnitude, and it is the correct one.
+TEST(hwe_log10p_survives_where_the_linear_test_underflowed) {
+    using namespace hwe_stage9;
+    int nUnderflowed = 0;
+    for (const Counts &c : panel()) {
+        const double pOld = hweExactLinear(c.het, c.homr, c.homc);
+        if (pOld != 0.0) continue;
+        ++nUnderflowed;
+        const double lNew = hweNegLog10P(c.het, c.homr, c.homc);
+        const long double ref = refNegLog10P(c.het, c.homr, c.homc);
+        CHECK(std::isfinite(lNew));
+        CHECK(lNew > 300.0);
+        CHECK(std::fabs(ref - static_cast<long double>(lNew)) / ref <= 1e-12L);
+    }
+    CHECK(nUnderflowed >= 3);
+}
+
+// Boundary semantics.  Fewer than two rare alleles means there is no test to
+// perform; HweLnP reports ln p = 0 there, which is the same p = 1 the deleted
+// implementation reported for n == 0, so LOG10P_HWE reads 0.  The value must
+// be +0.0 and not -0.0: the negation in hweNegLog10P would otherwise put a
+// "-0" in the output column.
+TEST(hwe_log10p_boundary_cases_are_positive_zero) {
+    CHECK_NEAR(hweNegLog10P(0, 0, 0), 0.0, 0.0);
+    CHECK(!std::signbit(hweNegLog10P(0, 0, 0)));
+    CHECK_NEAR(hweNegLog10P(1, 0, 0), 0.0, 0.0);     // rare_ct == 1
+    CHECK(!std::signbit(hweNegLog10P(1, 0, 0)));
+    CHECK_NEAR(hweNegLog10P(0, 1, 0), 0.0, 0.0);     // rare_ct == 2 by homozygote
+    CHECK(!std::signbit(hweNegLog10P(0, 1, 0)));
+    CHECK_NEAR(hweNegLog10P(0, 0, 5000), 0.0, 0.0);  // monomorphic
+    CHECK(!std::signbit(hweNegLog10P(0, 0, 5000)));
+}
+
+// Invariant C2 for the LOG10P_HWE column, checked exhaustively over every
+// genotype-count triple with at most 40 subjects, which is where a p-value
+// numerically slightly above 1 would show up if HweLnP could produce one.
+// A clamp here would be forbidden by invariant 4 — a negative value must be
+// allowed to surface as a failure, not be laundered into a zero — so the
+// assertion is on the returned values rather than on any guard.
+TEST(hwe_log10p_is_never_negative) {
+    int nChecked = 0;
+    for (uint32_t het = 0; het <= 40; ++het)
+        for (uint32_t hr = 0; hr + het <= 40; ++hr)
+            for (uint32_t hc = 0; hc + hr + het <= 40; ++hc) {
+                const double L = hweNegLog10P(het, hr, hc);
+                ++nChecked;
+                if (L < 0.0 || std::signbit(L) || !std::isfinite(L)) {
+                    CHECK(L >= 0.0);
+                    CHECK(!std::signbit(L));
+                    CHECK(std::isfinite(L));
+                    return;      // one report is enough
+                }
+            }
+    CHECK(nChecked > 10000);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 7  metaPvalueScorePool  (added by Stage 4)
+//
+// LEAF's fixed-effects pool recovers each cluster's variance by inverting that
+// cluster's p-value at df = 1.  Stage 4 replaced `math::qchisq` of a linear p,
+// clamped from below at META_P_FLOOR = 1e-300, with the analytic
+// `chisq1FromNegLog10P` of the magnitude.  What follows pins the two
+// consequences: the pooled value is still exactly the formula, and the
+// per-cluster weight is no longer capped at q = 1373.87.
+// ══════════════════════════════════════════════════════════════════════
+
+#include "util/meta_pvalue.hpp"
+
+namespace {
+
+// The pooling formula written out, with the weight supplied by the caller so
+// the same reference serves both the current code and the deleted floored one.
+double metaRefNegLog10P(
+    const std::vector<double> &scores,
+    const std::vector<double> &chisq
+) {
+    double sumScore = 0.0, sumVar = 0.0;
+    for (size_t c = 0; c < scores.size(); ++c) {
+        sumScore += scores[c];
+        sumVar   += scores[c] * scores[c] / chisq[c];
+    }
+    return -spa::normalTwoSidedLog(sumScore / std::sqrt(sumVar)) / kLn10;
+}
+
+const std::vector<spa::Status> kThreeOk(3, spa::Status::SpaOk);
+
+}  // namespace
+
+// The pool is the formula and nothing else: with the weight spelled as z²
+// there is no arithmetic left to disagree about, so this is a bit-identity.
+TEST(metaPool_is_the_inverse_variance_formula) {
+    const std::vector<double> s = {12.0, -3.5, 40.0};
+    const std::vector<double> L = {4.0, 0.7, 120.0};
+    std::vector<double> chisq(3);
+    for (int c = 0; c < 3; ++c) {
+        const double z = math::zFromNegLog10P(L[c], 1.0);
+        chisq[c] = z * z;
+    }
+    const math::MetaPooled m = math::metaPvalueScorePool(s, L, kThreeOk);
+    CHECK_REL(m.negLog10p, metaRefNegLog10P(s, chisq), 0.0);
+    CHECK(m.status == spa::Status::SpaOk);
+}
+
+// The ceiling this stage removes.  A cluster at L = 400 had its weight held at
+// q = 1373.87 by qchisq's own 1e-300 argument clamp; the analytic inversion
+// gives q = 1834.10, a 33 % larger weight, hence a SMALLER recovered variance
+// for that cluster, a smaller sum of variances, and therefore a LARGER pooled
+// |Z|.  The direction is monotone and does not depend on the configuration:
+// Z_meta = ΣS/√(ΣVar) has the scores in the numerator only, so relieving any
+// cluster's variance can only raise the pooled magnitude.
+TEST(metaPool_no_longer_caps_the_weight_at_1373) {
+    const std::vector<double> s = {30.0, 6.0, 4.0};
+    const std::vector<double> L = {400.0, 2.0, 1.0};
+
+    std::vector<double> chisqNew(3), chisqOld(3);
+    for (int c = 0; c < 3; ++c) {
+        chisqNew[c] = math::chisq1FromNegLog10P(L[c]);
+        // What the deleted code computed: qchisq of a p floored at 1e-300.
+        double p = std::pow(10.0, -L[c]);
+        if (p < 1e-300) p = 1e-300;
+        chisqOld[c] = math::qchisq(p, 1.0, false, false);
+    }
+    CHECK_REL(chisqOld[0], 1373.87, 1e-4);
+    CHECK_REL(chisqNew[0], 1834.10, 1e-5);
+    // The two clusters that were never near the clamp are untouched to 1e-12,
+    // so the whole of the move belongs to the truncated one.
+    CHECK_REL(chisqNew[1], chisqOld[1], 1e-12);
+    CHECK_REL(chisqNew[2], chisqOld[2], 1e-12);
+
+    const math::MetaPooled m = math::metaPvalueScorePool(s, L, kThreeOk);
+    CHECK_REL(m.negLog10p, metaRefNegLog10P(s, chisqNew), 0.0);
+    CHECK(m.negLog10p > metaRefNegLog10P(s, chisqOld));
+}
+
+// The bound that survives is at p → 1 and is not a p-value floor: it stops a
+// cluster reporting |z| ≈ 0 from contributing an infinite variance.  Its
+// L-scale spelling must be the exact image of the former META_P_CEIL — of the
+// DOUBLE the predecessor clamped to, not of the real number 1 − 1e-15, which
+// is not representable (the two differ by 8e-4 relative in L).
+TEST(metaPool_L_floor_is_the_image_of_the_old_p_ceiling) {
+    CHECK_REL(math::META_L_FLOOR, -std::log10(1.0 - 1e-15), 0.0);
+    CHECK_REL(math::chisq1FromNegLog10P(math::META_L_FLOOR), 1.57e-30, 1e-2);
+    // And the round trip closes: the L bound maps back to the p bound.
+    CHECK_REL(tref::pFromNegLog10P(math::META_L_FLOOR), 1.0 - 1e-15, 1e-15);
+
+    // L = 0 exactly (p = 1) would give q = 0 and an infinite variance; the
+    // bound keeps the pool finite and the cluster's influence negligible.
+    const std::vector<double> s = {5.0, 0.01};
+    const std::vector<double> L = {6.0, 0.0};
+    const math::MetaPooled m = math::metaPvalueScorePool(
+        s, L, {spa::Status::SpaOk, spa::Status::Normal});
+    CHECK(std::isfinite(m.negLog10p));
+    CHECK(m.negLog10p >= 0.0);
+    // The near-null cluster's variance dwarfs the other's, so the pooled
+    // magnitude collapses towards zero rather than towards the L = 6 cluster.
+    CHECK(m.negLog10p < 1e-3);
+}
+
+// A cluster with no test at all carries a NaN magnitude and is skipped; when
+// the pooled variance is not positive there is no pooled statistic, and the
+// status says so.
+//
+// The status is NA_POST_FAIL (7), not NA_NO_TEST (8).  Decision D4 lists "a
+// meta pool with sum Var <= 0" under 7 by name and CLAUDE.md's table has always
+// carried it there; Stage 2 wrote 8 in the implementation and in the LEAF
+// `--help` block, and the post-audit repair unified all four on 7.  What
+// failed is the POOLING, not the existence of a statistic in a stratum.
+TEST(metaPool_skips_absent_clusters_and_names_the_empty_pool) {
+    const std::vector<double> s = {kNaN, 8.0};
+    const std::vector<double> L = {kNaN, 3.0};
+    const std::vector<spa::Status> st = {spa::Status::NaNoTest, spa::Status::SpaOk};
+    const math::MetaPooled m = math::metaPvalueScorePool(s, L, st);
+    // The absent cluster leaves no trace: neither in the value nor the status.
+    const std::vector<double> s1 = {8.0}, L1 = {3.0};
+    const math::MetaPooled m1 = math::metaPvalueScorePool(s1, L1, {spa::Status::SpaOk});
+    CHECK_REL(m.negLog10p, m1.negLog10p, 0.0);
+    CHECK(m.status == spa::Status::SpaOk);
+
+    const std::vector<double> sN = {kNaN, kNaN}, LN = {kNaN, kNaN};
+    const math::MetaPooled mN = math::metaPvalueScorePool(
+        sN, LN, {spa::Status::NaNoTest, spa::Status::NaNoTest});
+    CHECK(std::isnan(mN.negLog10p));
+    CHECK(mN.status == spa::Status::NaPostFail);
+    CHECK(spa::statusIsNA(mN.status));          // C3 holds either way
+
+    // A single contributing cluster with a zero score has no variance either,
+    // so the pool has nothing to report.
+    const std::vector<double> s0 = {0.0}, L0 = {3.0};
+    const math::MetaPooled m0 = math::metaPvalueScorePool(s0, L0, {spa::Status::SpaOk});
+    CHECK(std::isnan(m0.negLog10p));
+    CHECK(m0.status == spa::Status::NaPostFail);
+    // And never a fallback: sum Var <= 0 substitutes nothing (decision D5).
+    CHECK(!spa::statusIsFallback(m0.status));
+    CHECK(!spa::statusIsUsable(m0.status));
+}
+
+// D5: a cluster whose saddlepoint failed has a magnitude again — the
+// substituted normal tail — so it contributes, and its 3..6 code reaches the
+// meta row instead of being laundered by pooling.
+TEST(metaPool_carries_the_fallback_status_up) {
+    const std::vector<double> s = {4.0, 9.0};
+    const std::vector<double> L = {2.0, 5.0};
+    const math::MetaPooled m = math::metaPvalueScorePool(
+        s, L, {spa::Status::SpaOk, spa::Status::FallbackGuardCurv});
+    CHECK(std::isfinite(m.negLog10p));
+    CHECK(m.status == spa::Status::FallbackGuardCurv);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// § 8  logAddExp / logSubExp  (added by Stage 6)
+//
+// The two combiners every log-domain assembly in the tree now goes through:
+// spa::combineTailsLog for the two saddlepoint tails, wtcoxg_cond::conditionalP
+// for the mixture numerator, its denominator and Branch A's two disjoint
+// half-planes.  Their reference is the linear expression wherever the linear
+// expression exists, and long double past that point.
+// ──────────────────────────────────────────────────────────────────────
+
+TEST(logAddExp_matches_the_linear_sum_where_the_linear_sum_exists) {
+    // The linear reference is only a reference where it is well conditioned.
+    // ln(1 + e^-d) is about e^-d, and forming 1 + e^-d in long double costs an
+    // absolute 5e-20, so the reference's own relative error is 5e-20·e^d — it
+    // passes 1e-15 at about d = 10 and reports a flat 0 by d = 44.  The band
+    // below stops well short of that, and it is where two saddlepoint tails of
+    // the same marker actually sit.
+    for (double a : {-700.0, -30.0, -1.5, 0.0, 2.0, 300.0}) {
+        for (double d : {0.0, 0.3, 1.0, 5.0}) {
+            const double b = a - d;
+            const double got = math::logAddExp(a, b);
+            const long double ref =
+                std::log(std::exp(static_cast<long double>(a)) +
+                         std::exp(static_cast<long double>(b)));
+            CHECK_REL(got, static_cast<double>(ref), 1e-15);
+            CHECK_REL(math::logAddExp(b, a), got, 0.0);       // symmetric
+        }
+    }
+    // Outside it, identities.  ln(2e^a) = a + ln2 is the case the tail
+    // assembly hits when the two tails are equal.
+    for (double a : {-700.0, -1.5, 0.0, 300.0})
+        CHECK_REL(math::logAddExp(a, a), a + math::kLn2, 1e-16);
+
+    // The bracket max <= r <= max + ln2 holds for every input, and it is the
+    // statement that no log-sum-exp can be off by an order of magnitude.
+    for (double a : {-700.0, -30.0, 0.0, 300.0})
+        for (double d : {0.0, 1e-16, 1e-8, 0.3, 40.0, 400.0, 700.0}) {
+            const double r = math::logAddExp(a, a - d);
+            CHECK(r >= a && r <= a + math::kLn2);
+        }
+
+    // Deep in the perturbation regime ln(1 + e^-d) IS e^-d: the next term of
+    // the series is e^-2d, below the last bit for every d >= 40.  This is the
+    // regime the reference above cannot reach.
+    for (double d : {40.0, 100.0, 400.0, 700.0})
+        CHECK_REL(math::logAddExp(0.0, -d), std::exp(-d), 1e-15);
+}
+
+TEST(logAddExp_treats_minus_infinity_as_a_probability_of_zero) {
+    const double inf = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    CHECK(math::logAddExp(-inf, -inf) == -inf);
+    CHECK(math::logAddExp(-inf, -3.0) == -3.0);
+    CHECK(math::logAddExp(-3.0, -inf) == -3.0);
+    CHECK(math::logAddExp(inf, -3.0) == inf);
+    // NaN propagates.  std::fmax would have dropped it, which is exactly how a
+    // failed leg could have become a number.
+    CHECK(std::isnan(math::logAddExp(nan, -3.0)));
+    CHECK(std::isnan(math::logAddExp(-3.0, nan)));
+    CHECK(std::isnan(math::logAddExp(nan, -inf)));
+}
+
+TEST(logSubExp_matches_the_linear_difference_and_keeps_both_limits) {
+    // As above, the linear difference is a reference only in a band.  Below
+    // d ~ 0.1 the subtraction cancels (at d = 1e-14 the two long doubles agree
+    // to 14 digits and the reference keeps 5); above d ~ 10 the answer is the
+    // perturbation ln(1 - e^-d) itself and forming 1 - e^-d costs more than it
+    // is worth.  Identities cover both sides.
+    for (double a : {-700.0, -30.0, -1.5, 0.0, 2.0, 300.0}) {
+        for (double d : {0.1, 0.6931471805599453, 1.0, 5.0}) {
+            const double b = a - d;
+            const double got = math::logSubExp(a, b);
+            const long double ref =
+                std::log(std::exp(static_cast<long double>(a)) -
+                         std::exp(static_cast<long double>(b)));
+            CHECK_REL(got, static_cast<double>(ref), 1e-14);
+        }
+    }
+    // The small-difference branch, against an identity instead of a
+    // subtraction: e^0 - e^ln(1-x) = x exactly, for every x in (0, 1).  This is
+    // the regime where the linear difference has nothing left, and where the
+    // log1p form of this routine would have nothing left either.
+    for (double x : {1e-17, 1e-14, 1e-8, 1e-3, 0.3, 0.9, 0.999999})
+        CHECK_REL(math::logSubExp(0.0, std::log1p(-x)), std::log(x), 1e-14);
+
+    // The far side: ln(1 - e^-d) IS -e^-d once the next term e^-2d is below the
+    // last bit, i.e. for every d >= 40.
+    for (double d : {40.0, 100.0, 400.0, 700.0})
+        CHECK_REL(math::logSubExp(0.0, -d), -std::exp(-d), 1e-15);
+
+    // Both branches must be right ACROSS the switch at d = ln 2; a single
+    // formula loses all significance at one end or the other.
+    for (double d : {0.69314718055994520, 0.69314718055994540}) {
+        const double got = math::logSubExp(0.0, -d);
+        CHECK_REL(got, std::log(1.0 - std::exp(-d)), 1e-14);
+    }
+    // Branch B's m1 = Phi(t) - Phi(-t) as it is actually formed: c_val and
+    // d_val are the two pnormLog values, and the answer must equal erf(t/√2).
+    for (double t : {0.05, 0.5, 1.959963984540054, 5.0}) {
+        const double c = math::pnormLog(t, 0.0, 1.0, true);
+        const double d = math::pnormLog(-t, 0.0, 1.0, true);
+        CHECK_REL(std::exp(math::logSubExp(c, d)), std::erf(t * 0.7071067811865476), 1e-14);
+    }
+}
+
+TEST(logSubExp_reports_a_negative_difference_rather_than_returning_one) {
+    const double inf = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    CHECK(math::logSubExp(-3.0, -3.0) == -inf);        // exactly zero
+    CHECK(math::logSubExp(-3.0, -inf) == -3.0);
+    CHECK(math::logSubExp(-inf, -inf) == -inf);
+    CHECK(std::isnan(math::logSubExp(-3.0, -2.0)));    // would be negative
+    CHECK(std::isnan(math::logSubExp(nan, -2.0)));
+    CHECK(std::isnan(math::logSubExp(-2.0, nan)));
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 9  The shared Wald tier  (added by Stage 7)
+//
+// src/util/wald.{hpp,cpp} holds the four standard-model fitters SPAsqr-wald,
+// SAGELD and SPAGxE share.  Stage 7 changed exactly one expression in each:
+// the two-sided tail that turns the fitted z (or t) into a p-value now
+// produces L = -log10 P instead of the linear p.  Everything above that line
+// -- the OLS solve, the IRLS, the Breslow Newton, the Fisher scoring, and the
+// (last,last) element of the inverse information -- is untouched, so these
+// tests are about the tail and about the ceiling it used to have.
+//
+// The references are outside the code under test: Boost's regularized
+// incomplete beta for the Student-t leg (04_validation §2, invariant 2), and
+// the closed-form 2x2-table log-odds-ratio MLE for the logistic leg.
+// ══════════════════════════════════════════════════════════════════════
+
+namespace {
+
+// A deterministic OLS design: n rows, [1 | x1 | x2], the tested coefficient
+// last.  `noise` scales the departure from an exactly linear y, and therefore
+// controls |t|: at noise = 0 the residual sum of squares is zero and t is
+// infinite, so the tests below pick a noise level for the regime they want.
+void makeLinearDesign(int n, double noise, Eigen::MatrixXd &Z, Eigen::VectorXd &y) {
+    Z.resize(n, 3);
+    y.resize(n);
+    for (int i = 0; i < n; ++i) {
+        const double u = static_cast<double>(i) / static_cast<double>(n - 1);
+        Z(i, 0) = 1.0;
+        Z(i, 1) = std::sin(7.0 * u);            // an uncorrelated-ish covariate
+        Z(i, 2) = u * u - 0.3 * u;              // the tested regressor
+        y(i) = 0.5 + 0.25 * Z(i, 1) + 3.0 * Z(i, 2)
+             + noise * std::sin(41.0 * u + 0.3);
+    }
+}
+
+// The t statistic of the last coefficient, recomputed by a different
+// factorization than wald.cpp uses (column-pivoted Householder QR, and an
+// explicit inverse for the variance element, rather than a Cholesky of ZᵀZ and
+// a solve against the last basis vector).
+double lastCoefTStat(const Eigen::MatrixXd &Z, const Eigen::VectorXd &y) {
+    const Eigen::Index n = Z.rows(), k = Z.cols();
+    const Eigen::VectorXd beta = Z.colPivHouseholderQr().solve(y);
+    const double rss = (y - Z * beta).squaredNorm();
+    const double df = static_cast<double>(n - k);
+    const double invLast = (Z.transpose() * Z).inverse()(k - 1, k - 1);
+    return beta[k - 1] / std::sqrt(rss / df * invLast);
+}
+
+} // namespace
+
+// The Student-t leg against Boost's ibeta, in the region where the linear
+// p-value is representable and the two spellings must agree.  This is the row
+// 04_validation §2 invariant 2 names for the Wald leg, and the tolerance it
+// states.
+TEST(stage7_wald_linear_matches_boost_ibeta_where_p_is_representable) {
+    for (double noise : {3.0, 0.5, 0.08}) {
+        Eigen::MatrixXd Z;
+        Eigen::VectorXd y;
+        makeLinearDesign(60, noise, Z, y);
+
+        const double t  = lastCoefTStat(Z, y);
+        const double df = 57.0;
+        const double p  = boost::math::ibeta(0.5 * df, 0.5, df / (df + t * t));
+        CHECK(p > 1e-300);                    // the regime this test is about
+
+        const double got = wald::lastCoefLinearLog10P(Z, y);
+        CHECK_REL(got, -std::log10(p), 1e-12);
+    }
+}
+
+// Past Boost's underflow the linear spelling returns exactly zero -- the
+// ceiling Stage 7 removed -- and the magnitude stays finite and keeps rising.
+// The pre-Stage-7 fitter would have handed its caller a p of 0, whose -log10
+// is +Inf: a C1 violation, and the reason the fitters return L at all.
+TEST(stage7_wald_linear_has_no_ceiling) {
+    Eigen::MatrixXd Z;
+    Eigen::VectorXd y;
+    makeLinearDesign(40, 1e-9, Z, y);
+
+    const double t  = lastCoefTStat(Z, y);
+    const double df = 37.0;
+    CHECK(std::fabs(t) > 1e6);
+    // The predecessor's value, evaluated the predecessor's way.
+    const double pLinear = boost::math::ibeta(0.5 * df, 0.5, df / (df + t * t));
+    CHECK(pLinear == 0.0);
+    CHECK(std::isinf(-std::log10(pLinear)));
+
+    const double got = wald::lastCoefLinearLog10P(Z, y);
+    CHECK(std::isfinite(got));
+    CHECK(got > 300.0);
+    // And it is the same quantity math::ptLog evaluates at that t -- the tie
+    // between this fitter and the tail § 4 pins against Boost.  The tolerance
+    // is 1e-8 rather than 1e-12 because `t` here comes from a DIFFERENT
+    // factorization than the fitter's, and at rss = 2e-17 the two agree only
+    // to about 4e-10 relative; ln I_x is roughly -df*ln|t| there, so that
+    // difference is amplified by df/L into the observed 8e-10.  It is a
+    // property of the two OLS solves, not of the tail.
+    CHECK_REL(got, -math::ptLog(t, df) / math::kLn10, 1e-8);
+}
+
+// The logistic leg against the closed-form 2x2-table Wald test: for
+// Z = [1 | x] with x and y both binary, the MLE is the sample log odds ratio
+// and its standard error is sqrt(1/a + 1/b + 1/c + 1/d).  Neither expression
+// appears anywhere in wald.cpp, which reaches the same numbers through IRLS
+// and the observed information.
+TEST(stage7_wald_logistic_matches_the_two_by_two_closed_form) {
+    const int a = 40, b = 10, c = 15, d = 35;   // x=1,y=1 / x=1,y=0 / x=0,y=1 / x=0,y=0
+    const int n = a + b + c + d;
+    Eigen::MatrixXd Z(n, 2);
+    Eigen::VectorXd y(n);
+    int r = 0;
+    auto fill = [&](int count, double xv, double yv) {
+        for (int i = 0; i < count; ++i, ++r) { Z(r, 0) = 1.0; Z(r, 1) = xv; y(r) = yv; }
+    };
+    fill(a, 1.0, 1.0); fill(b, 1.0, 0.0); fill(c, 0.0, 1.0); fill(d, 0.0, 0.0);
+
+    const double logOR = std::log(static_cast<double>(a) * d
+                                  / (static_cast<double>(b) * c));
+    const double se = std::sqrt(1.0 / a + 1.0 / b + 1.0 / c + 1.0 / d);
+    const double z = logOR / se;
+    const double Lref = -std::log10(std::erfc(std::fabs(z) / std::sqrt(2.0)));
+
+    const double got = wald::lastCoefLogisticLog10P(Z, y);
+    CHECK_REL(got, Lref, 1e-8);
+}
+
+// A design the fitters cannot fit reports NaN, not a number.  The caller turns
+// that into `8 NA_NO_TEST` with LOG10P = NA (decision D4): a rank-deficient
+// design has no statistic, so there is nothing to fall back to and the normal
+// substitution of D5 does not apply.
+TEST(stage7_wald_degenerate_design_returns_nan_not_a_number) {
+    Eigen::MatrixXd Z(20, 3);
+    Eigen::VectorXd y(20);
+    for (int i = 0; i < 20; ++i) {
+        const double u = static_cast<double>(i);
+        Z(i, 0) = 1.0;
+        Z(i, 1) = u;
+        Z(i, 2) = 2.0 * u;            // exactly collinear with column 1
+        y(i) = u + 0.5;
+    }
+    CHECK(std::isnan(wald::lastCoefLinearLog10P(Z, y)));
+
+    Eigen::MatrixXd Zs(2, 3);         // fewer rows than columns
+    Eigen::VectorXd ys(2);
+    Zs.setOnes();
+    ys.setZero();
+    CHECK(std::isnan(wald::lastCoefLinearLog10P(Zs, ys)));
+    CHECK(std::isnan(wald::lastCoefLogisticLog10P(Zs, ys)));
+}
+
+// The three normal-reference legs (logistic / Cox / ordinal) share one
+// expression, -math::normalTwoSidedLog(z)/ln10, so the property that matters
+// for all three is the one the shared tail has: it agrees with the linear
+// two-sided tail wherever that is representable, and keeps a magnitude past
+// the point where the linear tail is exactly zero.  The pre-Stage-7 fitters
+// returned that zero.
+TEST(stage7_wald_normal_tail_agrees_below_underflow_and_survives_past_it) {
+    // Up to z = 37 the linear tail is a normal double and the two agree to
+    // rounding.  Beyond that erfc goes subnormal (at z = 38 it is 5.77e-316,
+    // and the agreement degrades to 4e-12 for that reason alone), and by
+    // z = 38.6 it is exactly zero.
+    for (double z : {0.0, 1.0, 4.7595, 20.0, 30.0, 37.0}) {
+        const double linear = std::erfc(std::fabs(z) / std::sqrt(2.0));
+        CHECK(linear > 0.0);
+        CHECK_REL(-math::normalTwoSidedLog(z) / math::kLn10, -std::log10(linear), 1e-13);
+    }
+    CHECK(std::erfc(40.0 / std::sqrt(2.0)) == 0.0);       // the ceiling
+    const double deep = -math::normalTwoSidedLog(40.0) / math::kLn10;
+    CHECK(std::isfinite(deep));
+    CHECK_NEAR(deep, 349.1359765, 1e-6);
+    // Monotone and unbounded above, which -log10 of an underflowed p is not.
+    CHECK(-math::normalTwoSidedLog(100.0) / math::kLn10 > deep);
+}
+
+TINYTEST_MAIN
