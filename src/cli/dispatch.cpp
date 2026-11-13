@@ -7,6 +7,7 @@
 #include "cli/flags.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "io/subject_data.hpp"
+#include "util/chromosome.hpp"
 #include "util/int_pheno.hpp"
 #include "util/logging.hpp"
 #include "util/null_model.hpp"
@@ -66,6 +67,7 @@ static std::unordered_set<std::string> parseChrSpec(const std::string &spec) {
             for (int c = lo; c <= hi; ++c)
                 result.insert(std::to_string(c));
         } else {
+            util::stripChromosomeZeroPadding(token);
             result.insert(token);
         }
     }
