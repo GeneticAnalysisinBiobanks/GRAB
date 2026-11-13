@@ -495,7 +495,17 @@ inline const FlagDef kPredList = {
 the corresponding .loco file. The .loco file format is auto-detected
 per phenotype: Regenie (header begins with FID_IID, chromosome-major
 rows) or LDAK-KVIK (header FID IID Chr1 Chr2 ... Chr22, subject-major
-rows).)"
+rows).
+
+SPAsqr (score and wald): after --pheno-transform, Regenie input divides the
+phenotype Y by the standard deviation of its linear-regression residuals on the
+covariates and intercept, then subtracts the leave-one-chromosome-out
+(LOCO) polygenic risk score (PRS). The divisor is √(Σr²/(n−p)),
+where r is the residual vector, n is the phenotype's non-missing sample
+count, and p counts covariate coefficients including the intercept.
+LDAK-KVIK input subtracts PRS without this division. Quantile regression
+then fits the adjusted response on the original covariates.
+Use the same phenotype transform and covariates as PRS training.)"
 };
 
 inline const FlagDef kSpasqrMode = {
@@ -538,7 +548,8 @@ inline const FlagDef kSpasqrMode = {
           sandwich variance is unusable (the LDLT failed, or V[gg] <= 0) has
           no statistic at all and takes 8 (NA_NO_TEST) with every other cell
           of that tau NA.
-          (--pred-list gives y_resp = Y − loco_chr; --compression honored.))"
+          (--pred-list applies format-specific scaling before LOCO subtraction;
+           see --help pred-list. --compression honored.))"
 };
 
 inline const FlagDef kPhenoTransform = {
@@ -553,12 +564,11 @@ subtraction when --pred-list is given):
                 in both contexts; LOCO PRS should be trained on INT Y so
                 the offset is on the same scale.
   standardize — Y is centered and scaled to unit variance per phenotype.
-                Default in both contexts; LOCO PRS should be trained on
-                a standardized Y so the offset is on the same scale.
+                LOCO PRS should be trained on a standardized Y.
 
-When --pred-list is provided, the transformed Y has loco_chr subtracted as
-an offset (β=1, α=0). The LOCO PRS scale must match the chosen transform —
-mixing scales gives meaningless residuals.)"
+When --pred-list is provided, format-specific scaling precedes LOCO offset
+subtraction (β=1, α=0); see --help pred-list. Match the phenotype transform
+and covariates used for PRS training.)"
 };
 
 inline const FlagDef kExtract = {
@@ -1155,7 +1165,7 @@ inline const MethodDef kSPAsqr = {
 )"
     GRAB_SPA_STATUS_TABLE
     GRAB_SPA_FALLBACK_NOTE,
-    nullptr,
+    kPredList.fileInfo,
 };
 
 // ── WtCoxG ─────────────────────────────────────────────────────────

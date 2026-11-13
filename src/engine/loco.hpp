@@ -30,6 +30,8 @@ struct LocoData {
     // scores[phenoName][chrStr] = VectorXd of LOCO values (in usedIIDs order)
     std::unordered_map<std::string,
                        std::unordered_map<std::string, Eigen::VectorXd> > scores;
+    // Phenotypes whose input scores use Regenie's standardized residual scale.
+    std::unordered_set<std::string> regeniePhenos;
 
     // Load from a pred.list file (space-separated: phenoName locoFilePath).
     // Validates that all phenoNames are present in the pred.list.

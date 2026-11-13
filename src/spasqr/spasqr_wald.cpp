@@ -454,6 +454,8 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
     if (useLoco) {
         loco = std::make_unique<LocoData>(LocoData::load(cfg.predListFile, phenoNames,
                                                           sd.usedIIDs(), sd.famIIDs()));
+        for (int k = 0; k < K; ++k)
+            if (loco->regeniePhenos.count(phenoNames[k])) scaleRegenieResponse(pw[k]);
         locoChroms = loco->availableChromosomes();
         infoMsg("SPAsqr (wald): LOCO available for %zu chromosomes", locoChroms.size());
     }

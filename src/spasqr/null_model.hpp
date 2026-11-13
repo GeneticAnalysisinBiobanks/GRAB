@@ -13,6 +13,7 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/regression.hpp"
 
 #include <Eigen/Dense>
 #include <algorithm>
@@ -97,14 +98,31 @@ struct PhenoWork {
     double h = 0.0;                     // smoothing bandwidth (caller-filled)
 };
 
+// Divide the response by the covariate-residual SD used by Regenie.
+// Keep covariate effects in Y; the subsequent quantile fit estimates them.
+inline void scaleRegenieResponse(PhenoWork &pk) {
+    const Eigen::Index n = pk.Y.size();
+    const Eigen::Index p = pk.X.cols() + 1;
+    if (n <= p)
+        throw std::runtime_error("SPAsqr: Regenie scaling requires more subjects than covariate coefficients (including intercept)");
+    Eigen::MatrixXd design(n, p);
+    design.col(0).setOnes();
+    design.rightCols(p - 1) = pk.X;
+    const Eigen::VectorXd resid = regression::linearResiduals(
+        pk.Y, design, Eigen::VectorXd::Ones(n));
+    const double sd = resid.norm() / std::sqrt(static_cast<double>(n - p));
+    if (resid.size() != n || !std::isfinite(sd) || sd <= 0.0)
+        throw std::runtime_error("SPAsqr: Regenie scaling requires a finite, positive covariate-residual standard deviation");
+    pk.Y /= sd;
+}
+
 // Split the union into per-phenotype workspaces.  Union membership is decided
 // once (genotype ∩ GRM ∩ keep/remove); NA filtering is per phenotype, so each
 // phenotype gets its own contiguous re-indexing of the union.
 //
 // The transform runs on the per-phenotype non-missing scope, and everything
 // downstream — bandwidth, QMME fit, and in LOCO mode the per-chromosome y_adj —
-// operates on the transformed Y.  A LOCO PRS therefore has to be on the same
-// scale as the transform the user asked for.
+// operates on the transformed Y, with Regenie scaling before LOCO subtraction.
 //
 // `label` only selects the prefix of the error message.
 inline std::vector<PhenoWork> buildPhenoWorkspaces(

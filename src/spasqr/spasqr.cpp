@@ -1180,6 +1180,7 @@ void runSPAsqr(const SPAsqrConfig &cfg) {
 //
 // Per-chromosome workflow:
 //   - Y is pre-transformed once via applyPhenoTransform (raw/int/standardize).
+//   - Regenie responses are divided by their covariate-residual SD.
 //   - For each chromosome, the buildTasks callback rebuilds the conquer fits
 //     using y_adj = Y_transformed - loco_chr (β=1, α=0).
 //   - All modes feed conquer with X = pw[k].X (original covariates only,
@@ -1222,6 +1223,8 @@ void runSPAsqrLoco(const SPAsqrConfig &cfg) {
 
     // ── 4. Load LOCO predictions (union space) ─────────────────────
     LocoData loco = LocoData::load(cfg.predListFile, phenoNames, sd.usedIIDs(), sd.famIIDs());
+    for (int k = 0; k < K; ++k)
+        if (loco.regeniePhenos.count(phenoNames[k])) scaleRegenieResponse(pw[k]);
     auto locoChroms = loco.availableChromosomes();
     infoMsg("LOCO: %zu chromosomes available across all phenotypes", locoChroms.size());
 
