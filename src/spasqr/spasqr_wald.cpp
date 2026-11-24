@@ -24,7 +24,7 @@
 // rounded output columns: at h = IQR/3 the cross-tau correlation matrix has
 // condition number ~1e9, so the test needs the fits converged well below the
 // printed precision (see --spasqr-tol).  The test is run only for markers
-// with MAC >= kHetMacCutoff; below it the four columns are NA.
+// with MAF >= cfg.spasqrHetMinMaf; below it the four columns are NA.
 //
 // Threading model: per-marker QR refit is driven through MethodBase /
 // multiPhenoEngine (no-LOCO) or locoEngine (LOCO) — identical to the
@@ -78,10 +78,6 @@ struct WaldResult {
     double se;
 };
 
-// MAC below which the heterogeneity test is skipped (columns NA).  MAC is
-// 2 n min(AF, 1 - AF) over the analysed samples, which equals the printed MAC
-// column when the marker has no missing genotypes.
-constexpr double kHetMacCutoff = 4000.0;
 
 struct HetResult {
     bool ok = false;
@@ -237,6 +233,8 @@ class SPAsqrWaldMethod : public MethodBase {
         std::vector<double> taus;
         std::vector<std::string> tauLabels;
         double h        = 0.0;
+        double hetMinMaf = 0.01;
+        std::shared_ptr<std::atomic<size_t>> hetSkipped;
         double tol      = 1e-8;
         int    maxIter  = 200;
         std::vector<Eigen::VectorXd> nullTheta;   // per tau: null fit [intercept, β_X]
@@ -302,14 +300,14 @@ class SPAsqrWaldMethod : public MethodBase {
         // GVec is pheno-dense, NaN-imputed by the engine.
         const Eigen::VectorXd G = GVec;
 
-        const double mac = 2.0 * static_cast<double>(G.size()) *
-                           std::min(altFreq, 1.0 - altFreq);
+        const bool doHet = std::min(altFreq, 1.0 - altFreq) >= sh.hetMinMaf;
+        if (!doHet && ntaus >= 2) sh.hetSkipped->fetch_add(1, std::memory_order_relaxed);
 
         std::vector<WaldResult> rows;
         HetResult het;
         try {
             fitWaldAllTaus(sh.Y_resp, sh.X, G, sh.taus, sh.nullTheta, sh.h,
-                           sh.tol, sh.maxIter, rows, het, mac >= kHetMacCutoff);
+                           sh.tol, sh.maxIter, rows, het, doHet);
         } catch (const std::exception &) {
             rows.assign(ntaus, WaldResult{false, std::nan(""), std::nan("")});
             het = HetResult{};
@@ -416,8 +414,9 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
     const int maxIter = 200;   // Newton: 2-3 iterations from the null warm start
     g_nFits = 0; g_nIter = 0; g_nNotConv = 0;
 
-    infoMsg("SPAsqr (wald): pheno-transform = %s, %s, ntaus = %d, Newton tol = %g",
-            cfg.phenoTransform.c_str(),
+    std::vector<std::shared_ptr<std::atomic<size_t>>> hetSkipped(K);
+    for (auto &count : hetSkipped) count = std::make_shared<std::atomic<size_t>>(0);
+    infoMsg("SPAsqr (wald): %s, ntaus = %d, Newton tol = %g",
             useLoco ? "with LOCO offset" : "no LOCO",
             ntaus, tol);
     auto reportSolver = [&]() {
@@ -425,6 +424,10 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
         infoMsg("SPAsqr (wald): Newton refits = %lld, mean iterations = %.2f, not converged = %lld",
                 nf, nf ? double(g_nIter.load()) / nf : 0.0,
                 g_nNotConv.load());
+        for (int k = 0; k < K; ++k)
+            if (const size_t skipped = hetSkipped[k]->load())
+                warnMsg("SPAsqr (wald) [%s]: skipped heterogeneity test for %zu markers with MAF < %g (after quality filters)",
+                        phenoNames[k].c_str(), skipped, cfg.spasqrHetMinMaf);
     };
 
     // ── 1. Subject filtering (genotype ∩ keep/remove ∩ pheno) ───────────
@@ -444,11 +447,7 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
         : sd.getColumns(cfg.covarNames);
     const int nCov = static_cast<int>(unionX.cols());
 
-    // ── 2. Per-phenotype: build pheno-dense Y/X (skip NA in Y) ─────────
-    std::vector<PhenoWork> pw = buildPhenoWorkspaces(
-        sd, unionX, phenoNames, cfg.phenoTransform, "SPAsqr (wald)");
-
-    // ── 3. Load LOCO (optional) ──────────────────────────────────────────
+    // Load LOCO before resolving each phenotype's transform.
     std::unique_ptr<LocoData> loco;
     std::unordered_set<std::string> locoChroms;
     if (useLoco) {
@@ -457,6 +456,8 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
         locoChroms = loco->availableChromosomes();
         infoMsg("SPAsqr (wald): LOCO available for %zu chromosomes", locoChroms.size());
     }
+    std::vector<PhenoWork> pw = buildPhenoWorkspaces(
+        sd, unionX, phenoNames, cfg.phenoTransform, "SPAsqr (wald)", loco.get());
 
     // ── 4. Per-pheno bandwidth (no-LOCO path only; with LOCO it is derived
     //      per chromosome from the LOCO-adjusted response). ──────────────
@@ -513,6 +514,8 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
             shared->h         = pw[k].h;
             shared->tol       = tol;
             shared->maxIter   = maxIter;
+            shared->hetMinMaf = cfg.spasqrHetMinMaf;
+            shared->hetSkipped = hetSkipped[k];
             shared->nullTheta = fitNullThetas(pw[k].Y, pw[k].X, taus, pw[k].h, tol, maxIter);
 
             tasks[k].phenoName    = phenoNames[k];
@@ -551,6 +554,8 @@ void runSPAsqrWald(const SPAsqrConfig &cfg) {
             shared->h         = h;
             shared->tol       = tol;
             shared->maxIter   = maxIter;
+            shared->hetMinMaf = cfg.spasqrHetMinMaf;
+            shared->hetSkipped = hetSkipped[k];
             shared->nullTheta = fitNullThetas(shared->Y_resp, pw[k].X, taus, h, tol, maxIter);
 
             tasks[k].phenoName    = phenoNames[k];

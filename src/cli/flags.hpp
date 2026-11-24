@@ -318,8 +318,17 @@ order Taylor (Gaussian) approximation.
 
 inline const FlagDef kOutlierAbs = {
     "--spasqr-outlier-abs-bound", "FLOAT",
-    "SPAsqr-only absolute outlier cutoff (default: 0.55)",
+    "SPAsqr-only absolute outlier cutoff (default: 0.65)",
     nullptr
+};
+
+inline const FlagDef kSpasqrHetMinMaf = {
+    "--spasqr-het-min-maf", "FLOAT",
+    "Minimum MAF for SPAsqr Wald heterogeneity testing (default: 0.01)",
+    R"(Accepts [0, 0.5]; 0 disables this additional restriction. Below the threshold,
+BETA_HOM, SE_HOM, HET_Q and LOG10P_HET are NA. Per-quantile Wald results
+and LOG10P_CCT remain available. Skipped counts are reported per phenotype
+for markers that pass the existing quality filters. Applies only in wald mode.)"
 };
 
 inline const FlagDef kSpasqrWriteOmega = {
@@ -495,7 +504,19 @@ inline const FlagDef kPredList = {
 the corresponding .loco file. The .loco file format is auto-detected
 per phenotype: Regenie (header begins with FID_IID, chromosome-major
 rows) or LDAK-KVIK (header FID IID Chr1 Chr2 ... Chr22, subject-major
-rows).)"
+rows).
+
+SPAsqr (score and wald): LDAK-KVIK defaults to raw; Regenie always uses
+standardize, overriding conflicting explicit choices with a warning.
+After this transformation, Regenie input divides the
+phenotype Y by the standard deviation of its linear-regression residuals on the
+covariates and intercept, then subtracts the leave-one-chromosome-out
+(LOCO) polygenic risk score (PRS). The divisor is √(Σr²/(n−p)),
+where r is the residual vector, n is the phenotype's non-missing sample
+count, and p counts covariate coefficients including the intercept.
+LDAK-KVIK input subtracts PRS without this division. Quantile regression
+then fits the adjusted response on the original covariates.
+Use the same phenotype transform and covariates as PRS training.)"
 };
 
 inline const FlagDef kSpasqrMode = {
@@ -520,7 +541,8 @@ inline const FlagDef kSpasqrMode = {
           gives the GLS common effect BETA_HOM (SE_HOM) and
           HET_Q = (β̂ − BETA_HOM·1)' V^{-1} (β̂ − BETA_HOM·1) ~ χ²(K−1)
           (K = number of --spasqr-taus), with LOG10P_HET.  The test is run
-          only for MAC >= 4000; below it these four columns are NA.
+          only for MAF >= --spasqr-het-min-maf (default 0.01); below it
+          these four columns are NA. Per-quantile results are unchanged.
           Slower per marker; suited for follow-up effect-size estimation on
           a small SNP list (--extract).  Per-marker QR refit runs on the
           shared marker-engine thread pool (--threads), and --chunk-ksnp
@@ -538,27 +560,28 @@ inline const FlagDef kSpasqrMode = {
           sandwich variance is unusable (the LDLT failed, or V[gg] <= 0) has
           no statistic at all and takes 8 (NA_NO_TEST) with every other cell
           of that tau NA.
-          (--pred-list gives y_resp = Y − loco_chr; --compression honored.))"
+          (--pred-list applies format-specific scaling before LOCO subtraction;
+           see --help pred-list. --compression honored.))"
 };
 
 inline const FlagDef kPhenoTransform = {
     "--pheno-transform", "MODE",
     "Phenotype pre-transform for SPAsqr: raw | int | standardize "
-    "(default: int)",
+    "(default: int without LOCO; raw for LDAK-KVIK; standardize for Regenie)",
     R"(Selects how Y is transformed before SQR fitting (and before LOCO offset
 subtraction when --pred-list is given):
   raw         — no transform; SQR fits on Y as supplied.
   int         — inverse normal transform (Blom plotting position, average-rank
-                ties) applied per phenotype on its non-missing scope. Default
-                in both contexts; LOCO PRS should be trained on INT Y so
-                the offset is on the same scale.
+                ties) applied per phenotype on its non-missing scope.
+                Default without --pred-list.
   standardize — Y is centered and scaled to unit variance per phenotype.
-                Default in both contexts; LOCO PRS should be trained on
-                a standardized Y so the offset is on the same scale.
+                LOCO PRS should be trained on a standardized Y.
 
-When --pred-list is provided, the transformed Y has loco_chr subtracted as
-an offset (β=1, α=0). The LOCO PRS scale must match the chosen transform —
-mixing scales gives meaningless residuals.)"
+With --pred-list, LDAK-KVIK defaults to raw and honors explicit choices.
+Regenie always uses standardize, with a warning for a conflicting choice.
+Each phenotype logs its effective transform. Format-specific scaling precedes LOCO offset
+subtraction (β=1, α=0); see --help pred-list. Match the phenotype transform
+and covariates used for PRS training.)"
 };
 
 inline const FlagDef kExtract = {
@@ -1122,7 +1145,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kKeep,         &kRemove,     &kExtract,    &kExclude,
     &kGeno, &kMaf,
     &kMac,          &kHwe, &kHardCallThreshold,        &kChr,        &kPredList,    &kPhenoTransform,
-    &kSpasqrMode,   &kSpasqrWriteOmega,
+    &kSpasqrHetMinMaf, &kSpasqrMode,   &kSpasqrWriteOmega,
     nullptr
 };
 
@@ -1155,7 +1178,7 @@ inline const MethodDef kSPAsqr = {
 )"
     GRAB_SPA_STATUS_TABLE
     GRAB_SPA_FALLBACK_NOTE,
-    nullptr,
+    kPredList.fileInfo,
 };
 
 // ── WtCoxG ─────────────────────────────────────────────────────────
@@ -1553,7 +1576,7 @@ inline const FlagDef *const kNumericFlags[] = {
     &kSeed,       &kGeno,
     &kMaf,        &kMac,          &kHwe, &kHardCallThreshold,              &kMinMafIbd,
     &kSpasqrTaus, &kSpasqrTol,    &kSpasqrH,          &kSpasqrHScale,
-    &kSpasqrMode, &kSpasqrWriteOmega,
+    &kSpasqrHetMinMaf, &kSpasqrMode, &kSpasqrWriteOmega,
     &kSageldMethod,
     &kSpagxeMarginalCutoff,
     nullptr

@@ -57,10 +57,11 @@ struct SPAsqrConfig {
     int compressionLevel = 3;
 
     // ── Model ──────────────────────────────────────────────────────────
-    std::string phenoTransform = "int";   // "raw" | "int" | "standardize"
+    std::string phenoTransform;          // empty: context default; raw | int | standardize
+    double spasqrHetMinMaf  = 0.01;       // wald heterogeneity only
     double spaCutoff        = 2.0;        // |z| above which the SPA runs
     double outlierIqrRatio  = 1.5;
-    double outlierAbsBound  = 0.55;
+    double outlierAbsBound  = 0.65;
     double spasqrTol        = 1e-8;
     double spasqrH          = -1.0;       // -1 ⇒ IQR-based auto
     double spasqrHScale     = -1.0;       // -1 ⇒ 3 (score/LOCO), 5 (wald)

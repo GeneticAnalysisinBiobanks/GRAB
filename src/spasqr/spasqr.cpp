@@ -710,7 +710,7 @@ class SPAsqrMethod : public MethodBase {
 
 // Returns an N × K boolean matrix (as std::vector<std::vector<bool>>).
 // outlierIqrRatio  = multiplier for IQR (default 1.5)
-// outlierAbsBound  = absolute clamp for cutoffs (default 0.55)
+// outlierAbsBound  = absolute clamp for cutoffs (default 0.65)
 struct OutlierInfo {
     // per-column: number of outlier subjects.  Only the count is ever wanted —
     // callers that need the values themselves walk isOutlier — so the indices
@@ -972,6 +972,7 @@ std::vector<GRMEntry> reindexGrm(
 // the split (usedIIDs / usedMask / nFam all feed the genotype reader).
 struct ScoreSetup {
     std::unique_ptr<SubjectData> sd;
+    std::unique_ptr<LocoData> loco;
     std::vector<PhenoWork> pw;   // one per phenotype, already transformed
     int nCov = 0;
     double hScale = 0.0;
@@ -983,7 +984,7 @@ struct ScoreSetup {
 // the log lines and the error messages.
 ScoreSetup buildScoreSetup(const SPAsqrConfig &cfg, const char *label) {
     ScoreSetup s;
-    infoMsg("%s: pheno-transform = %s, solver = qmme", label, cfg.phenoTransform.c_str());
+    infoMsg("%s: solver = qmme", label);
     infoMsg("%s: Loading phenotype and covariate data (%zu phenotypes, %zu taus)",
             label, cfg.phenoNames.size(), cfg.taus.size());
 
@@ -1004,7 +1005,10 @@ ScoreSetup buildScoreSetup(const SPAsqrConfig &cfg, const char *label) {
         : sd.getColumns(cfg.covarNames);
     s.nCov = static_cast<int>(unionX.cols());
 
-    s.pw = buildPhenoWorkspaces(sd, unionX, cfg.phenoNames, cfg.phenoTransform, label);
+    if (!cfg.predListFile.empty())
+        s.loco = std::make_unique<LocoData>(LocoData::load(
+            cfg.predListFile, cfg.phenoNames, sd.usedIIDs(), sd.famIIDs()));
+    s.pw = buildPhenoWorkspaces(sd, unionX, cfg.phenoNames, cfg.phenoTransform, label, s.loco.get());
     s.hScale = (cfg.spasqrHScale >= 0.0) ? cfg.spasqrHScale : 3.0;
     for (auto &p : s.pw)
         p.h = (cfg.spasqrH >= 0.0) ? cfg.spasqrH
@@ -1180,6 +1184,7 @@ void runSPAsqr(const SPAsqrConfig &cfg) {
 //
 // Per-chromosome workflow:
 //   - Y is pre-transformed once via applyPhenoTransform (raw/int/standardize).
+//   - Regenie responses are divided by their covariate-residual SD.
 //   - For each chromosome, the buildTasks callback rebuilds the conquer fits
 //     using y_adj = Y_transformed - loco_chr (β=1, α=0).
 //   - All modes feed conquer with X = pw[k].X (original covariates only,
@@ -1221,7 +1226,7 @@ void runSPAsqrLoco(const SPAsqrConfig &cfg) {
     logPhenoTable(phenoNames, pw, "global_h(ref)");
 
     // ── 4. Load LOCO predictions (union space) ─────────────────────
-    LocoData loco = LocoData::load(cfg.predListFile, phenoNames, sd.usedIIDs(), sd.famIIDs());
+    const LocoData &loco = *setup.loco;
     auto locoChroms = loco.availableChromosomes();
     infoMsg("LOCO: %zu chromosomes available across all phenotypes", locoChroms.size());
 
@@ -1277,7 +1282,7 @@ void runSPAsqrLoco(const SPAsqrConfig &cfg) {
 
             infoMsg("SPAsqr-LOCO chr%s [%s][transform=%s]: per-chr h = IQR(y_adj)/scale = %.6f (Nk=%u),"
                     " corr(Y, loco)^2 = %.4f",
-                    chr.c_str(), phenoNames[k].c_str(), cfg.phenoTransform.c_str(),
+                    chr.c_str(), phenoNames[k].c_str(), pw[k].phenoTransform.c_str(),
                     h_chr[k], pw[k].nk, r2_loco);
         }
 

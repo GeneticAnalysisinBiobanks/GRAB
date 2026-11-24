@@ -409,6 +409,8 @@ TEST_CXXFLAGS := $(filter-out -DNDEBUG,$(GRAB_CXXFLAGS))
 # __attribute__((target(...))) SIMD variants and the static const dispatch
 # pointers must have exactly one definition.  Both the test and the benchmark
 # therefore link the object rather than including the implementation.
+TESTOBJS_spasqr_loco_test := $(BUILD_DIR)/util/regression.o
+
 TESTOBJS_spa_cgf_test  := $(BUILD_DIR)/util/spa_cgf.o
 TESTOBJS_bench_spa_cgf := $(BUILD_DIR)/util/spa_cgf.o
 # bench_spa_tail times the tail path against the linear tail log10p_unify

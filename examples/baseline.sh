@@ -461,9 +461,9 @@ build/grab2 \
   --spasqr-tol 1e-8 \
   --spasqr-h-scale 3 \
   --spasqr-mode score \
-  --pheno-transform int \
+  `# --pheno-transform: omitted (default depends on each LOCO format)` \
   --outlier-iqr-multiplier 1.5 \
-  --spasqr-outlier-abs-bound 0.55 \
+  --spasqr-outlier-abs-bound 0.65 \
   --spa-z-threshold 2.0 \
   --threads 2 \
   --chunk-ksnp 8 \
@@ -634,9 +634,10 @@ build/grab2 \
   --spasqr-tol 1e-8 \
   --spasqr-h-scale 5 \
   --spasqr-mode wald \
-  --pheno-transform int \
+  --spasqr-het-min-maf 0.01 \
+  `# --pheno-transform: omitted (default depends on each LOCO format)` \
   --outlier-iqr-multiplier 1.5 \
-  --spasqr-outlier-abs-bound 0.55 \
+  --spasqr-outlier-abs-bound 0.65 \
   --spa-z-threshold 2.0 \
   --threads 2 \
   --chunk-ksnp 8 \

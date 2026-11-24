@@ -334,6 +334,7 @@ LocoData LocoData::load(
         const std::string &locoPath = predMap.at(pn);
 
         const LocoFormat fmt = detectLocoFormat(locoPath);
+        if (fmt == LocoFormat::Regenie) result.regeniePhenos.insert(pn);
         infoMsg("LOCO[%s]: detected %s format", pn.c_str(),
                 fmt == LocoFormat::Regenie ? "regenie" : "ldak");
 

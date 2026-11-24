@@ -11,8 +11,10 @@
 #pragma once
 
 #include "io/subject_data.hpp"
+#include "engine/loco.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/regression.hpp"
 
 #include <Eigen/Dense>
 #include <algorithm>
@@ -28,6 +30,18 @@
 namespace spasqr_null {
 
 // ── Phenotype transform ────────────────────────────────────────────────
+
+inline std::string resolvePhenoTransform(
+    const std::string &requested, const LocoData *loco, const std::string &pheno
+) {
+    if (loco && loco->regeniePhenos.count(pheno)) {
+        if (!requested.empty() && requested != "standardize")
+            warnMsg("SPAsqr [%s]: REGENIE requires pheno-transform = standardize; overriding %s",
+                    pheno.c_str(), requested.c_str());
+        return "standardize";
+    }
+    return requested.empty() ? (loco ? "raw" : "int") : requested;
+}
 
 inline void applyPhenoTransform(
     Eigen::VectorXd &Y,
@@ -90,6 +104,7 @@ inline double iqrBandwidth(
 // caller — score mode derives it once from Y, LOCO mode per chromosome from
 // the LOCO-adjusted response, and Wald mode does both depending on --pred-list.
 struct PhenoWork {
+    std::string phenoTransform;
     std::vector<uint32_t> unionToLocal; // size nUnion; UINT32_MAX = absent
     uint32_t nk = 0;                    // non-missing count
     Eigen::VectorXd Y;                  // nk, transformed
@@ -97,22 +112,40 @@ struct PhenoWork {
     double h = 0.0;                     // smoothing bandwidth (caller-filled)
 };
 
+// Divide the response by the covariate-residual SD used by Regenie.
+// Keep covariate effects in Y; the subsequent quantile fit estimates them.
+inline void scaleRegenieResponse(PhenoWork &pk) {
+    const Eigen::Index n = pk.Y.size();
+    const Eigen::Index p = pk.X.cols() + 1;
+    if (n <= p)
+        throw std::runtime_error("SPAsqr: Regenie scaling requires more subjects than covariate coefficients (including intercept)");
+    Eigen::MatrixXd design(n, p);
+    design.col(0).setOnes();
+    design.rightCols(p - 1) = pk.X;
+    const Eigen::VectorXd resid = regression::linearResiduals(
+        pk.Y, design, Eigen::VectorXd::Ones(n));
+    const double sd = resid.norm() / std::sqrt(static_cast<double>(n - p));
+    if (resid.size() != n || !std::isfinite(sd) || sd <= 0.0)
+        throw std::runtime_error("SPAsqr: Regenie scaling requires a finite, positive covariate-residual standard deviation");
+    pk.Y /= sd;
+}
+
 // Split the union into per-phenotype workspaces.  Union membership is decided
 // once (genotype ∩ GRM ∩ keep/remove); NA filtering is per phenotype, so each
 // phenotype gets its own contiguous re-indexing of the union.
 //
 // The transform runs on the per-phenotype non-missing scope, and everything
 // downstream — bandwidth, QMME fit, and in LOCO mode the per-chromosome y_adj —
-// operates on the transformed Y.  A LOCO PRS therefore has to be on the same
-// scale as the transform the user asked for.
+// operates on the transformed Y, with Regenie scaling before LOCO subtraction.
 //
-// `label` only selects the prefix of the error message.
+// `label` selects the log and error prefix; loco selects the transform per phenotype.
 inline std::vector<PhenoWork> buildPhenoWorkspaces(
     SubjectData &sd,
     const Eigen::MatrixXd &unionX,
     const std::vector<std::string> &phenoNames,
     const std::string &phenoTransform,
-    const char *label
+    const char *label,
+    const LocoData *loco
 ) {
     const uint32_t nUnion = sd.nUsed();
     const int nCov = static_cast<int>(unionX.cols());
@@ -141,7 +174,11 @@ inline std::vector<PhenoWork> buildPhenoWorkspaces(
             if (nCov > 0) pw[k].X.row(li) = unionX.row(i);
         }
 
-        applyPhenoTransform(pw[k].Y, phenoTransform);
+        pw[k].phenoTransform = resolvePhenoTransform(phenoTransform, loco, phenoNames[k]);
+        infoMsg("%s [%s]: pheno-transform = %s", label, phenoNames[k].c_str(),
+                pw[k].phenoTransform.c_str());
+        applyPhenoTransform(pw[k].Y, pw[k].phenoTransform);
+        if (loco && loco->regeniePhenos.count(phenoNames[k])) scaleRegenieResponse(pw[k]);
     }
     return pw;
 }

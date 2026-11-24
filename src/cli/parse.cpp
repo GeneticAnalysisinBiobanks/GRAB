@@ -210,6 +210,13 @@ Args parseArgs(
             }
         }
         else if (arg == "--outlier-iqr-multiplier")a.outlierRatio = parseDouble(next(), arg);
+        else if (arg == "--spasqr-het-min-maf") {
+            a.spasqrHetMinMaf = parseDouble(next(), arg);
+            if (!(a.spasqrHetMinMaf >= 0.0 && a.spasqrHetMinMaf <= 0.5)) {
+                std::cerr << "Error: --spasqr-het-min-maf must be in [0, 0.5]\n";
+                std::exit(1);
+            }
+        }
         else if (arg == "--spasqr-outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
         else if (arg == "--spagrm-control-outlier") { markSeen(arg); a.spagrmControlOutlier = true; }
         else if (arg == "--spasqr-write-omega") { markSeen(arg); a.spasqrWriteOmega = true; }

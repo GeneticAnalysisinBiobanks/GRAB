@@ -6,6 +6,7 @@
 #include "geno_factory/bgen.hpp"
 #include "geno_factory/hwe.hpp"
 #include "geno_factory/variant_filter.hpp"
+#include "util/chromosome.hpp"
 #include "util/logging.hpp"
 
 #include <algorithm>
@@ -737,6 +738,7 @@ bool BgenData::loadFromIndex(
         const uint64_t rsize = static_cast<uint64_t>(sqlite3_column_int64(st, 7));
 
         std::string chromosome = chrTxt ? reinterpret_cast<const char *>(chrTxt) : "";
+        util::stripChromosomeZeroPadding(chromosome);
         std::string rsid = rsidTxt ? reinterpret_cast<const char *>(rsidTxt) : "";
         std::string allele1 = a1 ? reinterpret_cast<const char *>(a1) : "";
         std::string allele2 = a2 ? reinterpret_cast<const char *>(a2) : "";
@@ -871,6 +873,7 @@ BgenData::BgenData(
                 continue;
             }
 
+            util::stripChromosomeZeroPadding(chromosome);
             m_chr.push_back(chromosome);
             m_pos.push_back(position);
             // Use RSID as marker ID; fall back to SNPID

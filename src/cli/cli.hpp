@@ -26,6 +26,7 @@ struct Args {
     std::string sageldMethod = "sageld";            // --sageld-method: 'sageld' (score, default) or 'gallop' (Wald)
     std::string envName;                            // --envir-name: comma-separated environment column names (SAGELD / SPAGxE / SPAGxEmix G×E)
     double spagxeMarginalCutoff = 0.001;            // --spagxe-marginal-cutoff: ε, Branch A/B routing threshold (default 0.001)
+    double spasqrHetMinMaf = 0.01;                   // --spasqr-het-min-maf (wald only)
     double spasqrTol = 1e-8;                          // --spasqr-tol (SQR solver ||grad||_inf tolerance)
     double spasqrH = -1.0;                            // --spasqr-h (explicit bandwidth; -1 = auto)
     double spasqrHScale = -1.0;                       // --spasqr-h-scale (IQR divisor; -1 = auto: score=3, wald=5)
@@ -64,7 +65,7 @@ struct Args {
     std::string removeFile;       // --remove (subject exclude list)
     std::string predListFile;     // --pred-list (Regenie / LDAK-KVIK pred.list for LOCO)
     // --pheno-transform {raw,int,standardize}; empty sentinel = "use context default"
-    // (int when --pred-list given, raw otherwise; resolved in dispatch).
+    // (int without predictions; otherwise resolved per LOCO format).
     std::string phenoTransform;
     // --spasqr-mode {score, wald}: score test (default, multi-tau CCT) vs
     // per-marker full-model Wald (β̂_G + SE per τ via M-estimation sandwich).
@@ -90,7 +91,7 @@ struct Args {
     // missingRate-missing).  Default 0.1 matches plink2; valid range [0, 0.5).
     double hardCallThreshold = 0.1;
     double outlierRatio = 1.5;
-    double outlierAbsBound = 0.55;
+    double outlierAbsBound = 0.65;
     bool spagrmControlOutlier = false; // --spagrm-control-outlier (flag, no argument): enable iterative SPAGRM outlier-ratio adjustment (default off)
     bool spasqrWriteOmega = false;     // --spasqr-write-omega (flag, no argument): write cross-tau residual correlation (default off)
     int nthread = 1;

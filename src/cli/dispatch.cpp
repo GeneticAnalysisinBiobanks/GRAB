@@ -7,6 +7,7 @@
 #include "cli/flags.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "io/subject_data.hpp"
+#include "util/chromosome.hpp"
 #include "util/int_pheno.hpp"
 #include "util/logging.hpp"
 #include "util/null_model.hpp"
@@ -66,6 +67,7 @@ static std::unordered_set<std::string> parseChrSpec(const std::string &spec) {
             for (int c = lo; c <= hi; ++c)
                 result.insert(std::to_string(c));
         } else {
+            util::stripChromosomeZeroPadding(token);
             result.insert(token);
         }
     }
@@ -305,7 +307,8 @@ static void logArgsInEffect(const Args &args) {
     if ((args.method == "SPAGxE" || args.method == "SPAGxEmix") && args.spagxeMarginalCutoff != 0.001)
         std::fprintf(stderr, "  --spagxe-marginal-cutoff %g\n", args.spagxeMarginalCutoff);
     if (args.outlierRatio != 1.5) std::fprintf(stderr, "  --outlier-iqr-multiplier %g\n", args.outlierRatio);
-    if (args.outlierAbsBound != 0.55) std::fprintf(stderr, "  --spasqr-outlier-abs-bound %g\n", args.outlierAbsBound);
+    if (args.outlierAbsBound != 0.65) std::fprintf(stderr, "  --spasqr-outlier-abs-bound %g\n", args.outlierAbsBound);
+    if (args.spasqrHetMinMaf != 0.01) std::fprintf(stderr, "  --spasqr-het-min-maf %g\n", args.spasqrHetMinMaf);
     if (args.spagrmControlOutlier) std::fprintf(stderr, "  --spagrm-control-outlier\n");
     if (args.spasqrWriteOmega) std::fprintf(stderr, "  --spasqr-write-omega\n");
     if (args.pvalCovAdjCut != 5e-5) std::fprintf(stderr, "  --covar-p-threshold %g\n", args.pvalCovAdjCut);
@@ -1373,24 +1376,12 @@ int run(
                 }
                 taus.push_back(t);
             }
-            // Resolve --pheno-transform default. Default is 'int'
-            // in both contexts (with and without --pred-list); LOCO PRS
-            // should be trained on a Y on the same scale.
-            if (args.phenoTransform.empty()) {
-                args.phenoTransform = "int";
-            }
-            if (args.phenoTransform != "raw" &&
-                args.phenoTransform != "int" &&
-                args.phenoTransform != "standardize") {
+            // Preserve the empty default until each phenotype's LOCO format is known.
+            if (!args.phenoTransform.empty() && args.phenoTransform != "raw" &&
+                args.phenoTransform != "int" && args.phenoTransform != "standardize") {
                 std::cerr << "Error: --pheno-transform must be 'raw', 'int', or 'standardize', got '"
                           << args.phenoTransform << "'\n";
                 return 1;
-            }
-            if (!args.predListFile.empty() &&
-                (args.phenoTransform == "raw" || args.phenoTransform == "standardize")) {
-                std::cerr << "Warning: --pheno-transform " << args.phenoTransform
-                          << " with --pred-list — ensure your LOCO PRS was trained"
-                          << " on the same transform; otherwise scales mismatch.\n";
             }
             // Validate --spasqr-mode
             if (args.spasqrMode != "score" && args.spasqrMode != "wald") {
@@ -1421,6 +1412,7 @@ int run(
             cfg.outlierIqrRatio = args.outlierRatio;
             cfg.outlierAbsBound = args.outlierAbsBound;
             cfg.spasqrTol       = args.spasqrTol;
+            cfg.spasqrHetMinMaf = args.spasqrHetMinMaf;
             cfg.spasqrH         = args.spasqrH;
             cfg.spasqrHScale    = args.spasqrHScale;
             cfg.writeOmega      = args.spasqrWriteOmega;
