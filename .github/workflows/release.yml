@@ -69,7 +69,7 @@ jobs:
             static_libs: -static-libstdc++ -static-libgcc
             archive_ext: tar.gz
           - target: macos-arm64
-            runner: macos-14
+            runner: macos-15
             march: ""
             simd_flags: ""
             static_libs: ""
